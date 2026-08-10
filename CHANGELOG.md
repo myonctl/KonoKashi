@@ -41,4 +41,5 @@ unreleased.
 - Removed the unverified Stage 1 MPRIS draft from the active tree to restore the
   explicitly required Stage 0-only boundary. Its pre-hardening form remains
   recoverable in commit `971bfbf` for review after Stage 1 is authorized; it is
-  not accepted implementation or completion evidence.
+  not accepted implementation or completion evidence. The sanitized Firefox
+  and KDE browser observations remain as project-history fixtures.
