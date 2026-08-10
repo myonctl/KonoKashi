@@ -12,6 +12,8 @@ unreleased.
 - Created the private `myonctl/LyricFlow` GitHub repository with `origin` using
   the existing local history and files; no GitHub-generated project files were
   added.
+- Pushed `main` with upstream tracking and verified the required GitHub Actions
+  quality workflow successfully on the private remote.
 - A future public-release checklist covering licensing, history/privacy review,
   dependency licenses, CI, branch protection, release strategy, packaging, and
   explicit visibility authorization.
