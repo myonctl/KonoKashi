@@ -1,0 +1,69 @@
+name: Bug report
+description: Report a reproducible LyricFlow defect without sensitive data
+title: "[Bug]: "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for helping improve LyricFlow. Do not include credentials,
+        private media paths, complete lyrics, or other personal information.
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Preflight
+      options:
+        - label: I searched existing issues for the same problem.
+          required: true
+        - label: I removed secrets and unnecessary personal information.
+          required: true
+        - label: I understand that an issue does not authorize a roadmap stage.
+          required: true
+  - type: input
+    id: revision
+    attributes:
+      label: Version or revision
+      description: LyricFlow version or commit hash where the problem occurs.
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: OS, desktop, Python, player/browser, and integration versions.
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: Describe the observed behavior and its impact.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Reproduction steps
+      placeholder: |
+        1. Run ...
+        2. Perform ...
+        3. Observe ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Sanitized logs or evidence
+      description: Paste only the minimum sanitized output needed to investigate.
+      render: shell
+  - type: textarea
+    id: additional
+    attributes:
+      label: Additional context

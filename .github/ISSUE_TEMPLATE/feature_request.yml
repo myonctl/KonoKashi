@@ -1,0 +1,49 @@
+name: Feature request
+description: Propose a product outcome for roadmap or backlog consideration
+title: "[Feature]: "
+labels:
+  - enhancement
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Feature requests inform planning. They do not authorize implementation
+        or override the current stage in AGENT_TODO.md.
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Preflight
+      options:
+        - label: I searched the product specification, roadmap, backlog, and issues.
+          required: true
+        - label: I removed secrets and unnecessary personal information.
+          required: true
+        - label: I understand that this request does not authorize implementation.
+          required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem or user need
+      description: Explain the user outcome rather than only a proposed mechanism.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed behavior
+      description: Describe the smallest useful behavior and relevant constraints.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+  - type: textarea
+    id: product_fit
+    attributes:
+      label: Product and architecture fit
+      description: Link related specification, roadmap, backlog, or ADR sections.
+  - type: textarea
+    id: privacy
+    attributes:
+      label: Privacy, security, or dependency impact

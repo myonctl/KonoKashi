@@ -7,6 +7,14 @@ unreleased.
 
 ### Added
 
+- Private-GitHub preparation: practical contribution and security guidance,
+  structured bug/feature issue forms, and a pull request checklist.
+- Created the private `myonctl/LyricFlow` GitHub repository with `origin` using
+  the existing local history and files; no GitHub-generated project files were
+  added.
+- A future public-release checklist covering licensing, history/privacy review,
+  dependency licenses, CI, branch protection, release strategy, packaging, and
+  explicit visibility authorization.
 - `PROJECT_STATE.md` as the concise current-reality and continuation entry point.
 - `BACKLOG.md` for durable future features, technical debt, investigations, and
   intentionally deferred/rejected ideas outside stage authority.

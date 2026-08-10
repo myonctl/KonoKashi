@@ -14,6 +14,13 @@ Stage 0 — repository foundation and workflow hardening — is Implemented. The
 package, local `doctor` diagnostic, quality tooling, CI definition, architecture
 skeleton, and repository continuation process exist.
 
+The [`myonctl/LyricFlow`](https://github.com/myonctl/LyricFlow) GitHub repository
+is private during pre-alpha development. Its `origin` remote and default branch
+use the conventional `main` workflow. The project is intended to become public
+later, but LyricFlow is **not currently open source**: no open-source license
+has been selected, and `LICENSE` reserves all rights until that decision is
+made. Public release prerequisites are tracked in `BACKLOG.md`.
+
 No MPRIS player discovery or other product feature is implemented in the active
 tree. No implementation stage is currently authorized. Stage 1 — MPRIS
 diagnostic core — is Proposed and awaiting explicit user authorization. See
@@ -48,6 +55,8 @@ Supporting authorities:
 - `BACKLOG.md` — durable future features, debt, and investigations; never
   authorization.
 - `CHANGELOG.md` — notable repository changes.
+- `CONTRIBUTING.md` — practical development and contribution workflow.
+- `SECURITY.md` — private handling for security-sensitive reports.
 - `docs/PRODUCT_SPEC.md` — product requirements and non-goals.
 - `docs/ARCHITECTURE.md` — actual/planned boundaries, flows, and models.
 - `docs/ROADMAP.md` — ordered stages and their acceptance gates.

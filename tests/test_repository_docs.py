@@ -14,6 +14,8 @@ REQUIRED_DOCUMENTS = (
     "AGENT_TODO.md",
     "BACKLOG.md",
     "CHANGELOG.md",
+    "CONTRIBUTING.md",
+    "SECURITY.md",
     "docs/PRODUCT_SPEC.md",
     "docs/ARCHITECTURE.md",
     "docs/ROADMAP.md",
@@ -29,6 +31,13 @@ REQUIRED_DOCUMENTS = (
 REQUIRED_EVIDENCE_FIXTURES = (
     "tests/fixtures/mpris/firefox_native.json",
     "tests/fixtures/mpris/plasma_browser_integration.json",
+)
+
+REQUIRED_GITHUB_COMMUNITY_FILES = (
+    ".github/ISSUE_TEMPLATE/bug_report.yml",
+    ".github/ISSUE_TEMPLATE/feature_request.yml",
+    ".github/pull_request_template.md",
+    ".github/workflows/ci.yml",
 )
 
 PROJECT_STATE_HEADINGS = (
@@ -99,6 +108,29 @@ def test_sanitized_mpris_evidence_fixtures_are_preserved() -> None:
         "plasma-browser-integration",
     ]
     assert all("/home/" not in json.dumps(fixture) for fixture in fixtures)
+
+
+def test_github_community_and_ci_files_exist() -> None:
+    missing = [
+        relative_path
+        for relative_path in REQUIRED_GITHUB_COMMUNITY_FILES
+        if not (REPOSITORY_ROOT / relative_path).is_file()
+    ]
+
+    assert missing == []
+
+
+def test_github_actions_runs_the_required_quality_gate() -> None:
+    content = (REPOSITORY_ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
+    required_commands = (
+        'python -m pip install ".[dev]"',
+        "python -m pytest",
+        "python -m ruff check .",
+        "python -m ruff format --check .",
+        "python -m mypy src",
+    )
+
+    assert all(command in content for command in required_commands)
 
 
 def test_readme_indexes_the_continuation_documents() -> None:

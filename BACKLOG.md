@@ -123,6 +123,35 @@ authorize implementation. Staged v1 ordering lives in `docs/ROADMAP.md`.
   Prerequisites: stable v1 application and migration strategy. Related:
   Roadmap Stage 10.
 
+## Public release readiness
+
+This checklist is planning only. Changing repository visibility requires
+separate explicit authorization.
+
+- [ ] Select and deliberately accept a real open-source license; replace the
+  current all-rights-reserved placeholder and update package metadata.
+- [ ] Re-audit the complete Git history for credentials, private files, local
+  databases, music, lyrics caches, and machine-specific configuration.
+- [ ] Review screenshots, logs, recorded responses, and fixtures for personal
+  information and unnecessary provider data.
+- [ ] Verify runtime, development, build, and transitive dependency licenses are
+  compatible with the selected project license and distribution plan.
+- [ ] Complete README installation and end-user usage documentation for the
+  supported release artifact.
+- [x] Establish practical contribution guidelines in `CONTRIBUTING.md`; review
+  them again for public contributors before release.
+- [ ] Establish and verify a durable private security-reporting procedure; the
+  current `SECURITY.md` deliberately names no unverified email address.
+- [ ] Verify the complete quality workflow on GitHub Actions for the release
+  candidate.
+- [ ] Consider protected `main`, required passing CI, and review requirements
+  without unnecessarily obstructing current single-developer work.
+- [ ] Decide versioning, changelog, tagging, and release strategy.
+- [ ] Verify the package/distribution approach, reproducibility, upgrade,
+  backup, uninstall, and fresh-machine behavior.
+- [ ] Change GitHub repository visibility only after explicit authorization and
+  a final public-release audit.
+
 ## Technical debt
 
 - **Imported Stage 1 draft review** — If Stage 1 is authorized, review the

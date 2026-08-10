@@ -6,8 +6,16 @@ __pycache__/
 .pytest_cache/
 .ruff_cache/
 .venv/
+.env
+.env.*
+!.env.example
+.direnv/
 build/
 dist/
+*.pem
+*.key
+id_rsa
+id_ed25519
 
 # Local application state and databases
 *.db
@@ -21,4 +29,3 @@ dist/
 .vscode/
 *~
 .DS_Store
-
