@@ -1,56 +1,72 @@
 # LyricFlow
 
-Linux-first desktop application that detects the currently playing song through MPRIS, resolves the track identity, finds local or online lyrics, and displays synchronized lyrics against the real playback position. For non-Latin-script songs, it shows the original lyric with a romanized/transliterated line beneath it and an optional translation layer.
+LyricFlow is a planned Linux-first desktop application that detects current
+playback through MPRIS, resolves track identity conservatively, finds local or
+provider lyrics, and displays synchronized lyrics. For non-Latin scripts, the
+original line remains first, a romanized/transliterated line appears directly
+under it, and an optional translation forms a third layer.
 
-`LyricFlow` is a working project name. Renaming it later must not affect domain or storage design.
+`LyricFlow` is a working name. The current version is 0.1.0.
 
-## Product direction
+## Current status
 
-The first supported environment is KDE Plasma on Linux.
+Stage 0 — repository foundation and workflow hardening — is Implemented. The
+package, local `doctor` diagnostic, quality tooling, CI definition, architecture
+skeleton, and repository continuation process exist.
 
-Known usable players:
-
-- Strawberry
-- Firefox through `plasma-browser-integration`
-- Other standards-compliant MPRIS players when their metadata is sufficient
-
-Foobar2000 through Wine is explicitly outside v1 because it did not expose an MPRIS player in the user's test.
+No MPRIS player discovery or other product feature is implemented in the active
+tree. No implementation stage is currently authorized. Stage 1 — MPRIS
+diagnostic core — is Proposed and awaiting explicit user authorization. See
+`PROJECT_STATE.md` for current evidence and `AGENT_TODO.md` for the only
+implementation authority.
 
 ## Core product rules
 
-1. The app is local-first.
-2. Player discovery uses MPRIS, not audio fingerprinting.
-3. Local `.lrc` files and approved cached results take priority over network providers.
-4. LRCLIB is the first online provider.
-5. Metadata is never silently rewritten.
-6. A weak lyrics match is shown as uncertain and requires review.
-7. The UI thread never performs network, filesystem-scan, database-migration, or long-running parsing work.
-8. Every external integration sits behind a replaceable interface.
-9. Agents implement one roadmap stage at a time.
-10. A stage is not complete until automated tests, documentation, and stated manual checks pass.
+- Linux/KDE Plasma first, with Strawberry and Firefox through KDE Plasma Browser
+  Integration as initial player targets.
+- MPRIS playback detection; no audio fingerprinting for v1.
+- Local, user-approved, and cached lyrics outrank network results.
+- Never silently change audio metadata or hide uncertain matches.
+- Preserve original lyric script; align romanization/transliteration underneath
+  and optional translation below that, with provenance and user corrections.
+- Keep provider, player, language, storage, and UI integrations replaceable.
+- Keep operation local-first and do no slow external work on the UI thread.
+- Continue safely from repository evidence without prior conversation context.
 
-## Repository documents
+The complete behavioral authority is `docs/PRODUCT_SPEC.md`.
 
-Read these before changing code:
+## Repository documentation
 
-- `AGENTS.md` — permanent rules for every coding agent
-- `AGENT_TODO.md` — the only currently authorized stage
-- `docs/PRODUCT_SPEC.md` — product behaviour and boundaries
-- `docs/ARCHITECTURE.md` — package boundaries and data flow
-- `docs/ROADMAP.md` — gated implementation sequence
-- `docs/TESTING.md` — test strategy and manual test matrix
-- `docs/adr/` — architecture decisions that must not be casually reversed
-- `CODEX_MASTER_PROMPT.md` — initial prompt to start Codex correctly
+Read the first three files at the start of every session:
 
-## Development status
+- `PROJECT_STATE.md` — fastest current-reality summary and exact next action.
+- `AGENTS.md` — durable constraints for all contributors and agents.
+- `AGENT_TODO.md` — the only document that authorizes implementation.
 
-**Stage 1 — MPRIS diagnostic core** is implemented and awaiting the real KDE
-manual checks recorded in `AGENT_TODO.md`. The code connects through PySide6
-QtDBus, preserves raw player metadata in typed models, and reports player
-lifecycle/property/seek events. It does not select a preferred player,
-interpret track titles, suppress duplicates, fetch lyrics, or create a GUI.
+Supporting authorities:
 
-## Install for development
+- `BACKLOG.md` — durable future features, debt, and investigations; never
+  authorization.
+- `CHANGELOG.md` — notable repository changes.
+- `docs/PRODUCT_SPEC.md` — product requirements and non-goals.
+- `docs/ARCHITECTURE.md` — actual/planned boundaries, flows, and models.
+- `docs/ROADMAP.md` — ordered stages and their acceptance gates.
+- `docs/TESTING.md` — automated strategy, quality gate, fixtures, and manual
+  matrix.
+- `docs/MANUAL_TEST_LOG.md` — append-only real-world verification evidence.
+- `docs/DEPENDENCIES.md` — dependency rationale and replacement paths.
+- `docs/REFERENCES.md` — external primary technical references.
+- `docs/DOCUMENTATION_STYLE.md` — evidence, status, path, TODO, and ADR rules.
+- `docs/DEVELOPMENT_WORKFLOW.md` — exact start, implementation, Git, bug, and
+  handoff workflow.
+- `docs/STAGE_COMPLETION_TEMPLATE.md` — required stage completion report.
+- `docs/adr/` — accepted and historical architecture/process decisions.
+
+`PLAN_MANIFEST.json` is a machine-readable document inventory, not an authority.
+`CODEX_MASTER_PROMPT.md` is a convenience entry point that redirects agents to
+the current repository state; it cannot authorize a stage.
+
+## Development setup
 
 LyricFlow requires Python 3.11 or newer. From the repository root:
 
@@ -59,45 +75,34 @@ python -m venv .venv
 .venv/bin/python -m pip install ".[dev]"
 ```
 
-PySide6 is the only runtime dependency. The development extra adds pytest,
-Ruff, and mypy. The rationale, layer boundaries, and replacement strategy for
-each dependency are recorded in `docs/DEPENDENCIES.md`.
+PySide6 is the only runtime dependency. pytest, Ruff, and mypy are development
+dependencies. Rationale and usage boundaries are recorded in
+`docs/DEPENDENCIES.md`.
 
-## Diagnostic commands
+## Implemented commands
 
 ```bash
 .venv/bin/lyricflow --version
 .venv/bin/lyricflow doctor
-.venv/bin/lyricflow players list
-.venv/bin/lyricflow players inspect plasma-browser-integration
-.venv/bin/lyricflow players watch
 ```
 
-`doctor` performs local checks only. It verifies Linux, the session D-Bus
-environment variable, the `PySide6.QtDBus` import, writable XDG application
-directories, and optional `playerctl` availability. It does not connect to or
-discover media players. Missing required prerequisites produce exit code 1;
-missing `playerctl` produces a warning and still exits successfully.
+`doctor` checks local prerequisites only: Linux, the session D-Bus environment,
+the `PySide6.QtDBus` import, writable XDG application directories, and optional
+`playerctl`. It does not connect to D-Bus or discover media players. Missing
+required prerequisites return exit code 1; missing optional `playerctl` is a
+warning.
 
-`players list` prints every registered `org.mpris.MediaPlayer2.*` service; it
-does not score or hide duplicates. `players inspect` accepts either a short
-suffix such as `plasma-browser-integration` or a full D-Bus service name.
-`players watch` reacts to service registration/removal, MPRIS
-`PropertiesChanged`, and `Seeked` signals and exits cleanly on Ctrl+C.
-Durations and positions remain integer microseconds in models and output.
+## Quality gate
 
-Automated tests use sanitized fixtures and a fake D-Bus boundary. They never
-depend on the developer's live Strawberry, Firefox, or KDE session. Real-player
-acceptance evidence belongs only in `docs/MANUAL_TEST_LOG.md`.
-
-Run the same quality gates used by CI:
+Run from the repository root:
 
 ```bash
 .venv/bin/python -m pytest
 .venv/bin/python -m ruff check .
 .venv/bin/python -m ruff format --check .
 .venv/bin/python -m mypy src
+.venv/bin/lyricflow --version
+.venv/bin/lyricflow doctor
 ```
 
-The CI job uses Python 3.12 and installs `.[dev]` non-editably before running
-these commands and the installed CLI smoke checks.
+Exact current results belong in `PROJECT_STATE.md` and `AGENT_TODO.md`.

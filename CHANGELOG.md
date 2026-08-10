@@ -1,24 +1,43 @@
 # Changelog
 
-All notable changes will be documented here.
+All notable repository changes are documented here. Current development remains
+unreleased.
 
 ## Unreleased
 
 ### Added
 
-- Stage 1 typed raw MPRIS player, metadata, inspection, and event models.
-- PySide6 QtDBus session-bus discovery, bounded asynchronous property reads,
-  service lifecycle subscriptions, `PropertiesChanged`, and `Seeked` handling.
-- `lyricflow players list`, `players inspect`, and signal-driven `players watch`
-  diagnostics with clean Ctrl+C shutdown.
-- Sanitized Firefox and Plasma Browser Integration evidence fixtures plus fake
-  D-Bus lifecycle, malformed-data, Unicode, race, and CLI tests.
+- `PROJECT_STATE.md` as the concise current-reality and continuation entry point.
+- `BACKLOG.md` for durable future features, technical debt, investigations, and
+  intentionally deferred/rejected ideas outside stage authority.
+- Documentation style, development workflow, and stage-completion standards.
+- ADR 0007 establishing repository state and `AGENT_TODO.md` authority for
+  context-free continuation.
+- Repository-document consistency tests.
+- Git history, beginning with imported-state snapshot `971bfbf` so the
+  pre-hardening tree remains recoverable.
 - Stage 0 installable Python package with a `src/` architecture skeleton.
-- `lyricflow --version` and the local-only `lyricflow doctor` prerequisite
-  report with tested exit-code behavior.
-- pytest, Ruff, and mypy quality configuration plus matching GitHub Actions CI.
-- Dependency decision record, repository hygiene files, and license decision
-  placeholder.
-- Added core multilingual lyric layers: original script, aligned romanization/transliteration, and optional translation.
-- Initial product, architecture, testing, and agent-workflow plans.
-- Added optional, read-only Strawberry lyrics interoperability investigation and architecture constraints.
+- `lyricflow --version` and local-only `lyricflow doctor` prerequisite reporting.
+- pytest, Ruff, mypy, and GitHub Actions quality configuration.
+- Product, architecture, testing, dependency, reference, roadmap, manual-log,
+  and ADR baselines.
+
+### Changed
+
+- Standardized `AGENT_TODO.md` as the only implementation authority; it now
+  explicitly authorizes no stage and records Stage 1 as Proposed only.
+- Defined a zero-context start/end workflow, evidence language, append-only
+  manual verification, Git discipline, dependency review, failure handling,
+  extension boundaries, and exact handoff requirements.
+- Assigned a non-overlapping responsibility to each repository document and
+  updated the README documentation index.
+- Clarified actual Stage 0 architecture separately from planned modules.
+- Preserved multilingual original/romanized/translated requirements and all
+  major future integrations in the product spec, roadmap, and backlog.
+
+### Removed
+
+- Removed the unverified Stage 1 MPRIS draft from the active tree to restore the
+  explicitly required Stage 0-only boundary. Its pre-hardening form remains
+  recoverable in commit `971bfbf` for review after Stage 1 is authorized; it is
+  not accepted implementation or completion evidence.

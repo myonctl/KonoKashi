@@ -1,0 +1,136 @@
+"""Regression tests for the repository continuation contract."""
+
+from __future__ import annotations
+
+import json
+from pathlib import Path
+
+REPOSITORY_ROOT = Path(__file__).parents[1]
+
+REQUIRED_DOCUMENTS = (
+    "README.md",
+    "PROJECT_STATE.md",
+    "AGENTS.md",
+    "AGENT_TODO.md",
+    "BACKLOG.md",
+    "CHANGELOG.md",
+    "docs/PRODUCT_SPEC.md",
+    "docs/ARCHITECTURE.md",
+    "docs/ROADMAP.md",
+    "docs/TESTING.md",
+    "docs/MANUAL_TEST_LOG.md",
+    "docs/DEPENDENCIES.md",
+    "docs/REFERENCES.md",
+    "docs/DOCUMENTATION_STYLE.md",
+    "docs/DEVELOPMENT_WORKFLOW.md",
+    "docs/STAGE_COMPLETION_TEMPLATE.md",
+)
+
+PROJECT_STATE_HEADINGS = (
+    "## What currently works",
+    "## What does not exist yet",
+    "## Current architecture summary",
+    "## Supported/tested environments",
+    "## Automated test status",
+    "## Manual verification status",
+    "## Known issues",
+    "## Current blockers",
+    "## Important accepted decisions",
+    "## Current repository path",
+    "## Continue here",
+)
+
+STAGE_HEADINGS = (
+    "## Objective",
+    "## Why this stage exists",
+    "## Required deliverables",
+    "## Required tests",
+    "## Required manual verification",
+    "## Acceptance criteria",
+    "## Explicitly out of scope",
+    "## Known constraints",
+    "## Dependencies / prerequisites",
+    "## Completion evidence",
+    "## Handoff",
+)
+
+COMPLETION_HEADINGS = (
+    "## Scope completed",
+    "## Files changed",
+    "## Behavior implemented",
+    "## Architecture decisions",
+    "## Dependencies added/removed",
+    "## Database/schema changes",
+    "## Tests added",
+    "## Automated checks run",
+    "## Manual verification",
+    "## Known limitations",
+    "## Bugs / technical debt",
+    "## Documentation updated",
+    "## Out-of-scope work intentionally not done",
+    "## Git state / commit",
+    "## Handoff",
+)
+
+
+def test_required_repository_documents_exist() -> None:
+    missing = [
+        relative_path
+        for relative_path in REQUIRED_DOCUMENTS
+        if not (REPOSITORY_ROOT / relative_path).is_file()
+    ]
+
+    assert missing == []
+
+
+def test_readme_indexes_the_continuation_documents() -> None:
+    content = (REPOSITORY_ROOT / "README.md").read_text(encoding="utf-8")
+
+    assert all(relative_path in content for relative_path in REQUIRED_DOCUMENTS[1:])
+
+
+def test_project_state_contains_the_continuation_contract() -> None:
+    content = (REPOSITORY_ROOT / "PROJECT_STATE.md").read_text(encoding="utf-8")
+
+    assert content.startswith("# LyricFlow Project State\n")
+    assert all(heading in content for heading in PROJECT_STATE_HEADINGS)
+    assert "/home/example/Documents/LyricFlow/" in content
+
+
+def test_agent_todo_explicitly_authorizes_no_implementation() -> None:
+    content = (REPOSITORY_ROOT / "AGENT_TODO.md").read_text(encoding="utf-8")
+
+    assert content.startswith("# Current authorized stage\n")
+    assert "**None. No implementation stage is authorized.**" in content
+    assert (
+        "Status: Proposed — awaiting explicit user authorization. Not started."
+        in content
+    )
+    assert all(heading in content for heading in STAGE_HEADINGS)
+
+
+def test_manifest_is_inventory_not_authority() -> None:
+    manifest = json.loads(
+        (REPOSITORY_ROOT / "PLAN_MANIFEST.json").read_text(encoding="utf-8")
+    )
+
+    assert manifest["implementation_authority"] == "AGENT_TODO.md"
+    assert manifest["authorized_stage"] is None
+    assert all((REPOSITORY_ROOT / path).is_file() for path in manifest["files"])
+
+
+def test_stage_completion_template_keeps_every_required_section() -> None:
+    content = (REPOSITORY_ROOT / "docs/STAGE_COMPLETION_TEMPLATE.md").read_text(
+        encoding="utf-8"
+    )
+
+    assert all(heading in content for heading in COMPLETION_HEADINGS)
+
+
+def test_runtime_source_does_not_embed_the_local_repository_path() -> None:
+    offending: list[str] = []
+    for path in (REPOSITORY_ROOT / "src").rglob("*.py"):
+        if "/home/example/Documents/LyricFlow/" in path.read_text(encoding="utf-8"):
+            offending.append(str(path.relative_to(REPOSITORY_ROOT)))
+
+    assert offending == []
