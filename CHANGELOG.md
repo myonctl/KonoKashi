@@ -40,6 +40,9 @@ unreleased.
 - Rewrote the six pre-policy commits from a generic Codex identity to `myonctl`
   with a verified account-associated GitHub email. Commit order, messages,
   trees, and dates were preserved; ADR 0008 records the old-to-new mapping.
+- Verified GitHub resolves both author and committer of every canonical commit
+  to `myonctl`, then observed the complete Actions workflow pass on the
+  rewritten history.
 - Standardized `AGENT_TODO.md` as the only implementation authority; it now
   explicitly authorizes no stage and records Stage 1 as Proposed only.
 - Defined a zero-context start/end workflow, evidence language, append-only
