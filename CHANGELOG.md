@@ -15,7 +15,8 @@ unreleased.
   context-free continuation.
 - Repository-document consistency tests.
 - Git history, beginning with imported-state snapshot `971bfbf` so the
-  pre-hardening tree remains recoverable.
+  pre-hardening tree remains recoverable, followed by hardened Stage 0 boundary
+  `1cc7e3d`.
 - Stage 0 installable Python package with a `src/` architecture skeleton.
 - `lyricflow --version` and local-only `lyricflow doctor` prerequisite reporting.
 - pytest, Ruff, mypy, and GitHub Actions quality configuration.
