@@ -133,6 +133,25 @@ def test_github_actions_runs_the_required_quality_gate() -> None:
     assert all(command in content for command in required_commands)
 
 
+def test_git_attribution_policy_is_durable() -> None:
+    agents = (REPOSITORY_ROOT / "AGENTS.md").read_text(encoding="utf-8")
+    workflow = (REPOSITORY_ROOT / "docs/DEVELOPMENT_WORKFLOW.md").read_text(
+        encoding="utf-8"
+    )
+    combined = f"{agents}\n{workflow}"
+
+    required_policy = (
+        "git config user.name",
+        "git config user.email",
+        "gh auth status",
+        "myonctl",
+        "Co-authored-by:",
+        "CI-generated commits",
+    )
+
+    assert all(rule in combined for rule in required_policy)
+
+
 def test_readme_indexes_the_continuation_documents() -> None:
     content = (REPOSITORY_ROOT / "README.md").read_text(encoding="utf-8")
 

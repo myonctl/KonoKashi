@@ -14,6 +14,8 @@ unreleased.
   added.
 - Pushed `main` with upstream tracking and verified the required GitHub Actions
   quality workflow successfully on the private remote.
+- Added a permanent Git/GitHub attribution policy and repository-local identity
+  preflight for user-representative commits and canonical pushes.
 - A future public-release checklist covering licensing, history/privacy review,
   dependency licenses, CI, branch protection, release strategy, packaging, and
   explicit visibility authorization.
@@ -24,9 +26,9 @@ unreleased.
 - ADR 0007 establishing repository state and `AGENT_TODO.md` authority for
   context-free continuation.
 - Repository-document consistency tests.
-- Git history, beginning with imported-state snapshot `971bfbf` so the
+- Git history, beginning with imported-state snapshot `d4719b3` so the
   pre-hardening tree remains recoverable, followed by hardened Stage 0 boundary
-  `1cc7e3d`.
+  `06e0d4e`.
 - Stage 0 installable Python package with a `src/` architecture skeleton.
 - `lyricflow --version` and local-only `lyricflow doctor` prerequisite reporting.
 - pytest, Ruff, mypy, and GitHub Actions quality configuration.
@@ -35,6 +37,9 @@ unreleased.
 
 ### Changed
 
+- Rewrote the six pre-policy commits from a generic Codex identity to `myonctl`
+  with a verified account-associated GitHub email. Commit order, messages,
+  trees, and dates were preserved; ADR 0008 records the old-to-new mapping.
 - Standardized `AGENT_TODO.md` as the only implementation authority; it now
   explicitly authorizes no stage and records Stage 1 as Proposed only.
 - Defined a zero-context start/end workflow, evidence language, append-only
@@ -50,6 +55,6 @@ unreleased.
 
 - Removed the unverified Stage 1 MPRIS draft from the active tree to restore the
   explicitly required Stage 0-only boundary. Its pre-hardening form remains
-  recoverable in commit `971bfbf` for review after Stage 1 is authorized; it is
+  recoverable in commit `d4719b3` for review after Stage 1 is authorized; it is
   not accepted implementation or completion evidence. The sanitized Firefox
   and KDE browser observations remain as project-history fixtures.

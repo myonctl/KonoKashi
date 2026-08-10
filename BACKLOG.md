@@ -155,7 +155,7 @@ separate explicit authorization.
 ## Technical debt
 
 - **Imported Stage 1 draft review** — If Stage 1 is authorized, review the
-  recoverable code in commit `971bfbf` as untrusted prior work rather than
+  recoverable code in commit `d4719b3` as untrusted prior work rather than
   restoring it wholesale. Why: it was implemented before the required workflow
   gate and lacks real KDE verification. Status: Deferred pending Stage 1
   authorization. Prerequisites: compare against the then-current proposal.
