@@ -112,6 +112,18 @@ service, `inspect` renders typed raw properties and metadata, and `watch` report
 service lifecycle, property, and seek events. Expected bus errors and player
 disappearance return understandable diagnostics instead of tracebacks.
 
+`players list` returns 0 whenever service enumeration itself succeeds, including
+when individual players or fields are unavailable; their diagnostics remain in
+the output. It returns 1 only when the player set cannot be enumerated.
+`players inspect` returns 0 for any useful partial snapshot and 1 when no useful
+inspection is possible. `players watch` returns 130 after a handled Ctrl+C,
+unsubscribes its signals, and prints no traceback. For an unambiguous interrupt
+check, run it directly rather than through a capture pipeline:
+
+```bash
+.venv/bin/lyricflow players watch
+```
+
 ## Quality gate
 
 Run from the repository root:

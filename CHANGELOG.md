@@ -7,6 +7,11 @@ unreleased.
 
 ### Added
 
+- Regressions for mixed-quality player enumeration, MaximumRate NotSupported,
+  several simultaneous property failures, the live Firefox raw `a{sv}` signal
+  shape, direct SIGINT, broken capture pipes, and controlled watcher cleanup.
+- An opt-in private D-Bus probe that verifies the installed PySide6 raw-map
+  representation and typed-property recovery path.
 - Regression coverage for equivalent/self-returning QtDBus wrappers, cyclic and
   nested values, representative GetAll metadata, and PySide6 signal subscription
   construction, failure reporting, and teardown.
@@ -48,6 +53,16 @@ unreleased.
 
 ### Changed
 
+- Made Stage 1 player inspection independently best-effort: normal GetAll reads
+  remain the fast path, broken compound reads fall back to typed properties,
+  unavailable fields stay visible with diagnostics, and one bad player no
+  longer makes `players list` fail.
+- Recovered undecodable standard PropertiesChanged maps through a bounded typed
+  interface refresh and made Ctrl+C return 130 even when a capture pipe closes
+  during shutdown.
+- Recorded Stage 1 live retest #2 append-only as a partial pass while retaining
+  its successful direct inspections, watch startup, live property/status/seek
+  events, and Strawberry Seeked evidence.
 - Corrected Stage 1 after failed live KDE verification: MPRIS properties now use
   PySide6's typed bounded interface-property path, no-progress wrappers become
   controlled diagnostics, and PropertiesChanged/Seeked subscriptions use the
