@@ -16,16 +16,6 @@ def test_version_output(capsys: pytest.CaptureFixture[str]) -> None:
     assert capsys.readouterr().out == "lyricflow 0.1.0\n"
 
 
-def test_stage_one_player_commands_are_not_available(
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    with pytest.raises(SystemExit) as exit_info:
-        cli.main(["players", "list"])
-
-    assert exit_info.value.code == 2
-    assert "invalid choice: 'players'" in capsys.readouterr().err
-
-
 def test_doctor_success_output_and_exit_code(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],

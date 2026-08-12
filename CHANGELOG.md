@@ -7,6 +7,14 @@ unreleased.
 
 ### Added
 
+- Stage 1 raw MPRIS discovery, inspection, lifecycle, property-change, and seek
+  diagnostics behind replaceable application and Qt-free bus boundaries.
+- `lyricflow players list`, `lyricflow players inspect <service>`, and
+  `lyricflow players watch` commands with expected failure states and clean
+  Ctrl+C handling.
+- Deterministic MPRIS tests covering service counts, races, malformed and
+  missing values, Unicode, raw browser evidence, signals, Qt wrapper removal,
+  and diagnostic CLI behavior.
 - Private-GitHub preparation: practical contribution and security guidance,
   structured bug/feature issue forms, and a pull request checklist.
 - Created the private `myonctl/LyricFlow` GitHub repository with `origin` using
@@ -37,6 +45,8 @@ unreleased.
 
 ### Changed
 
+- Advanced Stage 1 to **Stage implementation complete; stage verification
+  pending** while retaining every Stage 2 behavior as unauthorized.
 - Rewrote the six pre-policy commits from a generic Codex identity to `myonctl`
   with a verified account-associated GitHub email. Commit order, messages,
   trees, and dates were preserved; ADR 0008 records the old-to-new mapping.

@@ -10,9 +10,9 @@ under it, and an optional translation forms a third layer.
 
 ## Current status
 
-Stage 0 — repository foundation and workflow hardening — is Implemented. The
-package, local `doctor` diagnostic, quality tooling, CI definition, architecture
-skeleton, and repository continuation process exist.
+Stage 1 — MPRIS diagnostic core — has complete implementation and automated
+coverage. Real KDE, Strawberry, Firefox, and Plasma Browser Integration
+verification is pending, so Stage 1 is not yet accepted as complete.
 
 The [`myonctl/LyricFlow`](https://github.com/myonctl/LyricFlow) GitHub repository
 is private during pre-alpha development. Its `origin` remote and default branch
@@ -21,11 +21,12 @@ later, but LyricFlow is **not currently open source**: no open-source license
 has been selected, and `LICENSE` reserves all rights until that decision is
 made. Public release prerequisites are tracked in `BACKLOG.md`.
 
-No MPRIS player discovery or other product feature is implemented in the active
-tree. No implementation stage is currently authorized. Stage 1 — MPRIS
-diagnostic core — is Proposed and awaiting explicit user authorization. See
-`PROJECT_STATE.md` for current evidence and `AGENT_TODO.md` for the only
-implementation authority.
+The active tree can enumerate, inspect, and watch every raw MPRIS service through
+a replaceable QtDBus boundary. It deliberately does not select a player,
+suppress browser duplicates, resolve track identity, or fetch lyrics. No new
+implementation stage is authorized; Stage 2 is Proposed and awaits explicit
+user authorization. See `PROJECT_STATE.md` for evidence and `AGENT_TODO.md` for
+the only implementation authority.
 
 ## Core product rules
 
@@ -69,6 +70,8 @@ Supporting authorities:
 - `docs/DEVELOPMENT_WORKFLOW.md` — exact start, implementation, Git, bug, and
   handoff workflow.
 - `docs/STAGE_COMPLETION_TEMPLATE.md` — required stage completion report.
+- `docs/STAGE_1_COMPLETION.md` — Stage 1 implementation and pending manual-gate
+  evidence.
 - `docs/adr/` — accepted and historical architecture/process decisions.
 
 `PLAN_MANIFEST.json` is a machine-readable document inventory, not an authority.
@@ -93,6 +96,9 @@ dependencies. Rationale and usage boundaries are recorded in
 ```bash
 .venv/bin/lyricflow --version
 .venv/bin/lyricflow doctor
+.venv/bin/lyricflow players list
+.venv/bin/lyricflow players inspect <service>
+.venv/bin/lyricflow players watch
 ```
 
 `doctor` checks local prerequisites only: Linux, the session D-Bus environment,
@@ -100,6 +106,11 @@ the `PySide6.QtDBus` import, writable XDG application directories, and optional
 `playerctl`. It does not connect to D-Bus or discover media players. Missing
 required prerequisites return exit code 1; missing optional `playerctl` is a
 warning.
+
+The `players` commands use the session D-Bus. `list` preserves every discovered
+service, `inspect` renders typed raw properties and metadata, and `watch` reports
+service lifecycle, property, and seek events. Expected bus errors and player
+disappearance return understandable diagnostics instead of tracebacks.
 
 ## Quality gate
 

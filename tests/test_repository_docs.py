@@ -26,6 +26,7 @@ REQUIRED_DOCUMENTS = (
     "docs/DOCUMENTATION_STYLE.md",
     "docs/DEVELOPMENT_WORKFLOW.md",
     "docs/STAGE_COMPLETION_TEMPLATE.md",
+    "docs/STAGE_1_COMPLETION.md",
 )
 
 REQUIRED_EVIDENCE_FIXTURES = (
@@ -166,7 +167,7 @@ def test_project_state_contains_the_continuation_contract() -> None:
     assert "/home/example/Documents/LyricFlow/" in content
 
 
-def test_agent_todo_explicitly_authorizes_no_implementation() -> None:
+def test_agent_todo_keeps_stage_two_unauthorized() -> None:
     content = (REPOSITORY_ROOT / "AGENT_TODO.md").read_text(encoding="utf-8")
 
     assert content.startswith("# Current authorized stage\n")
@@ -175,6 +176,8 @@ def test_agent_todo_explicitly_authorizes_no_implementation() -> None:
         "Status: Proposed — awaiting explicit user authorization. Not started."
         in content
     )
+    assert "Proposed next stage — Stage 2" in content
+    assert "Stage 2 remains unauthorized" in content
     assert all(heading in content for heading in STAGE_HEADINGS)
 
 
