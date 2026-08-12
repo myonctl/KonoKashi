@@ -7,6 +7,24 @@ unreleased.
 
 ### Added
 
+- Stage 3 XDG-local SQLite persistence with explicit per-operation connection
+  ownership, foreign keys, transactions, controlled errors, and two append-only
+  checksummed migrations.
+- Typed repositories for structured source identities, durable user-approved
+  track corrections, preferred/ignored players, provider-neutral lyric
+  documents/representations/lines/alignment, lyric match decisions, and provider
+  cache kept separate from approval.
+- `lyricflow storage status`, `storage migrate`, and `storage settings` local
+  diagnostics plus deliberate `players select --approve-*` and
+  `--reset-override` correction controls.
+- Stage 3 regression coverage for empty/current/failed/newer/corrupt/locked
+  databases, rollback, foreign keys, Unicode paths and values, repository
+  round-trips, repeated lyric lines, exact integer timing/provenance, and fresh-
+  process correction/settings precedence.
+- ADR 0009 establishing the XDG location, append-only migration policy,
+  per-operation/thread connection ownership, integer-millisecond lyric timing,
+  and non-destructive recovery boundary.
+
 - Stage 2 typed local-file, YouTube-video, and deliberately session-only generic
   MPRIS source identities, including decoded/canonical local paths and common
   YouTube URL extraction without playlist or tracking parameters.
@@ -76,12 +94,20 @@ unreleased.
 
 ### Changed
 
+- Activated Stage 3 after explicit authorization. Durable local implementation
+  and the complete automated gate pass; manual verification and publication
+  remain pending, and Stage 4 remains unauthorized.
+- Replaced the production `players select` process-local override adapter with
+  SQLite-backed corrections and persisted player settings while retaining the
+  in-memory adapter for fast application tests. Raw MPRIS snapshots remain
+  unchanged and generic session-only sources cannot receive durable approval.
+
 - Closed Stage 2 after the user-prepared real KDE session passed the tagged
   Strawberry local identity/version-marker check, exact JessKah YouTube
   duplicate/uploader/candidate check, and simultaneous independent-player
   selection/tie-break check. Published closure `a3d9e04` to canonical `main`
-  and verified passing GitHub Actions run `31627907279`. Stage 3 is Proposed and
-  remains unauthorized.
+  and verified passing GitHub Actions run `31627907279`. At that closure point,
+  Stage 3 was still Proposed and unauthorized.
 - Corrected Stage 2 after a real-session read-only smoke check: blank browser
   artist elements no longer improve selection quality, and terminal Firefox
   `- YouTube` decoration is removed before conservative artist/title parsing.

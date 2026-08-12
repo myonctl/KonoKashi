@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from pathlib import Path
 
 import pytest
 
@@ -443,11 +444,16 @@ def test_players_command_reports_runtime_import_failure(
 
 
 def test_players_select_explains_resolution_and_suppressed_duplicate(
+    tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     runtime = runtime_with_browsers()
 
-    exit_code = cli.main(["players", "select"], runtime_factory=lambda: runtime)
+    exit_code = cli.main(
+        ["players", "select"],
+        runtime_factory=lambda: runtime,
+        database_path=tmp_path / "selection.sqlite3",
+    )
     output = capsys.readouterr().out
 
     assert exit_code == 0
@@ -468,6 +474,7 @@ def test_players_select_explains_resolution_and_suppressed_duplicate(
 
 
 def test_players_select_supports_preferred_and_ignored_configuration(
+    tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     runtime = runtime_with_browsers()
@@ -482,10 +489,100 @@ def test_players_select_supports_preferred_and_ignored_configuration(
             "firefox.instance_1_95",
         ],
         runtime_factory=lambda: runtime,
+        database_path=tmp_path / "selection.sqlite3",
     )
     output = capsys.readouterr().out
 
     assert exit_code == 0
+    assert "selected player: firefox.instance_1_95" in output
+    assert "ignored by player configuration" in output
+    assert "+ configured preferred player" in output
+
+
+def test_players_select_approved_correction_survives_fresh_cli_objects(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    path = tmp_path / "durable selection.sqlite3"
+
+    assert (
+        cli.main(
+            [
+                "players",
+                "select",
+                "--approve-title",
+                "Will to Be (User Radio Edit)",
+                "--approve-artist",
+                "S3RL feat. sara 日本語",
+            ],
+            runtime_factory=runtime_with_browsers,
+            database_path=path,
+        )
+        == 0
+    )
+    saved = capsys.readouterr().out
+    assert "Saved user-approved correction." in saved
+    assert "confidence: Approved" in saved
+
+    assert (
+        cli.main(
+            ["players", "select"],
+            runtime_factory=runtime_with_browsers,
+            database_path=path,
+        )
+        == 0
+    )
+    restarted = capsys.readouterr().out
+    assert "raw title: S3RL feat. sara" in restarted
+    assert "resolved artist: S3RL feat. sara 日本語" in restarted
+    assert "resolved title: Will to Be (User Radio Edit)" in restarted
+    assert "confidence: Approved" in restarted
+    assert "user-approved correction" in restarted
+
+    assert (
+        cli.main(
+            ["players", "select", "--reset-override"],
+            runtime_factory=runtime_with_browsers,
+            database_path=path,
+        )
+        == 0
+    )
+    reset = capsys.readouterr().out
+    assert "Removed user-approved correction." in reset
+    assert "confidence: High" in reset
+
+
+def test_players_select_uses_durable_player_settings_by_default(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    path = tmp_path / "player settings.sqlite3"
+    assert (
+        cli.main(
+            [
+                "storage",
+                "settings",
+                "set",
+                "--ignore",
+                "plasma-browser-integration",
+                "--prefer",
+                "firefox.instance_1_95",
+            ],
+            database_path=path,
+        )
+        == 0
+    )
+    capsys.readouterr()
+
+    assert (
+        cli.main(
+            ["players", "select"],
+            runtime_factory=runtime_with_browsers,
+            database_path=path,
+        )
+        == 0
+    )
+    output = capsys.readouterr().out
     assert "selected player: firefox.instance_1_95" in output
     assert "ignored by player configuration" in output
     assert "+ configured preferred player" in output

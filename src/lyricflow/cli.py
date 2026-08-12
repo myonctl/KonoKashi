@@ -7,6 +7,7 @@ import os
 import signal
 import sys
 from collections.abc import Callable, Sequence
+from pathlib import Path
 from types import FrameType
 from typing import TypeAlias
 
@@ -92,39 +93,56 @@ def _parser() -> argparse.ArgumentParser:
     select_parser.add_argument(
         "--prefer",
         action="append",
-        default=[],
+        default=None,
         metavar="PLAYER",
         help="prefer a matching service, identity, or desktop entry (repeatable)",
     )
     select_parser.add_argument(
         "--ignore",
         action="append",
-        default=[],
+        default=None,
         metavar="PLAYER",
         help="ignore a matching service, identity, or desktop entry (repeatable)",
     )
+    select_parser.add_argument(
+        "--approve-title",
+        help="durably approve this title for the selected stable source",
+    )
+    select_parser.add_argument(
+        "--approve-artist",
+        action="append",
+        default=None,
+        help="durably approve an artist for the selected source (repeatable)",
+    )
+    select_parser.add_argument(
+        "--approve-album",
+        help="optionally approve an album with the title/artist correction",
+    )
+    select_parser.add_argument(
+        "--reset-override",
+        action="store_true",
+        help="explicitly remove the selected source's approved correction",
+    )
+
+    storage = subparsers.add_parser(
+        "storage", help="inspect and initialize durable local storage"
+    )
+    storage_commands = storage.add_subparsers(dest="storage_command", required=True)
+    storage_commands.add_parser("status", help="inspect storage without modifying it")
+    storage_commands.add_parser(
+        "migrate", help="initialize or migrate storage without destructive reset"
+    )
+    settings = storage_commands.add_parser(
+        "settings", help="inspect or update durable player settings"
+    )
+    settings_commands = settings.add_subparsers(dest="settings_command", required=True)
+    settings_commands.add_parser("show", help="show durable preferred/ignored players")
+    settings_set = settings_commands.add_parser(
+        "set", help="atomically replace durable preferred/ignored players"
+    )
+    settings_set.add_argument("--prefer", action="append", default=[])
+    settings_set.add_argument("--ignore", action="append", default=[])
     return parser
-
-
-def _create_selection_service() -> object:
-    """Build Stage 2 policy with replaceable local-only adapters."""
-
-    from lyricflow.application.resolve_track import TrackResolver
-    from lyricflow.application.select_player import PlayerSelectionService
-    from lyricflow.application.source_identity import SourceIdentityResolver
-    from lyricflow.infrastructure.metadata.local_paths import (
-        FilesystemLocalPathCanonicalizer,
-    )
-    from lyricflow.infrastructure.storage.track_overrides import (
-        InMemoryTrackOverrideRepository,
-    )
-
-    return PlayerSelectionService(
-        TrackResolver(
-            SourceIdentityResolver(FilesystemLocalPathCanonicalizer()),
-            InMemoryTrackOverrideRepository(),
-        )
-    )
 
 
 def _run_watch(runtime: MprisRuntimePort) -> int:
@@ -178,7 +196,11 @@ def _run_watch(runtime: MprisRuntimePort) -> int:
     return exit_code
 
 
-def _run_players(arguments: argparse.Namespace, runtime_factory: RuntimeFactory) -> int:
+def _run_players(
+    arguments: argparse.Namespace,
+    runtime_factory: RuntimeFactory,
+    database_path: Path | None,
+) -> int:
     try:
         runtime = runtime_factory()
     except (ImportError, RuntimeError) as error:
@@ -196,21 +218,131 @@ def _run_players(arguments: argparse.Namespace, runtime_factory: RuntimeFactory)
     if arguments.players_command == "watch":
         return _run_watch(runtime)
     if arguments.players_command == "select":
+        from lyricflow.application.resolve_track import TrackResolver
         from lyricflow.application.select_player import PlayerSelectionService
-
-        service = _create_selection_service()
-        if not isinstance(service, PlayerSelectionService):
-            raise TypeError("selection-service factory returned an invalid value")
-        players = runtime.client.list_players()
-        selection = service.select(
-            players,
-            PlayerSelectionConfig(
-                preferred_players=tuple(arguments.prefer),
-                ignored_players=tuple(arguments.ignore),
-            ),
+        from lyricflow.application.source_identity import SourceIdentityResolver
+        from lyricflow.domain.tracks import ApprovedTrackIdentity
+        from lyricflow.infrastructure.metadata.local_paths import (
+            FilesystemLocalPathCanonicalizer,
         )
+        from lyricflow.infrastructure.storage.bootstrap import open_storage
+        from lyricflow.infrastructure.storage.errors import StorageError
+
+        try:
+            storage = open_storage(database_path)
+            persisted = storage.settings.get_player_selection()
+            config = PlayerSelectionConfig(
+                preferred_players=(
+                    persisted.preferred_players
+                    if arguments.prefer is None
+                    else tuple(arguments.prefer)
+                ),
+                ignored_players=(
+                    persisted.ignored_players
+                    if arguments.ignore is None
+                    else tuple(arguments.ignore)
+                ),
+            )
+            service = PlayerSelectionService(
+                TrackResolver(
+                    SourceIdentityResolver(FilesystemLocalPathCanonicalizer()),
+                    storage.track_overrides,
+                )
+            )
+            players = runtime.client.list_players()
+            selection = service.select(players, config)
+            approving = any(
+                value is not None
+                for value in (
+                    arguments.approve_title,
+                    arguments.approve_artist,
+                    arguments.approve_album,
+                )
+            )
+            if arguments.reset_override and approving:
+                print(
+                    "Cannot approve and reset a correction in the same command.",
+                    file=sys.stderr,
+                )
+                return 2
+            if approving and (
+                arguments.approve_title is None or not arguments.approve_artist
+            ):
+                print(
+                    "Approval requires --approve-title and at least one "
+                    "--approve-artist.",
+                    file=sys.stderr,
+                )
+                return 2
+            if approving or arguments.reset_override:
+                if selection.selected is None:
+                    print("No selected source is available to update.", file=sys.stderr)
+                    return 1
+                source_identity = selection.selected.track.source_identity
+                if approving:
+                    storage.track_overrides.put(
+                        source_identity,
+                        ApprovedTrackIdentity(
+                            arguments.approve_title,
+                            tuple(arguments.approve_artist),
+                            arguments.approve_album,
+                        ),
+                    )
+                    print("Saved user-approved correction.")
+                else:
+                    removed = storage.track_overrides.delete(source_identity)
+                    print(
+                        "Removed user-approved correction."
+                        if removed
+                        else "No user-approved correction existed."
+                    )
+                selection = service.select(players, config)
+        except StorageError as error:
+            print(f"Unable to use LyricFlow storage: {error}", file=sys.stderr)
+            return 1
         print(render_player_selection(selection))
         return int(players.error is not None)
+    return 2
+
+
+def _run_storage(arguments: argparse.Namespace, database_path: Path | None) -> int:
+    from lyricflow.application.storage_diagnostics import render_storage_status
+    from lyricflow.infrastructure.storage.bootstrap import open_storage
+    from lyricflow.infrastructure.storage.diagnostics import inspect_storage
+    from lyricflow.infrastructure.storage.errors import StorageError
+    from lyricflow.infrastructure.storage.paths import default_database_path
+
+    path = database_path or default_database_path()
+    if arguments.storage_command == "status":
+        status = inspect_storage(path)
+        print(render_storage_status(status))
+        return status.exit_code
+    try:
+        storage = open_storage(path)
+        if arguments.storage_command == "migrate":
+            print(
+                f"LyricFlow storage is current at schema version "
+                f"{storage.database.migration_history()[-1][0]}."
+            )
+            print(f"database path: {path}")
+            return 0
+        if arguments.storage_command == "settings":
+            if arguments.settings_command == "set":
+                storage.settings.put_player_selection(
+                    PlayerSelectionConfig(
+                        tuple(arguments.prefer), tuple(arguments.ignore)
+                    )
+                )
+                print("Saved durable player settings.")
+            config = storage.settings.get_player_selection()
+            preferred = ", ".join(config.preferred_players) or "none"
+            ignored = ", ".join(config.ignored_players) or "none"
+            print(f"preferred players: {preferred}")
+            print(f"ignored players: {ignored}")
+            return 0
+    except StorageError as error:
+        print(f"Unable to use LyricFlow storage: {error}", file=sys.stderr)
+        return 1
     return 2
 
 
@@ -218,6 +350,7 @@ def main(
     argv: Sequence[str] | None = None,
     *,
     runtime_factory: RuntimeFactory = _create_runtime,
+    database_path: Path | None = None,
 ) -> int:
     """Run the CLI and return a process exit code."""
 
@@ -227,5 +360,7 @@ def main(
         print(report.render())
         return report.exit_code
     if arguments.command == "players":
-        return _run_players(arguments, runtime_factory)
+        return _run_players(arguments, runtime_factory, database_path)
+    if arguments.command == "storage":
+        return _run_storage(arguments, database_path)
     return 2

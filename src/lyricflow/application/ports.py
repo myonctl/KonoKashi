@@ -7,6 +7,11 @@ from enum import Enum
 from typing import Protocol
 
 from lyricflow.domain.identity import LocalFileIdentity, SourceIdentity
+from lyricflow.domain.lyrics import (
+    LyricDocument,
+    LyricsMatch,
+    ProviderCacheEntry,
+)
 from lyricflow.domain.models import (
     PlayerEvent,
     PlayerInspection,
@@ -14,7 +19,11 @@ from lyricflow.domain.models import (
     PlayerWatchStart,
     RawTrackMetadata,
 )
-from lyricflow.domain.tracks import ApprovedTrackIdentity, TrackCandidate
+from lyricflow.domain.tracks import (
+    ApprovedTrackIdentity,
+    PlayerSelectionConfig,
+    TrackCandidate,
+)
 
 
 class DiagnosticStatus(Enum):
@@ -120,3 +129,65 @@ class TrackOverrideRepositoryPort(Protocol):
         approved_identity: ApprovedTrackIdentity,
     ) -> None:
         """Remember an approved correction."""
+
+    def delete(self, source_identity: SourceIdentity) -> bool:
+        """Explicitly remove a correction; return whether one existed."""
+
+
+class SourceIdentityRepositoryPort(Protocol):
+    """Persist and reconstruct structured source identities."""
+
+    def put(self, source_identity: SourceIdentity) -> SourceIdentity:
+        """Store an identity idempotently and return its canonical value."""
+
+    def get(self, source_identity: SourceIdentity) -> SourceIdentity | None:
+        """Return the same persisted identity, if present."""
+
+
+class SettingsRepositoryPort(Protocol):
+    """Read and atomically replace the accepted durable player settings."""
+
+    def get_player_selection(self) -> PlayerSelectionConfig:
+        """Return persisted values or the documented default when absent."""
+
+    def put_player_selection(self, config: PlayerSelectionConfig) -> None:
+        """Atomically replace preferred and ignored player settings."""
+
+
+class LyricsRepositoryPort(Protocol):
+    """Store provider-neutral lyric documents without resolving providers."""
+
+    def get(self, document_id: str) -> LyricDocument | None:
+        """Return one complete document, if present."""
+
+    def put(self, document: LyricDocument) -> None:
+        """Atomically insert or deliberately replace one document."""
+
+    def delete(self, document_id: str) -> bool:
+        """Explicitly remove one document and its owned representation data."""
+
+
+class LyricsMatchRepositoryPort(Protocol):
+    """Persist recording-to-document decisions independently of cache data."""
+
+    def get(self, source_identity: SourceIdentity) -> LyricsMatch | None:
+        """Return the current decision for a durable source identity."""
+
+    def put(self, source_identity: SourceIdentity, match: LyricsMatch) -> None:
+        """Atomically save or replace one match decision."""
+
+    def delete(self, source_identity: SourceIdentity) -> bool:
+        """Explicitly reset one match decision."""
+
+
+class ProviderCacheRepositoryPort(Protocol):
+    """Persist provider responses without granting them approval semantics."""
+
+    def get(self, provider: str, cache_key: str) -> ProviderCacheEntry | None:
+        """Return one cached provider response, if present."""
+
+    def put(self, entry: ProviderCacheEntry) -> None:
+        """Atomically insert or replace one cache entry."""
+
+    def delete(self, provider: str, cache_key: str) -> bool:
+        """Remove only the selected optional cache entry."""

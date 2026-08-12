@@ -12,11 +12,13 @@ under it, and an optional translation forms a third layer.
 
 Stage 1 — MPRIS diagnostic core — and Stage 2 — player selection and track
 identity — are **Completed**. Stage 2 passed both the complete automated gate
-and real Strawberry/JessKah/multiple-player verification. The policy selects one primary player,
+and real Strawberry/JessKah/multiple-player verification. Stage 3 — persistence
+foundation — is **Active** after explicit authorization; its manual gate remains
+pending. The policy selects one primary player,
 suppresses explainable duplicates, derives typed local/YouTube/generic source
-identities, and resolves conservative artist/title candidates without fetching
-lyrics. Stage 3 is Proposed and awaits explicit authorization; it and all later
-stages remain unauthorized.
+identities, resolves conservative artist/title candidates without fetching
+lyrics, and can persist approved corrections and accepted player settings in
+local SQLite storage. Stage 4 and all later stages remain unauthorized.
 
 The [`myonctl/LyricFlow`](https://github.com/myonctl/LyricFlow) GitHub repository
 is private during pre-alpha development. Its `origin` remote and default branch
@@ -27,9 +29,11 @@ made. Public release prerequisites are tracked in `BACKLOG.md`.
 
 The active tree can enumerate, inspect, and watch every raw MPRIS service through
 a replaceable QtDBus boundary. A separate Stage 2 policy derives interpretations
-without changing those raw observations. It does not fetch lyrics, persist to
-SQLite, synchronize playback, or build a GUI. See `PROJECT_STATE.md` for
-evidence and `AGENT_TODO.md` for the only implementation authority.
+without changing those raw observations. Stage 3 adds XDG-local SQLite
+migrations and typed repositories for identities, corrections, settings, and
+the provider-neutral lyric foundation. It does not fetch or parse lyrics,
+synchronize playback, or build a GUI. See `PROJECT_STATE.md` for evidence and
+`AGENT_TODO.md` for the only implementation authority.
 
 ## Core product rules
 
@@ -105,6 +109,9 @@ dependencies. Rationale and usage boundaries are recorded in
 .venv/bin/lyricflow players inspect <service>
 .venv/bin/lyricflow players watch
 .venv/bin/lyricflow players select
+.venv/bin/lyricflow storage status
+.venv/bin/lyricflow storage migrate
+.venv/bin/lyricflow storage settings show
 ```
 
 `doctor` checks local prerequisites only: Linux, the session D-Bus environment,
@@ -123,6 +130,20 @@ player, independent alternatives, suppressed duplicates, typed source identity,
 raw title/uploader, resolved artist/title, duration, confidence, transformations,
 and warnings. Repeatable `--prefer PLAYER` and `--ignore PLAYER` options apply
 explicit configuration to the deterministic selection policy.
+
+`storage status` is read-only and reports the XDG database path, schema and
+integrity state, and safe repository counts without dumping media paths or lyric
+content. `storage migrate` explicitly initializes or upgrades the database
+without destructive reset. `storage settings set --prefer ... --ignore ...`
+atomically replaces durable player configuration; `players select` uses it when
+command-line values are absent. A selected stable source can be deliberately
+corrected with `--approve-title` plus one or more `--approve-artist` values and
+reset with `--reset-override`. Session-only generic sources reject approval.
+
+The default database is
+`$XDG_DATA_HOME/lyricflow/lyricflow.sqlite3`, falling back to
+`$HOME/.local/share/lyricflow/lyricflow.sqlite3`. Tests inject isolated temporary
+paths and never depend on the current working directory.
 
 `players list` returns 0 whenever service enumeration itself succeeds, including
 when individual players or fields are unavailable; their diagnostics remain in

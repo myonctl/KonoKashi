@@ -35,7 +35,11 @@ class TrackResolver:
             candidate = TrackCandidate(
                 title=approved.title,
                 artists=approved.artists,
-                album=snapshot.metadata.album,
+                album=(
+                    approved.album
+                    if approved.album is not None
+                    else snapshot.metadata.album
+                ),
                 duration_us=snapshot.metadata.duration_us,
                 evidence=("user-approved correction for stable source identity",),
             )

@@ -24,6 +24,7 @@ class ApprovedTrackIdentity:
 
     title: str
     artists: tuple[str, ...]
+    album: str | None = None
 
 
 @dataclass(frozen=True, slots=True)

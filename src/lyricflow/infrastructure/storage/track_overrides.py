@@ -25,3 +25,8 @@ class InMemoryTrackOverrideRepository:
         """Store one approved correction for this process lifetime."""
 
         self._entries[source_identity] = approved_identity
+
+    def delete(self, source_identity: SourceIdentity) -> bool:
+        """Explicitly remove one correction."""
+
+        return self._entries.pop(source_identity, None) is not None

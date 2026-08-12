@@ -168,13 +168,12 @@ def test_project_state_contains_the_continuation_contract() -> None:
     assert "/home/example/Documents/LyricFlow/" in content
 
 
-def test_agent_todo_proposes_stage_three_without_authorizing_it() -> None:
+def test_agent_todo_authorizes_only_stage_three() -> None:
     content = (REPOSITORY_ROOT / "AGENT_TODO.md").read_text(encoding="utf-8")
 
     assert content.startswith("# Current authorized stage\n")
-    assert "**None. No implementation stage is authorized.**" in content
-    assert "Proposed next stage — Stage 3" in content
-    assert "awaiting explicit user authorization" in content
+    assert "Stage 3 — Persistence foundation is Active" in content
+    assert "Stage 4 and all later stages remain unauthorized" in content
     assert "Stage 2 — Player selection and track identity has passed" in content
     assert all(heading in content for heading in STAGE_HEADINGS)
 
@@ -185,8 +184,8 @@ def test_manifest_is_inventory_not_authority() -> None:
     )
 
     assert manifest["implementation_authority"] == "AGENT_TODO.md"
-    assert manifest["authorized_stage"] is None
-    assert manifest["proposed_stage"] == "Stage 3 — Persistence foundation"
+    assert manifest["authorized_stage"] == "Stage 3 — Persistence foundation"
+    assert manifest["proposed_stage"] is None
     assert all((REPOSITORY_ROOT / path).is_file() for path in manifest["files"])
 
 
