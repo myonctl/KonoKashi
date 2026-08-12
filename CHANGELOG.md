@@ -95,8 +95,9 @@ unreleased.
 ### Changed
 
 - Activated Stage 3 after explicit authorization. Durable local implementation
-  and the complete automated gate pass; manual verification and publication
-  remain pending, and Stage 4 remains unauthorized.
+  and the complete automated gate pass. Published implementation through
+  `d374542` and verified passing GitHub Actions run `31631263888`; manual
+  verification remains pending, and Stage 4 remains unauthorized.
 - Replaced the production `players select` process-local override adapter with
   SQLite-backed corrections and persisted player settings while retaining the
   in-memory adapter for fast application tests. Raw MPRIS snapshots and the
