@@ -76,6 +76,10 @@ unreleased.
 
 ### Changed
 
+- Closed Stage 2 after the user-prepared real KDE session passed the tagged
+  Strawberry local identity/version-marker check, exact JessKah YouTube
+  duplicate/uploader/candidate check, and simultaneous independent-player
+  selection/tie-break check. Stage 3 is Proposed and remains unauthorized.
 - Corrected Stage 2 after a real-session read-only smoke check: blank browser
   artist elements no longer improve selection quality, and terminal Firefox
   `- YouTube` decoration is removed before conservative artist/title parsing.
