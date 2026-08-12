@@ -76,6 +76,12 @@ unreleased.
 
 ### Changed
 
+- Corrected Stage 2 after a real-session read-only smoke check: blank browser
+  artist elements no longer improve selection quality, and terminal Firefox
+  `- YouTube` decoration is removed before conservative artist/title parsing.
+  The richer Plasma duplicate now wins without inventing a musical artist for
+  documentary content; the failed attempt and passing retest remain append-only
+  evidence.
 - Activated Stage 2 after explicit authorization. Its implementation and full
   automated gate are complete; the required real Strawberry/YouTube/multiple-
   player verification remains pending, so Stage 2 is not Completed and Stage 3
