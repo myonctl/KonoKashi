@@ -7,6 +7,9 @@ unreleased.
 
 ### Added
 
+- Regression coverage for equivalent/self-returning QtDBus wrappers, cyclic and
+  nested values, representative GetAll metadata, and PySide6 signal subscription
+  construction, failure reporting, and teardown.
 - Stage 1 raw MPRIS discovery, inspection, lifecycle, property-change, and seek
   diagnostics behind replaceable application and Qt-free bus boundaries.
 - `lyricflow players list`, `lyricflow players inspect <service>`, and
@@ -45,8 +48,13 @@ unreleased.
 
 ### Changed
 
-- Advanced Stage 1 to **Stage implementation complete; stage verification
-  pending** while retaining every Stage 2 behavior as unauthorized.
+- Corrected Stage 1 after failed live KDE verification: MPRIS properties now use
+  PySide6's typed bounded interface-property path, no-progress wrappers become
+  controlled diagnostics, and PropertiesChanged/Seeked subscriptions use the
+  installed binding's supported `SLOT()` string form with checked results and
+  matching teardown.
+- Marked Stage 1 as requiring a successful live retest while retaining every
+  Stage 2 behavior as unauthorized.
 - Rewrote the six pre-policy commits from a generic Codex identity to `myonctl`
   with a verified account-associated GitHub email. Commit order, messages,
   trees, and dates were preserved; ADR 0008 records the old-to-new mapping.
