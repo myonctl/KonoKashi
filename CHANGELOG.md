@@ -7,6 +7,8 @@ unreleased.
 
 ### Added
 
+- Regression coverage for authoritative D-Bus owner acquisition, loss, direct
+  replacement, lifecycle subscription rejection, and teardown failure.
 - Regression coverage proving the production proxy declares Metadata as
   `QVariantMap`, real-shaped local Metadata survives conversion, and one
   property's D-Bus error cannot mark later successful properties unavailable.
@@ -56,6 +58,14 @@ unreleased.
 
 ### Changed
 
+- Replaced the connection-interface lifecycle convenience signals with a direct
+  typed D-Bus `NameOwnerChanged` subscription after live retest #4a missed a
+  complete Strawberry service loss.
+- Recorded retest #4a append-only as a partial pass and retest #4b as a pass at
+  `ba77489`, including typed list output, both metadata changes, explicit
+  Strawberry disappearance/appearance and relaunch playback, and direct exit
+  130. Stage 1 remains unmarked pending explicit acceptance; Stage 2 remains
+  unauthorized.
 - Replaced raw `GetAll`/untyped fallback property retrieval with statically
   typed MPRIS proxies, making list Metadata usable on PySide6 6.11.1 and
   isolating sticky `lastError()` state per property result.
