@@ -394,6 +394,27 @@ def test_players_watch_cleanup_failure_is_controlled(
     assert "Unable to stop MPRIS watcher cleanly" in capsys.readouterr().err
 
 
+def test_players_watch_interrupt_does_not_hide_cleanup_failure(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    inspection = browser_inspections()[0]
+    monitor = FakeMonitor(close_error=RuntimeError("disconnect rejected"))
+    runtime = FakeRuntime(
+        FakeClient(PlayerListResult((inspection,)), inspection),
+        monitor,
+        signal_interrupt=True,
+    )
+
+    exit_code = cli.main(["players", "watch"], runtime_factory=lambda: runtime)
+
+    assert exit_code == 1
+    assert runtime.quit_called
+    assert monitor.closed
+    captured = capsys.readouterr()
+    assert "Watch stopped." not in captured.out
+    assert "Unable to stop MPRIS watcher cleanly" in captured.err
+
+
 def test_players_watch_start_failure_closes_monitor(
     capsys: pytest.CaptureFixture[str],
 ) -> None:

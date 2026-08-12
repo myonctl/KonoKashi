@@ -125,15 +125,15 @@ def _run_watch(runtime: MprisRuntimePort) -> int:
         except RuntimeError as error:
             cleanup_error = error
         signal.signal(signal.SIGINT, previous_handler)
+    if cleanup_error is not None:
+        print(f"Unable to stop MPRIS watcher cleanly: {cleanup_error}", file=sys.stderr)
+        return 1
     if interrupted:
         try:
             print("Watch stopped.", flush=True)
         except BrokenPipeError:
             _silence_broken_stdout()
         return 130
-    if cleanup_error is not None:
-        print(f"Unable to stop MPRIS watcher cleanly: {cleanup_error}", file=sys.stderr)
-        return 1
     return exit_code
 
 
