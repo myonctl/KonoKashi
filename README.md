@@ -116,9 +116,11 @@ disappearance return understandable diagnostics instead of tracebacks.
 when individual players or fields are unavailable; their diagnostics remain in
 the output. It returns 1 only when the player set cannot be enumerated.
 `players inspect` returns 0 for any useful partial snapshot and 1 when no useful
-inspection is possible. `players watch` returns 130 after a handled Ctrl+C,
-unsubscribes its signals, and prints no traceback. For an unambiguous interrupt
-check, run it directly rather than through a capture pipeline:
+inspection is possible. `players watch` returns 130 after a handled Ctrl+C and
+successful signal cleanup, and prints no traceback. A cleanup failure is
+reported and returns 1 rather than being hidden as a successful interrupt. For
+an unambiguous interrupt check, run it directly rather than through a capture
+pipeline:
 
 ```bash
 .venv/bin/lyricflow players watch
