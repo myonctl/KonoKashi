@@ -95,14 +95,14 @@ def _parser() -> argparse.ArgumentParser:
         action="append",
         default=None,
         metavar="PLAYER",
-        help="prefer a matching service, identity, or desktop entry (repeatable)",
+        help="prefer a player selector; bare names match service families (repeatable)",
     )
     select_parser.add_argument(
         "--ignore",
         action="append",
         default=None,
         metavar="PLAYER",
-        help="ignore a matching service, identity, or desktop entry (repeatable)",
+        help="ignore a player selector; bare names match service families (repeatable)",
     )
     select_parser.add_argument(
         "--approve-title",
@@ -140,8 +140,18 @@ def _parser() -> argparse.ArgumentParser:
     settings_set = settings_commands.add_parser(
         "set", help="atomically replace durable preferred/ignored players"
     )
-    settings_set.add_argument("--prefer", action="append", default=[])
-    settings_set.add_argument("--ignore", action="append", default=[])
+    settings_set.add_argument(
+        "--prefer",
+        action="append",
+        default=[],
+        help="prefer a player selector; bare names match service families (repeatable)",
+    )
+    settings_set.add_argument(
+        "--ignore",
+        action="append",
+        default=[],
+        help="ignore a player selector; bare names match service families (repeatable)",
+    )
     return parser
 
 

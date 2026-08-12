@@ -123,7 +123,7 @@ def browser_inspections() -> tuple[PlayerInspection, PlayerInspection]:
     plasma_bus = full_service_name("plasma-browser-integration")
     plasma = map_player_snapshot(
         plasma_bus,
-        {"Identity": "plasma-browser-integration"},
+        {"Identity": "Firefox", "DesktopEntry": "firefox"},
         {
             "PlaybackStatus": "Playing",
             "Position": 252940632,
@@ -567,9 +567,11 @@ def test_players_select_uses_durable_player_settings_by_default(
                 "settings",
                 "set",
                 "--ignore",
-                "plasma-browser-integration",
+                "firefox",
+                "--ignore",
+                "LF_STAGE3_TEMP_IGNORED_PLAYER",
                 "--prefer",
-                "firefox.instance_1_95",
+                "plasma-browser-integration",
             ],
             database_path=path,
         )
@@ -586,6 +588,7 @@ def test_players_select_uses_durable_player_settings_by_default(
         == 0
     )
     output = capsys.readouterr().out
-    assert "selected player: firefox.instance_1_95" in output
+    assert "selected player: plasma-browser-integration" in output
+    assert "firefox.instance_1_95: ignored by player configuration" in output
     assert "ignored by player configuration" in output
     assert "+ configured preferred player" in output

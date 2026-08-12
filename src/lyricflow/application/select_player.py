@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import replace
 
+from lyricflow.application.player_selectors import player_selector_matches
 from lyricflow.application.resolve_track import TrackResolver
 from lyricflow.domain.identity import (
     GenericMprisIdentity,
@@ -22,20 +23,9 @@ from lyricflow.domain.tracks import (
 _PLAYBACK_RANK = {"Playing": 3, "Paused": 2, "Stopped": 1}
 
 
-def _configured_match(snapshot: PlayerSnapshot, configured_name: str) -> bool:
-    expected = configured_name.casefold()
-    values = (
-        snapshot.service_name,
-        snapshot.bus_name,
-        snapshot.identity,
-        snapshot.desktop_entry,
-    )
-    return any(value is not None and value.casefold() == expected for value in values)
-
-
 def _preference(snapshot: PlayerSnapshot, configured: tuple[str, ...]) -> int:
     for index, configured_name in enumerate(configured):
-        if _configured_match(snapshot, configured_name):
+        if player_selector_matches(snapshot, configured_name):
             return len(configured) - index
     return 0
 
@@ -160,7 +150,7 @@ class PlayerSelectionService:
                 )
                 continue
             if any(
-                _configured_match(snapshot, ignored)
+                player_selector_matches(snapshot, ignored)
                 for ignored in config.ignored_players
             ):
                 unavailable.append(

@@ -129,7 +129,14 @@ disappearance return understandable diagnostics instead of tracebacks.
 player, independent alternatives, suppressed duplicates, typed source identity,
 raw title/uploader, resolved artist/title, duration, confidence, transformations,
 and warnings. Repeatable `--prefer PLAYER` and `--ignore PLAYER` options apply
-explicit configuration to the deterministic selection policy.
+explicit configuration to the deterministic selection policy. A bare selector
+matches only the case-insensitive MPRIS service family: `firefox` matches
+`firefox` and `firefox.instance_*`, but never another service merely because
+its Identity, DesktopEntry, title, or artist mentions Firefox. Use
+`service:NAME` for one exact service, `family:NAME` for an explicit service
+family, `identity:NAME` for exact Identity, or `desktop-entry:NAME` for exact
+DesktopEntry matching. Ignored selectors take precedence when the same player
+is also preferred.
 
 `storage status` is read-only and reports the XDG database path, schema and
 integrity state, and safe repository counts without dumping media paths or lyric

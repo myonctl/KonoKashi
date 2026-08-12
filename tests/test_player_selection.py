@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import json
 
+import pytest
+
 from lyricflow.domain.models import PlayerListResult
 from lyricflow.domain.tracks import PlayerSelectionConfig
 from tests.stage2_helpers import (
@@ -228,6 +230,140 @@ def test_ignored_player_is_excluded_with_diagnostic() -> None:
     assert result.unavailable_diagnostics == (
         "ignored: ignored by player configuration",
     )
+
+
+def test_bare_firefox_ignore_matches_native_family_not_plasma_metadata() -> None:
+    firefox = snapshot("firefox.instance_1_58")
+    plasma = fixture_snapshot("stage2/youtube_jesskah.json")
+
+    result = selection_service().select(
+        player_list(firefox, plasma),
+        PlayerSelectionConfig(ignored_players=("firefox",)),
+    )
+
+    assert selected_name(result) == "plasma-browser-integration"
+    assert result.unavailable_diagnostics == (
+        "firefox.instance_1_58: ignored by player configuration",
+    )
+
+
+def test_preferred_plasma_is_selected_while_native_firefox_family_is_ignored() -> None:
+    firefox = snapshot("firefox.instance_1_58")
+    plasma = fixture_snapshot("stage2/youtube_jesskah.json")
+
+    result = selection_service().select(
+        player_list(firefox, plasma),
+        PlayerSelectionConfig(
+            preferred_players=("plasma-browser-integration",),
+            ignored_players=("firefox",),
+        ),
+    )
+
+    assert selected_name(result) == "plasma-browser-integration"
+    assert result.selected is not None
+    assert "+ configured preferred player" in result.selected.reasons
+
+
+@pytest.mark.parametrize(
+    "selector",
+    (
+        "plasma-browser-integration",
+        "service:org.mpris.MediaPlayer2.plasma-browser-integration",
+    ),
+)
+def test_exact_plasma_ignore_really_excludes_plasma(selector: str) -> None:
+    plasma = fixture_snapshot("stage2/youtube_jesskah.json")
+
+    result = selection_service().select(
+        player_list(plasma),
+        PlayerSelectionConfig(ignored_players=(selector,)),
+    )
+
+    assert result.selected is None
+    assert result.unavailable_diagnostics == (
+        "plasma-browser-integration: ignored by player configuration",
+    )
+
+
+@pytest.mark.parametrize("selector", ("firefox", "family:firefox"))
+@pytest.mark.parametrize("service", ("firefox.instance_1_58", "firefox.instance_9_204"))
+def test_native_firefox_family_ignore_survives_instance_suffix_changes(
+    service: str,
+    selector: str,
+) -> None:
+    result = selection_service().select(
+        player_list(snapshot(service)),
+        PlayerSelectionConfig(ignored_players=(selector,)),
+    )
+
+    assert result.selected is None
+    assert result.unavailable_diagnostics == (
+        f"{service}: ignored by player configuration",
+    )
+
+
+def test_exact_service_selector_does_not_include_instance_family() -> None:
+    result = selection_service().select(
+        player_list(snapshot("firefox.instance_1_58")),
+        PlayerSelectionConfig(ignored_players=("service:firefox",)),
+    )
+
+    assert selected_name(result) == "firefox.instance_1_58"
+
+
+def test_bare_selector_does_not_search_descriptive_or_track_metadata() -> None:
+    unrelated = snapshot(
+        "unrelated-player",
+        identity="firefox",
+        desktop_entry="firefox",
+        title="A Firefox documentary",
+        artists=("Firefox Ensemble",),
+    )
+
+    result = selection_service().select(
+        player_list(unrelated),
+        PlayerSelectionConfig(ignored_players=("firefox",)),
+    )
+
+    assert selected_name(result) == "unrelated-player"
+
+
+def test_explicitly_ignored_player_wins_over_preference() -> None:
+    result = selection_service().select(
+        player_list(snapshot("plasma-browser-integration")),
+        PlayerSelectionConfig(
+            preferred_players=("plasma-browser-integration",),
+            ignored_players=("plasma-browser-integration",),
+        ),
+    )
+
+    assert result.selected is None
+    assert result.unavailable_diagnostics == (
+        "plasma-browser-integration: ignored by player configuration",
+    )
+
+
+def test_unknown_ignored_selector_is_harmless() -> None:
+    result = selection_service().select(
+        player_list(snapshot("strawberry")),
+        PlayerSelectionConfig(ignored_players=("unknown-player",)),
+    )
+
+    assert selected_name(result) == "strawberry"
+
+
+@pytest.mark.parametrize("selector", ("identity:firefox", "desktop-entry:firefox"))
+def test_descriptive_fields_require_explicit_exact_selector(selector: str) -> None:
+    unrelated = snapshot(
+        "unrelated-player", identity="firefox", desktop_entry="firefox"
+    )
+
+    result = selection_service().select(
+        player_list(unrelated),
+        PlayerSelectionConfig(ignored_players=(selector,)),
+    )
+
+    assert result.selected is None
 
 
 def test_equal_rank_uses_service_name_as_deterministic_tie_break() -> None:

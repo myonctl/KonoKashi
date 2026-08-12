@@ -94,6 +94,13 @@ unreleased.
 
 ### Changed
 
+- Made preferred/ignored player selector semantics explicit and deterministic:
+  bare selectors match only MPRIS service families, typed selectors opt into
+  exact service/Identity/DesktopEntry matching, no media/descriptive-field
+  substring matching occurs, and ignored configuration visibly takes
+  precedence over preference. This fixes persisted `--ignore firefox`
+  incorrectly suppressing KDE Plasma Browser Integration when it reports
+  Firefox-related descriptive properties.
 - Activated Stage 3 after explicit authorization. Durable local implementation
   and the complete automated gate pass. Published implementation through
   `d374542` and verified passing GitHub Actions run `31631263888`; manual

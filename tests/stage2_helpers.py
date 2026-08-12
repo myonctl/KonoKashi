@@ -54,6 +54,8 @@ def selection_service() -> PlayerSelectionService:
 def snapshot(
     service: str,
     *,
+    identity: str | None = None,
+    desktop_entry: str | None = None,
     status: str = "Playing",
     title: str | None = "Track",
     artists: tuple[str, ...] | None = ("Artist",),
@@ -75,7 +77,12 @@ def snapshot(
         player["Position"] = position_us
     return map_player_snapshot(
         full_service_name(service),
-        {"Identity": service, "DesktopEntry": service.split(".", 1)[0]},
+        {
+            "Identity": service if identity is None else identity,
+            "DesktopEntry": (
+                service.split(".", 1)[0] if desktop_entry is None else desktop_entry
+            ),
+        },
         player,
     )
 
