@@ -7,6 +7,24 @@ unreleased.
 
 ### Added
 
+- Stage 2 typed local-file, YouTube-video, and deliberately session-only generic
+  MPRIS source identities, including decoded/canonical local paths and common
+  YouTube URL extraction without playlist or tracking parameters.
+- Explainable player selection with playback state, configured preference,
+  metadata quality, ignored players, deterministic ties, independent-player
+  retention, and duplicate suppression diagnostics.
+- Conservative track candidates and confidence classes that preserve raw
+  metadata, uploader evidence, version markers, transformations, warnings, and
+  user-approved in-memory corrections.
+- `lyricflow players select` with raw/resolved metadata, identity, confidence,
+  alternatives, suppressed duplicates, and repeatable `--prefer`/`--ignore`
+  diagnostics.
+- Sanitized Stage 2 Strawberry and JessKah fixtures plus regression coverage for
+  selection, identity, normalization, confidence, overrides, and explainability.
+- The deferred fast manual synchronization product requirement, including
+  line-start stamping, undo/re-stamp, seeks, fine adjustment, original-line
+  multilingual alignment, and permanent precedence for approved timing.
+
 - Regression coverage for authoritative D-Bus owner acquisition, loss, direct
   replacement, lifecycle subscription rejection, and teardown failure.
 - Regression coverage proving the production proxy declares Metadata as
@@ -57,6 +75,11 @@ unreleased.
   and ADR baselines.
 
 ### Changed
+
+- Activated Stage 2 after explicit authorization. Its implementation and full
+  automated gate are complete; the required real Strawberry/YouTube/multiple-
+  player verification remains pending, so Stage 2 is not Completed and Stage 3
+  remains unauthorized.
 
 - Closed Stage 1 as Completed after explicit acceptance of the live
   `ba77489` result and passing-evidence commit `9abdd59`. The accepted

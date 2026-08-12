@@ -18,6 +18,8 @@ from lyricflow.application.player_diagnostics import (
     render_player_list,
 )
 from lyricflow.application.ports import MprisRuntimePort
+from lyricflow.application.selection_diagnostics import render_player_selection
+from lyricflow.domain.tracks import PlayerSelectionConfig
 from lyricflow.infrastructure.diagnostics import collect_local_diagnostics
 
 RuntimeFactory: TypeAlias = Callable[[], MprisRuntimePort]
@@ -83,7 +85,46 @@ def _parser() -> argparse.ArgumentParser:
         "watch",
         help="watch MPRIS lifecycle, property, and seek events",
     )
+    select_parser = player_commands.add_parser(
+        "select",
+        help="select and explain the current player and stable track identity",
+    )
+    select_parser.add_argument(
+        "--prefer",
+        action="append",
+        default=[],
+        metavar="PLAYER",
+        help="prefer a matching service, identity, or desktop entry (repeatable)",
+    )
+    select_parser.add_argument(
+        "--ignore",
+        action="append",
+        default=[],
+        metavar="PLAYER",
+        help="ignore a matching service, identity, or desktop entry (repeatable)",
+    )
     return parser
+
+
+def _create_selection_service() -> object:
+    """Build Stage 2 policy with replaceable local-only adapters."""
+
+    from lyricflow.application.resolve_track import TrackResolver
+    from lyricflow.application.select_player import PlayerSelectionService
+    from lyricflow.application.source_identity import SourceIdentityResolver
+    from lyricflow.infrastructure.metadata.local_paths import (
+        FilesystemLocalPathCanonicalizer,
+    )
+    from lyricflow.infrastructure.storage.track_overrides import (
+        InMemoryTrackOverrideRepository,
+    )
+
+    return PlayerSelectionService(
+        TrackResolver(
+            SourceIdentityResolver(FilesystemLocalPathCanonicalizer()),
+            InMemoryTrackOverrideRepository(),
+        )
+    )
 
 
 def _run_watch(runtime: MprisRuntimePort) -> int:
@@ -154,6 +195,22 @@ def _run_players(arguments: argparse.Namespace, runtime_factory: RuntimeFactory)
         return int(not inspection.succeeded)
     if arguments.players_command == "watch":
         return _run_watch(runtime)
+    if arguments.players_command == "select":
+        from lyricflow.application.select_player import PlayerSelectionService
+
+        service = _create_selection_service()
+        if not isinstance(service, PlayerSelectionService):
+            raise TypeError("selection-service factory returned an invalid value")
+        players = runtime.client.list_players()
+        selection = service.select(
+            players,
+            PlayerSelectionConfig(
+                preferred_players=tuple(arguments.prefer),
+                ignored_players=tuple(arguments.ignore),
+            ),
+        )
+        print(render_player_selection(selection))
+        return int(players.error is not None)
     return 2
 
 

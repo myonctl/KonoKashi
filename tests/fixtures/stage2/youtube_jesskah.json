@@ -1,0 +1,21 @@
+{
+  "fixture_kind": "sanitized Stage 2 equivalent",
+  "service": "plasma-browser-integration",
+  "root": {
+    "Identity": "Firefox",
+    "DesktopEntry": "firefox"
+  },
+  "player": {
+    "PlaybackStatus": "Playing",
+    "Position": 18000000,
+    "Metadata": {
+      "mpris:trackid": "/org/mpris/MediaPlayer2/Track/jesskah_stage2",
+      "xesam:title": "S3RL Feat. JessKah - Every Single Day (Lyrics)",
+      "xesam:artist": [
+        "HappyCore Raver"
+      ],
+      "xesam:url": "https://www.youtube.com/watch?v=xa4WrgqI7q0&list=PLWBbjvDc4HAc&index=4&utm_source=fixture",
+      "mpris:length": 221000000
+    }
+  }
+}

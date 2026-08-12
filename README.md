@@ -10,11 +10,12 @@ under it, and an optional translation forms a third layer.
 
 ## Current status
 
-Stage 1 — MPRIS diagnostic core — is **Completed**. The accepted live
-verification at `ba77489` covered Strawberry, Firefox native MPRIS, Plasma
-Browser Integration, three-player enumeration, live changes, player lifecycle,
-and clean interrupt handling. Stage 2 remains Proposed and awaits explicit user
-authorization.
+Stage 1 — MPRIS diagnostic core — is **Completed**. Stage 2 — player selection
+and track identity — is **implemented and tested automatically; manual
+verification is pending**. The policy now selects one primary player,
+suppresses explainable duplicates, derives typed local/YouTube/generic source
+identities, and resolves conservative artist/title candidates without fetching
+lyrics. Stage 3 and later remain unauthorized.
 
 The [`myonctl/LyricFlow`](https://github.com/myonctl/LyricFlow) GitHub repository
 is private during pre-alpha development. Its `origin` remote and default branch
@@ -24,11 +25,10 @@ has been selected, and `LICENSE` reserves all rights until that decision is
 made. Public release prerequisites are tracked in `BACKLOG.md`.
 
 The active tree can enumerate, inspect, and watch every raw MPRIS service through
-a replaceable QtDBus boundary. It deliberately does not select a player,
-suppress browser duplicates, resolve track identity, or fetch lyrics. No new
-implementation stage is authorized; Stage 2 is Proposed and awaits explicit
-user authorization. See `PROJECT_STATE.md` for evidence and `AGENT_TODO.md` for
-the only implementation authority.
+a replaceable QtDBus boundary. A separate Stage 2 policy derives interpretations
+without changing those raw observations. It does not fetch lyrics, persist to
+SQLite, synchronize playback, or build a GUI. See `PROJECT_STATE.md` for
+evidence and `AGENT_TODO.md` for the only implementation authority.
 
 ## Core product rules
 
@@ -74,6 +74,8 @@ Supporting authorities:
 - `docs/STAGE_COMPLETION_TEMPLATE.md` — required stage completion report.
 - `docs/STAGE_1_COMPLETION.md` — completed Stage 1 implementation, automated,
   and manual evidence.
+- `docs/STAGE_2_COMPLETION.md` — Stage 2 implementation evidence and exact
+  pending live verification protocol.
 - `docs/adr/` — accepted and historical architecture/process decisions.
 
 `PLAN_MANIFEST.json` is a machine-readable document inventory, not an authority.
@@ -101,6 +103,7 @@ dependencies. Rationale and usage boundaries are recorded in
 .venv/bin/lyricflow players list
 .venv/bin/lyricflow players inspect <service>
 .venv/bin/lyricflow players watch
+.venv/bin/lyricflow players select
 ```
 
 `doctor` checks local prerequisites only: Linux, the session D-Bus environment,
@@ -113,6 +116,12 @@ The `players` commands use the session D-Bus. `list` preserves every discovered
 service, `inspect` renders typed raw properties and metadata, and `watch` reports
 service lifecycle, property, and seek events. Expected bus errors and player
 disappearance return understandable diagnostics instead of tracebacks.
+
+`players select` preserves those raw observations, then reports the selected
+player, independent alternatives, suppressed duplicates, typed source identity,
+raw title/uploader, resolved artist/title, duration, confidence, transformations,
+and warnings. Repeatable `--prefer PLAYER` and `--ignore PLAYER` options apply
+explicit configuration to the deterministic selection policy.
 
 `players list` returns 0 whenever service enumeration itself succeeds, including
 when individual players or fields are unavailable; their diagnostics remain in

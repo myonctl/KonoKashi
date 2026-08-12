@@ -16,10 +16,22 @@ authorize implementation. Staged v1 ordering lives in `docs/ROADMAP.md`.
 
 ## UX improvements
 
-- **Correction and timing tools** — Provide manual lyric text, alignment, and
-  timing repair tools. Why: provider and generated results can be wrong.
-  Status: Deferred until after the v1 correction workflow. Prerequisites:
-  lyric persistence and synchronization. Related: Roadmap Stage 11+.
+- **Fast manual lyric synchronization** — When reliable synchronized lyrics
+  cannot be found or generated, let the user paste or obtain correct plain
+  lyrics, play the exact recording, and stamp each line start with one key or
+  button press before advancing immediately. Preserve repeated choruses as
+  distinct line instances; support undo/re-stamp, small seeks, and later fine
+  adjustment. Approved manual timing outranks generated timing and is cached
+  permanently for that stable recording identity. Automatic alignment or
+  YouTube transcript timing may provide rough hints only and must work as an
+  optional aid, never as the lyric authority. Non-Latin timing attaches to the
+  original line, with aligned romanized/transliterated and translated layers
+  inheriting it unless they have more precise timing. Future waveform editing
+  may extend the workflow. Why: manual timing must remain available even when
+  every AI/provider timing path fails. Status: Deferred; explicitly outside
+  Stage 2. Prerequisites: lyric documents and alignment, stable recording
+  identity, persistence, playback synchronization, and correction UI. Related:
+  Product specification manual synchronization fallback; Roadmap Stage 11+.
 - **KDE overlay or widget** — Investigate a compact overlay, Plasma widget, or
   companion surface. Why: lyrics should remain visible outside the main
   window. Status: Investigation. Prerequisites: stable desktop application
@@ -93,8 +105,9 @@ authorize implementation. Staged v1 ordering lives in `docs/ROADMAP.md`.
 ## Sync improvements
 
 - **Manual global and per-line timing repair** — Let users correct offsets and
-  broken line timing. Status: Planned for global offset in v1; advanced tooling
-  Deferred. Prerequisites: playback clock and correction persistence.
+  broken line timing after synchronization. Status: Planned for global offset
+  in v1; per-line repair is part of the deferred fast manual synchronization
+  workflow above. Prerequisites: playback clock and correction persistence.
 - **Automatic timing/alignment drafts** — Investigate vocal separation and
   audio/text alignment that proposes, but does not silently approve, timings.
   Why: expand synced coverage. Status: Deferred. Prerequisites: stable manual

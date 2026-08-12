@@ -440,3 +440,52 @@ def test_players_command_reports_runtime_import_failure(
 
     assert cli.main(["players", "list"], runtime_factory=unavailable_runtime) == 1
     assert "Unable to initialize MPRIS" in capsys.readouterr().err
+
+
+def test_players_select_explains_resolution_and_suppressed_duplicate(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    runtime = runtime_with_browsers()
+
+    exit_code = cli.main(["players", "select"], runtime_factory=lambda: runtime)
+    output = capsys.readouterr().out
+
+    assert exit_code == 0
+    assert "selected player: plasma-browser-integration" in output
+    assert "raw title: S3RL feat. sara" in output
+    assert "raw artist/uploader: Megacorp" in output
+    assert "source kind: youtube" in output
+    assert "source identity: kFqGyp60d8s" in output
+    assert "resolved artist: S3RL feat. sara" in output
+    assert "resolved title: Will to be" in output
+    assert "duration: 311581000 us" in output
+    assert "confidence: High" in output
+    assert "selection reasons:" in output
+    assert "transformations:" in output
+    assert "suppressed duplicates:" in output
+    assert "firefox.instance_1_95" in output
+    assert "lower selection rank/metadata quality" in output
+
+
+def test_players_select_supports_preferred_and_ignored_configuration(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    runtime = runtime_with_browsers()
+
+    exit_code = cli.main(
+        [
+            "players",
+            "select",
+            "--ignore",
+            "plasma-browser-integration",
+            "--prefer",
+            "firefox.instance_1_95",
+        ],
+        runtime_factory=lambda: runtime,
+    )
+    output = capsys.readouterr().out
+
+    assert exit_code == 0
+    assert "selected player: firefox.instance_1_95" in output
+    assert "ignored by player configuration" in output
+    assert "+ configured preferred player" in output

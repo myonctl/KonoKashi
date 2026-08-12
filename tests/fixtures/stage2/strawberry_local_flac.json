@@ -1,0 +1,22 @@
+{
+  "fixture_kind": "sanitized Stage 2 equivalent",
+  "service": "strawberry",
+  "root": {
+    "Identity": "Strawberry",
+    "DesktopEntry": "strawberry"
+  },
+  "player": {
+    "PlaybackStatus": "Playing",
+    "Position": 42600000,
+    "Metadata": {
+      "mpris:trackid": "/org/mpris/MediaPlayer2/Track/strawberry_stage2",
+      "xesam:title": "Elevate (Radio Edit)",
+      "xesam:artist": [
+        "Little Sis Nora & S3RL"
+      ],
+      "xesam:album": "Elevate",
+      "xesam:url": "file:///music/Happy%20Hardcore/Little%20Sis%20Nora%20%26%20S3RL/Elevate%20%28Radio%20Edit%29.flac",
+      "mpris:length": 183771000
+    }
+  }
+}
