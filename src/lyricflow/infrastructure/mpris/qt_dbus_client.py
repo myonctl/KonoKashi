@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping, Sequence
-from typing import TypeAlias
+from typing import NoReturn, TypeAlias, cast
 
 from PySide6.QtCore import QCoreApplication, QEventLoop, QTimer
 from PySide6.QtDBus import (
     QDBusConnection,
+    QDBusError,
+    QDBusInterface,
     QDBusMessage,
     QDBusPendingCallWatcher,
 )
@@ -40,6 +42,18 @@ _CloseCallback: TypeAlias = Callable[[], None]
 def _error_message(name: str, message: str) -> str:
     detail = message.strip() or "no diagnostic message"
     return f"{name or 'D-Bus error'}: {detail}"
+
+
+def _raise_call_error(error: QDBusError) -> NoReturn:
+    text = _error_message(error.name(), error.message())
+    unavailable_names = {
+        "org.freedesktop.DBus.Error.NameHasNoOwner",
+        "org.freedesktop.DBus.Error.ServiceUnknown",
+        "org.freedesktop.DBus.Error.UnknownObject",
+    }
+    if error.name() in unavailable_names:
+        raise MprisServiceUnavailable(text)
+    raise MprisBackendError(text)
 
 
 class _CallableSubscription:
@@ -98,17 +112,23 @@ class QtDbusBackend:
                 f"D-Bus call {method} did not finish within {self._timeout_ms} ms"
             )
         if watcher.isError():
-            error = watcher.error()
-            text = _error_message(error.name(), error.message())
-            unavailable_names = {
-                "org.freedesktop.DBus.Error.NameHasNoOwner",
-                "org.freedesktop.DBus.Error.ServiceUnknown",
-                "org.freedesktop.DBus.Error.UnknownObject",
-            }
-            if error.name() in unavailable_names:
-                raise MprisServiceUnavailable(text)
-            raise MprisBackendError(text)
+            _raise_call_error(watcher.error())
         return tuple(plain_dbus_value(value) for value in watcher.reply().arguments())
+
+    def _remote_interface(self, service: str, interface: str) -> QDBusInterface:
+        """Create a bounded typed-property interface for one MPRIS object."""
+
+        self._ensure_connected()
+        remote = QDBusInterface(
+            service,
+            MPRIS_OBJECT_PATH,
+            interface,
+            self._connection,
+        )
+        remote.setTimeout(self._timeout_ms)
+        if not remote.isValid():
+            _raise_call_error(remote.lastError())
+        return remote
 
     def list_service_names(self) -> Sequence[str]:
         """List current session-bus names using the D-Bus daemon."""
@@ -129,30 +149,33 @@ class QtDbusBackend:
     def get_all(self, service: str, interface: str) -> Mapping[str, object]:
         """Read an interface's properties through org.freedesktop.DBus.Properties."""
 
-        arguments = self._call(
-            service,
-            MPRIS_OBJECT_PATH,
-            DBUS_PROPERTIES_INTERFACE,
-            "GetAll",
-            (interface,),
-        )
-        if len(arguments) != 1:
-            raise MprisBackendError("GetAll returned an unexpected argument count")
-        return plain_mapping(arguments[0])
+        remote = self._remote_interface(service, interface)
+        meta_object = remote.metaObject()
+        properties: dict[str, object] = {}
+        for index in range(meta_object.propertyOffset(), meta_object.propertyCount()):
+            property_meta = meta_object.property(index)
+            if not property_meta.isReadable():
+                continue
+            name = cast(str, property_meta.name())
+            value = remote.property(name)
+            error = remote.lastError()
+            if error.isValid():
+                _raise_call_error(error)
+            properties[name] = plain_dbus_value(value)
+        return plain_mapping(properties)
 
     def get_property(self, service: str, interface: str, name: str) -> object:
         """Read one property, notably Position, without rapid polling."""
 
-        arguments = self._call(
-            service,
-            MPRIS_OBJECT_PATH,
-            DBUS_PROPERTIES_INTERFACE,
-            "Get",
-            (interface, name),
-        )
-        if len(arguments) != 1:
-            raise MprisBackendError("Get returned an unexpected argument count")
-        return arguments[0]
+        remote = self._remote_interface(service, interface)
+        property_index = remote.metaObject().indexOfProperty(name)
+        if property_index < 0:
+            raise MprisBackendError(f"property {name} is not available")
+        value = remote.property(name)
+        error = remote.lastError()
+        if error.isValid():
+            _raise_call_error(error)
+        return plain_dbus_value(value)
 
     def subscribe_service_changes(
         self,
@@ -181,22 +204,39 @@ class QtDbusBackend:
 
         self._ensure_connected()
         receiver = PlayerSignalReceiver(service, on_properties_changed, on_seeked)
-        properties_connected = self._connection.connect(
-            service,
-            MPRIS_OBJECT_PATH,
-            DBUS_PROPERTIES_INTERFACE,
-            "PropertiesChanged",
-            receiver,
-            PROPERTIES_SLOT,
-        )
-        seeked_connected = self._connection.connect(
-            service,
-            MPRIS_OBJECT_PATH,
-            "org.mpris.MediaPlayer2.Player",
-            "Seeked",
-            receiver,
-            SEEKED_SLOT,
-        )
+        properties_connected = False
+        seeked_connected = False
+        try:
+            properties_connected = self._connection.connect(
+                service,
+                MPRIS_OBJECT_PATH,
+                DBUS_PROPERTIES_INTERFACE,
+                "PropertiesChanged",
+                receiver,
+                PROPERTIES_SLOT,
+            )
+            seeked_connected = self._connection.connect(
+                service,
+                MPRIS_OBJECT_PATH,
+                "org.mpris.MediaPlayer2.Player",
+                "Seeked",
+                receiver,
+                SEEKED_SLOT,
+            )
+        except (TypeError, ValueError) as binding_error:
+            if properties_connected:
+                self._connection.disconnect(
+                    service,
+                    MPRIS_OBJECT_PATH,
+                    DBUS_PROPERTIES_INTERFACE,
+                    "PropertiesChanged",
+                    receiver,
+                    PROPERTIES_SLOT,
+                )
+            receiver.deleteLater()
+            raise MprisBackendError(
+                "installed PySide6 rejected an MPRIS signal slot signature"
+            ) from binding_error
         if not properties_connected or not seeked_connected:
             if properties_connected:
                 self._connection.disconnect(
@@ -217,10 +257,14 @@ class QtDbusBackend:
                     SEEKED_SLOT,
                 )
             error = self._connection.lastError()
-            raise MprisBackendError(_error_message(error.name(), error.message()))
+            receiver.deleteLater()
+            raise MprisBackendError(
+                "could not connect MPRIS signals: "
+                f"{_error_message(error.name(), error.message())}"
+            )
 
         def close() -> None:
-            self._connection.disconnect(
+            properties_disconnected = self._connection.disconnect(
                 service,
                 MPRIS_OBJECT_PATH,
                 DBUS_PROPERTIES_INTERFACE,
@@ -228,7 +272,7 @@ class QtDbusBackend:
                 receiver,
                 PROPERTIES_SLOT,
             )
-            self._connection.disconnect(
+            seeked_disconnected = self._connection.disconnect(
                 service,
                 MPRIS_OBJECT_PATH,
                 "org.mpris.MediaPlayer2.Player",
@@ -237,6 +281,12 @@ class QtDbusBackend:
                 SEEKED_SLOT,
             )
             receiver.deleteLater()
+            if not properties_disconnected or not seeked_disconnected:
+                error = self._connection.lastError()
+                raise MprisBackendError(
+                    "could not disconnect MPRIS signals: "
+                    f"{_error_message(error.name(), error.message())}"
+                )
 
         return _CallableSubscription(close)
 

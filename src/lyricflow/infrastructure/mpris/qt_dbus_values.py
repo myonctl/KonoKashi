@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
+from typing import cast
 
-from PySide6.QtCore import QByteArray, QObject, Slot
+from PySide6.QtCore import SLOT, QByteArray, QObject, Slot
 from PySide6.QtDBus import (
     QDBusArgument,
     QDBusObjectPath,
@@ -18,28 +19,71 @@ from lyricflow.infrastructure.mpris.backend import (
     SeekedHandler,
 )
 
-PROPERTIES_SLOT = b"1propertiesChanged(QString,QVariantMap,QStringList)"
-SEEKED_SLOT = b"1seeked(qlonglong)"
+PROPERTIES_SLOT = cast(
+    bytes,
+    SLOT("propertiesChanged(QString,QVariantMap,QStringList)"),
+)
+SEEKED_SLOT = cast(bytes, SLOT("seeked(qlonglong)"))
+
+_MAX_CONTAINER_DEPTH = 64
 
 
-def plain_dbus_value(value: object) -> object:
-    """Recursively remove QtDBus wrappers before values leave infrastructure."""
+def _argument_state(value: QDBusArgument) -> tuple[str, str]:
+    """Describe conversion-relevant state without relying on wrapper identity."""
+
+    return value.currentSignature(), value.currentType().name
+
+
+def _plain_dbus_value(
+    value: object,
+    *,
+    active_containers: frozenset[int],
+    depth: int,
+) -> object:
+    if depth > _MAX_CONTAINER_DEPTH:
+        raise MprisBackendError(
+            f"D-Bus value exceeds {_MAX_CONTAINER_DEPTH} nested containers"
+        )
 
     if isinstance(value, QDBusVariant):
-        return plain_dbus_value(value.variant())
+        unpacked = value.variant()
+        if unpacked is value:
+            raise MprisBackendError("QDBusVariant conversion made no progress")
+        return _plain_dbus_value(
+            unpacked,
+            active_containers=active_containers,
+            depth=depth + 1,
+        )
     if isinstance(value, QDBusObjectPath):
         return value.path()
     if isinstance(value, QDBusSignature):
         return value.signature()
     if isinstance(value, QDBusArgument):
+        state = _argument_state(value)
         unpacked = value.asVariant()
-        if unpacked is value:
-            raise MprisBackendError("unsupported self-referential QDBusArgument")
-        return plain_dbus_value(unpacked)
+        if unpacked is value or (
+            isinstance(unpacked, QDBusArgument) and _argument_state(unpacked) == state
+        ):
+            signature = state[0] or "unknown"
+            raise MprisBackendError(
+                f"QDBusArgument conversion made no progress for signature {signature}"
+            )
+        return _plain_dbus_value(
+            unpacked,
+            active_containers=active_containers,
+            depth=depth + 1,
+        )
     if isinstance(value, QByteArray):
         return bytes(value.data())
     if value is None or isinstance(value, (str, bool, int, float, bytes)):
         return value
+
+    container_id = id(value)
+    if container_id in active_containers:
+        raise MprisBackendError(
+            f"cyclic D-Bus container of type {type(value).__name__}"
+        )
+    descendants = active_containers | {container_id}
     if isinstance(value, Mapping):
         plain: dict[str, object] = {}
         for key, item in value.items():
@@ -47,11 +91,28 @@ def plain_dbus_value(value: object) -> object:
                 raise MprisBackendError(
                     f"D-Bus mapping has non-string key of type {type(key).__name__}"
                 )
-            plain[key] = plain_dbus_value(item)
+            plain[key] = _plain_dbus_value(
+                item,
+                active_containers=descendants,
+                depth=depth + 1,
+            )
         return plain
     if isinstance(value, Sequence):
-        return tuple(plain_dbus_value(item) for item in value)
+        return tuple(
+            _plain_dbus_value(
+                item,
+                active_containers=descendants,
+                depth=depth + 1,
+            )
+            for item in value
+        )
     raise MprisBackendError(f"unsupported D-Bus value type {type(value).__name__}")
+
+
+def plain_dbus_value(value: object) -> object:
+    """Recursively remove QtDBus wrappers before values leave infrastructure."""
+
+    return _plain_dbus_value(value, active_containers=frozenset(), depth=0)
 
 
 def plain_mapping(value: object) -> Mapping[str, object]:
