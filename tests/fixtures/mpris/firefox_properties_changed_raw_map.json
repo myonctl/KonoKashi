@@ -1,0 +1,16 @@
+{
+  "provenance": "Stage 1 live retest #2 at revision 02ce5a2",
+  "service": "org.mpris.MediaPlayer2.firefox.instance_1_58",
+  "signal_interface": "org.freedesktop.DBus.Properties",
+  "signal_name": "PropertiesChanged",
+  "argument": "changed_properties",
+  "runtime_type": "QDBusArgument",
+  "signature": "a{sv}",
+  "element_type": "MapType",
+  "as_variant_runtime_type": "QDBusArgument",
+  "as_variant_signature": "a{sv}",
+  "as_variant_element_type": "MapType",
+  "as_variant_makes_progress": false,
+  "members_observed": false,
+  "recovery": "typed interface property refresh"
+}

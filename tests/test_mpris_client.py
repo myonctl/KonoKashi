@@ -101,6 +101,88 @@ def test_missing_position_remains_normal_incomplete_metadata() -> None:
     )
 
 
+def test_maximum_rate_not_supported_preserves_useful_player_snapshot() -> None:
+    backend = FakeMprisBackend()
+    bus_name = add_player(backend, "firefox.instance_1_58", title="Firefox video")
+    backend.property_diagnostics[(bus_name, MPRIS_PLAYER_INTERFACE)] = (
+        "MaximumRate: unavailable (org.freedesktop.DBus.Error.NotSupported: "
+        "MaximumRate is not supported)",
+    )
+
+    inspection = MprisClient(backend).inspect_player("firefox.instance_1_58")
+
+    assert inspection.succeeded
+    assert inspection.snapshot is not None
+    assert inspection.snapshot.metadata.title == "Firefox video"
+    assert inspection.snapshot.playback_status == "Playing"
+    assert inspection.snapshot.maximum_rate is None
+    assert "MaximumRate: unavailable" in inspection.snapshot.diagnostics[0]
+
+
+def test_several_property_failures_do_not_erase_successful_fields() -> None:
+    backend = FakeMprisBackend()
+    bus_name = add_player(backend, "partial", title="Still useful")
+    backend.property_diagnostics[(bus_name, MPRIS_PLAYER_INTERFACE)] = (
+        "MaximumRate: unavailable (not supported)",
+        "Volume: unavailable (malformed reply)",
+        "CanSeek: unavailable (unknown property)",
+    )
+
+    inspection = MprisClient(backend).inspect_player("partial")
+
+    assert inspection.succeeded
+    assert inspection.snapshot is not None
+    assert inspection.snapshot.metadata.title == "Still useful"
+    assert len(inspection.snapshot.diagnostics) == 3
+
+
+def test_failed_root_interface_does_not_erase_useful_player_interface() -> None:
+    backend = FakeMprisBackend()
+    bus_name = add_player(backend, "player-only", title="Readable")
+    backend.get_all_failures[(bus_name, MPRIS_ROOT_INTERFACE)] = MprisBackendError(
+        "root interface is incomplete"
+    )
+
+    inspection = MprisClient(backend).inspect_player("player-only")
+
+    assert inspection.succeeded
+    assert inspection.snapshot is not None
+    assert inspection.snapshot.identity is None
+    assert inspection.snapshot.metadata.title == "Readable"
+    assert "root properties: unavailable" in inspection.snapshot.diagnostics[0]
+
+
+def test_mixed_quality_enumeration_keeps_every_player_result() -> None:
+    backend = FakeMprisBackend()
+    add_player(backend, "healthy", title="Healthy")
+    partial_bus = add_player(backend, "partial", title="Partial")
+    backend.property_diagnostics[(partial_bus, MPRIS_PLAYER_INTERFACE)] = (
+        "MaximumRate: unavailable (not supported)",
+    )
+    broken_bus = add_player(backend, "broken", title="Unreadable")
+    backend.get_all_failures[(broken_bus, MPRIS_ROOT_INTERFACE)] = MprisBackendError(
+        "root failed"
+    )
+    backend.get_all_failures[(broken_bus, MPRIS_PLAYER_INTERFACE)] = MprisBackendError(
+        "player failed"
+    )
+    backend.get_property_failures[(broken_bus, MPRIS_PLAYER_INTERFACE, "Position")] = (
+        MprisBackendError("position failed")
+    )
+
+    result = MprisClient(backend).list_players()
+
+    assert result.error is None
+    assert [item.service_name for item in result.players] == [
+        "broken",
+        "healthy",
+        "partial",
+    ]
+    assert not result.players[0].succeeded
+    assert result.players[1].succeeded
+    assert result.players[2].succeeded
+
+
 def test_service_disappearing_during_player_read_is_expected_failure() -> None:
     backend = FakeMprisBackend()
     bus_name = add_player(backend, "vanishing")

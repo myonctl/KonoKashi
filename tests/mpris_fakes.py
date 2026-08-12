@@ -6,6 +6,7 @@ from collections.abc import Callable, Mapping, Sequence
 
 from lyricflow.infrastructure.mpris.backend import (
     MprisBackendError,
+    MprisPropertyRead,
     PropertiesChangedHandler,
     SeekedHandler,
     ServiceHandler,
@@ -33,6 +34,7 @@ class FakeMprisBackend:
         self.properties: dict[tuple[str, str], Mapping[str, object]] = {}
         self.single_properties: dict[tuple[str, str, str], object] = {}
         self.get_all_failures: dict[tuple[str, str], MprisBackendError] = {}
+        self.property_diagnostics: dict[tuple[str, str], tuple[str, ...]] = {}
         self.get_property_failures: dict[tuple[str, str, str], MprisBackendError] = {}
         self.list_failure: MprisBackendError | None = None
         self.subscribe_player_failures: dict[str, MprisBackendError] = {}
@@ -47,14 +49,18 @@ class FakeMprisBackend:
             raise self.list_failure
         return tuple(self.names)
 
-    def get_all(self, service: str, interface: str) -> Mapping[str, object]:
+    def read_properties(self, service: str, interface: str) -> MprisPropertyRead:
         failure = self.get_all_failures.get((service, interface))
         if failure is not None:
             raise failure
         try:
-            return self.properties[(service, interface)]
+            values = self.properties[(service, interface)]
         except KeyError as error:
             raise MprisBackendError(f"no fixture for {interface}") from error
+        return MprisPropertyRead(
+            values,
+            self.property_diagnostics.get((service, interface), ()),
+        )
 
     def get_property(self, service: str, interface: str, name: str) -> object:
         key = (service, interface, name)
@@ -122,7 +128,7 @@ class FakeMprisBackend:
             interface,
             changed,
             invalidated,
-            decode_error,
+            (decode_error,) if decode_error is not None else (),
         )
 
     def emit_seeked(self, service: str, position: object) -> None:

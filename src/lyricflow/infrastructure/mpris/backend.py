@@ -3,13 +3,22 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping, Sequence
+from dataclasses import dataclass, field
 from typing import Protocol
 
 ServiceHandler = Callable[[str], None]
 PropertiesChangedHandler = Callable[
-    [str, str, Mapping[str, object], tuple[str, ...], str | None], None
+    [str, str, Mapping[str, object], tuple[str, ...], tuple[str, ...]], None
 ]
 SeekedHandler = Callable[[str, object], None]
+
+
+@dataclass(frozen=True, slots=True)
+class MprisPropertyRead:
+    """Best-effort values and field-level diagnostics for one interface."""
+
+    values: Mapping[str, object] = field(default_factory=dict)
+    diagnostics: tuple[str, ...] = field(default_factory=tuple)
 
 
 class MprisBackendError(RuntimeError):
@@ -33,8 +42,8 @@ class MprisBusBackend(Protocol):
     def list_service_names(self) -> Sequence[str]:
         """Return every currently owned session-bus name."""
 
-    def get_all(self, service: str, interface: str) -> Mapping[str, object]:
-        """Read every property for an interface."""
+    def read_properties(self, service: str, interface: str) -> MprisPropertyRead:
+        """Read an interface best-effort, retaining field-level diagnostics."""
 
     def get_property(self, service: str, interface: str, name: str) -> object:
         """Read one property, used for MPRIS Position when needed."""

@@ -16,6 +16,7 @@ from lyricflow.domain.models import (
 from lyricflow.infrastructure.mpris.backend import (
     MprisBackendError,
     MprisBusBackend,
+    MprisPropertyRead,
     MprisServiceUnavailable,
     Subscription,
 )
@@ -69,10 +70,16 @@ class MprisClient:
         bus_name = full_service_name(service_name)
         diagnostics: list[str] = []
         try:
-            root_properties = self._backend.get_all(bus_name, MPRIS_ROOT_INTERFACE)
-            player_properties = dict(
-                self._backend.get_all(bus_name, MPRIS_PLAYER_INTERFACE)
+            root_read = self._read_interface(
+                bus_name, MPRIS_ROOT_INTERFACE, "root properties"
             )
+            player_read = self._read_interface(
+                bus_name, MPRIS_PLAYER_INTERFACE, "player properties"
+            )
+            root_properties = root_read.values
+            player_properties = dict(player_read.values)
+            diagnostics.extend(root_read.diagnostics)
+            diagnostics.extend(player_read.diagnostics)
             if "Position" not in player_properties:
                 try:
                     player_properties["Position"] = self._backend.get_property(
@@ -81,7 +88,11 @@ class MprisClient:
                 except MprisServiceUnavailable:
                     raise
                 except MprisBackendError as error:
-                    diagnostics.append(f"Position: unavailable ({error})")
+                    position_diagnostic = f"Position: unavailable ({error})"
+                    if not any(
+                        item.startswith("Position: unavailable") for item in diagnostics
+                    ):
+                        diagnostics.append(position_diagnostic)
         except MprisServiceUnavailable as error:
             return _failure(
                 bus_name,
@@ -90,6 +101,10 @@ class MprisClient:
             )
         except MprisBackendError as error:
             return _failure(bus_name, InspectionFailure.BUS_ERROR, str(error))
+
+        if not root_properties and not player_properties:
+            message = "; ".join(diagnostics) or "no readable MPRIS properties"
+            return _failure(bus_name, InspectionFailure.BUS_ERROR, message)
 
         return PlayerInspection(
             service_name=short_service_name(bus_name),
@@ -101,6 +116,21 @@ class MprisClient:
                 diagnostics,
             ),
         )
+
+    def _read_interface(
+        self,
+        bus_name: str,
+        interface: str,
+        label: str,
+    ) -> MprisPropertyRead:
+        """Keep one failed interface read from erasing another useful result."""
+
+        try:
+            return self._backend.read_properties(bus_name, interface)
+        except MprisServiceUnavailable:
+            raise
+        except MprisBackendError as error:
+            return MprisPropertyRead(diagnostics=(f"{label}: unavailable ({error})",))
 
 
 class MprisMonitor:
@@ -126,8 +156,12 @@ class MprisMonitor:
             )
             bus_names = self._backend.list_service_names()
         except MprisBackendError as error:
-            self.close()
-            return PlayerWatchStart(error=str(error))
+            message = str(error)
+            try:
+                self.close()
+            except MprisBackendError as cleanup_error:
+                message = f"{message}; {cleanup_error}"
+            return PlayerWatchStart(error=message)
 
         for bus_name in sorted(set(bus_names)):
             if bus_name.startswith(MPRIS_PREFIX):
@@ -141,14 +175,23 @@ class MprisMonitor:
     def close(self) -> None:
         """Disconnect all watchers; safe to call repeatedly."""
 
+        errors: list[str] = []
         for subscription in tuple(self._player_subscriptions.values()):
-            subscription.close()
+            try:
+                subscription.close()
+            except MprisBackendError as error:
+                errors.append(str(error))
         self._player_subscriptions.clear()
         self._known_players.clear()
         if self._service_subscription is not None:
-            self._service_subscription.close()
+            try:
+                self._service_subscription.close()
+            except MprisBackendError as error:
+                errors.append(str(error))
             self._service_subscription = None
         self._handler = None
+        if errors:
+            raise MprisBackendError("watcher cleanup failed: " + "; ".join(errors))
 
     def _emit(self, event: PlayerEvent) -> None:
         if self._handler is not None:
@@ -188,7 +231,16 @@ class MprisMonitor:
         self._known_players.remove(bus_name)
         subscription = self._player_subscriptions.pop(bus_name, None)
         if subscription is not None:
-            subscription.close()
+            try:
+                subscription.close()
+            except MprisBackendError as error:
+                self._emit(
+                    PlayerEvent(
+                        PlayerEventKind.DIAGNOSTIC,
+                        short_service_name(bus_name),
+                        diagnostics=(f"could not detach player signals: {error}",),
+                    )
+                )
         self._emit(
             PlayerEvent(
                 PlayerEventKind.PLAYER_DISAPPEARED,
@@ -202,17 +254,17 @@ class MprisMonitor:
         interface: str,
         changed: Mapping[str, object],
         invalidated: tuple[str, ...],
-        decode_error: str | None,
+        decode_diagnostics: tuple[str, ...],
     ) -> None:
         if interface not in {MPRIS_ROOT_INTERFACE, MPRIS_PLAYER_INTERFACE}:
             return
         service_name = short_service_name(bus_name)
-        if decode_error is not None:
+        if not changed and decode_diagnostics:
             self._emit(
                 PlayerEvent(
                     PlayerEventKind.DIAGNOSTIC,
                     service_name,
-                    diagnostics=(decode_error,),
+                    diagnostics=decode_diagnostics,
                 )
             )
             return
@@ -221,7 +273,7 @@ class MprisMonitor:
         if interface == MPRIS_PLAYER_INTERFACE and (
             "PlaybackStatus" in changed or "PlaybackStatus" in invalidated
         ):
-            snapshot = map_player_snapshot(bus_name, {}, changed)
+            snapshot = map_player_snapshot(bus_name, {}, changed, decode_diagnostics)
             self._emit(
                 PlayerEvent(
                     PlayerEventKind.PLAYBACK_STATUS_CHANGED,
@@ -233,7 +285,7 @@ class MprisMonitor:
         if interface == MPRIS_PLAYER_INTERFACE and (
             "Metadata" in changed or "Metadata" in invalidated
         ):
-            snapshot = map_player_snapshot(bus_name, {}, changed)
+            snapshot = map_player_snapshot(bus_name, {}, changed, decode_diagnostics)
             self._emit(
                 PlayerEvent(
                     PlayerEventKind.METADATA_CHANGED,
@@ -258,6 +310,7 @@ class MprisMonitor:
                 bus_name,
                 changed if interface == MPRIS_ROOT_INTERFACE else {},
                 changed if interface == MPRIS_PLAYER_INTERFACE else {},
+                decode_diagnostics,
             )
             self._emit(
                 PlayerEvent(

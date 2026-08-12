@@ -1,5 +1,7 @@
 """QtDBus wrapper-conversion tests that require no live session bus."""
 
+import json
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -7,7 +9,7 @@ from PySide6.QtCore import QObject
 from PySide6.QtDBus import QDBusObjectPath, QDBusSignature, QDBusVariant
 
 from lyricflow.infrastructure.mpris import qt_dbus_values
-from lyricflow.infrastructure.mpris.backend import MprisBackendError
+from lyricflow.infrastructure.mpris.backend import MprisBackendError, MprisPropertyRead
 from lyricflow.infrastructure.mpris.qt_dbus_values import (
     PROPERTIES_SLOT,
     SEEKED_SLOT,
@@ -115,7 +117,7 @@ def test_opaque_qt_object_cannot_leak_past_backend() -> None:
 
 
 def test_malformed_cyclic_signal_value_becomes_receiver_diagnostic() -> None:
-    properties: list[tuple[str, str, object, tuple[str, ...], str | None]] = []
+    properties: list[tuple[str, str, object, tuple[str, ...], tuple[str, ...]]] = []
     receiver = PlayerSignalReceiver(
         "org.mpris.MediaPlayer2.test",
         lambda service, interface, changed, invalidated, error: properties.append(
@@ -133,12 +135,79 @@ def test_malformed_cyclic_signal_value_becomes_receiver_diagnostic() -> None:
     )
 
     assert properties[0][2:4] == ({}, ())
-    assert properties[0][4] is not None
-    assert "cyclic D-Bus container" in properties[0][4]
+    assert "cyclic D-Bus container" in properties[0][4][0]
+
+
+def test_live_firefox_a_sv_shape_is_recovered_by_typed_property_refresh(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Regress the raw map wrapper observed in Firefox PropertiesChanged."""
+
+    fixture_path = (
+        Path(__file__).parent
+        / "fixtures"
+        / "mpris"
+        / "firefox_properties_changed_raw_map.json"
+    )
+    fixture = json.loads(fixture_path.read_text(encoding="utf-8"))
+    assert fixture["runtime_type"] == "QDBusArgument"
+    assert fixture["signature"] == "a{sv}"
+    assert fixture["element_type"] == "MapType"
+    assert fixture["as_variant_makes_progress"] is False
+    service = fixture["service"]
+    assert isinstance(service, str)
+
+    monkeypatch.setattr(qt_dbus_values, "QDBusArgument", _NoProgressArgument)
+    properties: list[tuple[str, str, object, tuple[str, ...], tuple[str, ...]]] = []
+    reads: list[tuple[str, str]] = []
+
+    def read_properties(service: str, interface: str) -> MprisPropertyRead:
+        reads.append((service, interface))
+        return MprisPropertyRead(
+            {
+                "PlaybackStatus": "Playing",
+                "Metadata": {
+                    "xesam:title": "New Firefox video",
+                    "xesam:artist": ("Uploader",),
+                    "xesam:url": "https://www.youtube.com/watch?v=fixture",
+                },
+            }
+        )
+
+    receiver = PlayerSignalReceiver(
+        service,
+        lambda service, interface, changed, invalidated, diagnostics: properties.append(
+            (service, interface, changed, invalidated, diagnostics)
+        ),
+        lambda _service, _position: None,
+        read_properties,
+    )
+
+    receiver.propertiesChanged(
+        "org.mpris.MediaPlayer2.Player",
+        _NoProgressArgument(),
+        [],
+    )
+
+    assert reads == [
+        (
+            "org.mpris.MediaPlayer2.firefox.instance_1_58",
+            "org.mpris.MediaPlayer2.Player",
+        )
+    ]
+    assert properties[0][2] == {
+        "PlaybackStatus": "Playing",
+        "Metadata": {
+            "xesam:title": "New Firefox video",
+            "xesam:artist": ("Uploader",),
+            "xesam:url": "https://www.youtube.com/watch?v=fixture",
+        },
+    }
+    assert properties[0][4] == ()
 
 
 def test_qt_signal_receiver_exposes_plain_values_and_exact_slot_signatures() -> None:
-    properties: list[tuple[str, str, object, tuple[str, ...], str | None]] = []
+    properties: list[tuple[str, str, object, tuple[str, ...], tuple[str, ...]]] = []
     seeks: list[tuple[str, object]] = []
     receiver = PlayerSignalReceiver(
         "org.mpris.MediaPlayer2.test",
@@ -158,7 +227,7 @@ def test_qt_signal_receiver_exposes_plain_values_and_exact_slot_signatures() -> 
     changed = properties[0][2]
     assert isinstance(changed, dict)
     assert changed == {"PlaybackStatus": "Paused"}
-    assert properties[0][3:] == (("Volume",), None)
+    assert properties[0][3:] == (("Volume",), ())
     assert seeks == [("org.mpris.MediaPlayer2.test", 5000000)]
 
     meta_object = receiver.metaObject()

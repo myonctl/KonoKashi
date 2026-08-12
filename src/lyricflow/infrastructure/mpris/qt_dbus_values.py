@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
-from typing import cast
+from collections.abc import Callable, Mapping, Sequence
+from typing import TypeAlias, cast
 
 from PySide6.QtCore import SLOT, QByteArray, QObject, Slot
 from PySide6.QtDBus import (
@@ -15,9 +15,12 @@ from PySide6.QtDBus import (
 
 from lyricflow.infrastructure.mpris.backend import (
     MprisBackendError,
+    MprisPropertyRead,
     PropertiesChangedHandler,
     SeekedHandler,
 )
+
+PropertyReader: TypeAlias = Callable[[str, str], MprisPropertyRead]
 
 PROPERTIES_SLOT = cast(
     bytes,
@@ -136,23 +139,54 @@ class PlayerSignalReceiver(QObject):
         service: str,
         properties_handler: PropertiesChangedHandler,
         seeked_handler: SeekedHandler,
+        property_reader: PropertyReader | None = None,
     ) -> None:
         super().__init__()
         self._service = service
         self._properties_handler = properties_handler
         self._seeked_handler = seeked_handler
+        self._property_reader = property_reader
 
     @Slot(str, "QVariantMap", "QStringList")
     def propertiesChanged(
         self,
         interface: str,
-        changed: dict[str, object],
+        changed: object,
         invalidated: list[str],
     ) -> None:
         """Translate one PropertiesChanged payload to plain Python values."""
 
+        decode_diagnostics: tuple[str, ...] = ()
         try:
             plain_changed = plain_mapping(changed)
+        except MprisBackendError as conversion_error:
+            if self._property_reader is None:
+                self._properties_handler(
+                    self._service,
+                    interface,
+                    {},
+                    (),
+                    (str(conversion_error),),
+                )
+                return
+            try:
+                refreshed = self._property_reader(self._service, interface)
+            except MprisBackendError as refresh_error:
+                self._properties_handler(
+                    self._service,
+                    interface,
+                    {},
+                    (),
+                    (
+                        f"PropertiesChanged payload could not be decoded "
+                        f"({conversion_error}); property refresh failed "
+                        f"({refresh_error})",
+                    ),
+                )
+                return
+            plain_changed = refreshed.values
+            decode_diagnostics = refreshed.diagnostics
+        try:
             if not all(isinstance(name, str) for name in invalidated):
                 raise MprisBackendError(
                     "PropertiesChanged invalidated list contains a non-string"
@@ -164,7 +198,7 @@ class PlayerSignalReceiver(QObject):
                 interface,
                 {},
                 (),
-                str(error),
+                (str(error),),
             )
             return
         self._properties_handler(
@@ -172,7 +206,7 @@ class PlayerSignalReceiver(QObject):
             interface,
             plain_changed,
             plain_invalidated,
-            None,
+            decode_diagnostics,
         )
 
     @Slot("qlonglong")

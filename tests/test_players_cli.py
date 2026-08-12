@@ -44,10 +44,13 @@ class FakeMonitor:
     def __init__(
         self,
         start_result: PlayerWatchStart | None = None,
+        *,
+        close_error: RuntimeError | None = None,
     ) -> None:
         self.start_result = start_result or PlayerWatchStart()
         self.handler: Callable[[PlayerEvent], None] | None = None
         self.closed = False
+        self.close_error = close_error
 
     def start(self, handler: Callable[[PlayerEvent], None]) -> PlayerWatchStart:
         self.handler = handler
@@ -55,6 +58,8 @@ class FakeMonitor:
 
     def close(self) -> None:
         self.closed = True
+        if self.close_error is not None:
+            raise self.close_error
 
 
 class FakeRuntime:
@@ -64,15 +69,22 @@ class FakeRuntime:
         monitor: FakeMonitor | None = None,
         *,
         interrupt: bool = False,
+        signal_interrupt: bool = False,
     ) -> None:
         self.client = client
         self.monitor = monitor or FakeMonitor()
         self.interrupt = interrupt
+        self.signal_interrupt = signal_interrupt
         self.quit_called = False
 
     def exec(self) -> int:
         if self.interrupt:
             raise KeyboardInterrupt
+        if self.signal_interrupt:
+            import signal
+
+            signal.raise_signal(signal.SIGINT)
+            return 0
         if self.monitor.handler is not None:
             self.monitor.handler(
                 PlayerEvent(
@@ -195,6 +207,46 @@ def test_players_list_zero_players_is_success(
     assert capsys.readouterr().out == "No MPRIS players found.\n"
 
 
+def test_players_list_mixed_quality_is_success_and_keeps_diagnostics(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    partial, _ = browser_inspections()
+    broken = PlayerInspection(
+        "broken",
+        full_service_name("broken"),
+        failure=InspectionFailure.BUS_ERROR,
+        message="no readable MPRIS properties",
+    )
+    runtime = FakeRuntime(FakeClient(PlayerListResult((broken, partial)), partial))
+
+    exit_code = cli.main(["players", "list"], runtime_factory=lambda: runtime)
+    output = capsys.readouterr().out
+
+    assert exit_code == 0
+    assert "MPRIS players: 2" in output
+    assert "broken" in output
+    assert "unavailable: no readable MPRIS properties" in output
+    assert "firefox.instance_1_95" in output
+    assert "title:" in output
+
+
+def test_players_inspect_partial_snapshot_is_success(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    partial, _ = browser_inspections()
+    runtime = FakeRuntime(FakeClient(PlayerListResult((partial,)), partial))
+
+    exit_code = cli.main(
+        ["players", "inspect", partial.service_name],
+        runtime_factory=lambda: runtime,
+    )
+
+    assert exit_code == 0
+    output = capsys.readouterr().out
+    assert "artists: <unavailable>" in output
+    assert "diagnostics:" in output
+
+
 def test_players_inspect_expected_failure_has_nonzero_exit(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
@@ -269,6 +321,77 @@ def test_players_watch_keyboard_interrupt_quits_and_returns_130(
     assert runtime.quit_called
     assert monitor.closed
     assert "Watch stopped." in capsys.readouterr().out
+
+
+def test_players_watch_sigint_handler_quits_and_returns_130(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    inspection = browser_inspections()[0]
+    monitor = FakeMonitor()
+    runtime = FakeRuntime(
+        FakeClient(PlayerListResult((inspection,)), inspection),
+        monitor,
+        signal_interrupt=True,
+    )
+
+    exit_code = cli.main(["players", "watch"], runtime_factory=lambda: runtime)
+
+    assert exit_code == 130
+    assert runtime.quit_called
+    assert monitor.closed
+    assert "Watch stopped." in capsys.readouterr().out
+
+
+def test_players_watch_broken_pipeline_does_not_become_python_exit_120(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class BrokenFinalOutput:
+        def write(self, value: str) -> int:
+            if "Watch stopped." in value:
+                raise BrokenPipeError
+            return len(value)
+
+        def flush(self) -> None:
+            pass
+
+        def fileno(self) -> int:
+            return 1
+
+    inspection = browser_inspections()[0]
+    runtime = FakeRuntime(
+        FakeClient(PlayerListResult((inspection,)), inspection),
+        FakeMonitor(),
+        signal_interrupt=True,
+    )
+    duplicated: list[tuple[int, int]] = []
+    monkeypatch.setattr(cli.sys, "stdout", BrokenFinalOutput())
+    monkeypatch.setattr(cli.os, "open", lambda *_args: 99)
+    monkeypatch.setattr(
+        cli.os, "dup2", lambda source, target: duplicated.append((source, target))
+    )
+    monkeypatch.setattr(cli.os, "close", lambda _fd: None)
+
+    exit_code = cli.main(["players", "watch"], runtime_factory=lambda: runtime)
+
+    assert exit_code == 130
+    assert duplicated == [(99, 1)]
+
+
+def test_players_watch_cleanup_failure_is_controlled(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    inspection = browser_inspections()[0]
+    monitor = FakeMonitor(close_error=RuntimeError("disconnect rejected"))
+    runtime = FakeRuntime(
+        FakeClient(PlayerListResult((inspection,)), inspection),
+        monitor,
+    )
+
+    exit_code = cli.main(["players", "watch"], runtime_factory=lambda: runtime)
+
+    assert exit_code == 1
+    assert monitor.closed
+    assert "Unable to stop MPRIS watcher cleanly" in capsys.readouterr().err
 
 
 def test_players_watch_start_failure_closes_monitor(

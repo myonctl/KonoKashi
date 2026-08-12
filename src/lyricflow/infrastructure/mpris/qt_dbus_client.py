@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Sequence
 from typing import NoReturn, TypeAlias, cast
 
 from PySide6.QtCore import QCoreApplication, QEventLoop, QTimer
@@ -16,6 +16,7 @@ from PySide6.QtDBus import (
 
 from lyricflow.infrastructure.mpris.backend import (
     MprisBackendError,
+    MprisPropertyRead,
     MprisServiceUnavailable,
     PropertiesChangedHandler,
     SeekedHandler,
@@ -37,6 +38,10 @@ DBUS_INTERFACE = "org.freedesktop.DBus"
 DBUS_PROPERTIES_INTERFACE = "org.freedesktop.DBus.Properties"
 
 _CloseCallback: TypeAlias = Callable[[], None]
+
+_RAW_PROPERTY_MAP_ERROR = (
+    "QDBusArgument conversion made no progress for signature a{sv}"
+)
 
 
 def _error_message(name: str, message: str) -> str:
@@ -79,6 +84,7 @@ class QtDbusBackend:
         self._connection = connection or QDBusConnection.sessionBus()
         self._timeout_ms = timeout_ms
         self._connection_interface = self._connection.interface()
+        self._raw_get_all_observed = False
 
     def _ensure_connected(self) -> None:
         if self._connection.isConnected():
@@ -146,12 +152,22 @@ class QtDbusBackend:
             raise MprisBackendError("ListNames returned a malformed service list")
         return tuple(names)
 
-    def get_all(self, service: str, interface: str) -> Mapping[str, object]:
-        """Read an interface's properties through org.freedesktop.DBus.Properties."""
+    def _read_properties_individually(
+        self,
+        service: str,
+        interface: str,
+        get_all_error: MprisBackendError,
+    ) -> MprisPropertyRead:
+        """Fall back to independent typed reads after a broken GetAll call."""
 
         remote = self._remote_interface(service, interface)
         meta_object = remote.metaObject()
         properties: dict[str, object] = {}
+        diagnostics = []
+        if _RAW_PROPERTY_MAP_ERROR not in str(get_all_error):
+            diagnostics.append(
+                f"GetAll: unavailable ({get_all_error}); used individual property reads"
+            )
         for index in range(meta_object.propertyOffset(), meta_object.propertyCount()):
             property_meta = meta_object.property(index)
             if not property_meta.isReadable():
@@ -160,9 +176,45 @@ class QtDbusBackend:
             value = remote.property(name)
             error = remote.lastError()
             if error.isValid():
-                _raise_call_error(error)
-            properties[name] = plain_dbus_value(value)
-        return plain_mapping(properties)
+                try:
+                    _raise_call_error(error)
+                except MprisServiceUnavailable:
+                    raise
+                except MprisBackendError as property_error:
+                    diagnostics.append(f"{name}: unavailable ({property_error})")
+                    continue
+            try:
+                properties[name] = plain_dbus_value(value)
+            except MprisBackendError as property_error:
+                diagnostics.append(f"{name}: unavailable ({property_error})")
+        return MprisPropertyRead(plain_mapping(properties), tuple(diagnostics))
+
+    def read_properties(self, service: str, interface: str) -> MprisPropertyRead:
+        """Prefer GetAll, falling back when one player or binding cannot decode it."""
+
+        if self._raw_get_all_observed:
+            return self._read_properties_individually(
+                service,
+                interface,
+                MprisBackendError(_RAW_PROPERTY_MAP_ERROR),
+            )
+        try:
+            arguments = self._call(
+                service,
+                MPRIS_OBJECT_PATH,
+                DBUS_PROPERTIES_INTERFACE,
+                "GetAll",
+                (interface,),
+            )
+            if len(arguments) != 1:
+                raise MprisBackendError("GetAll returned an unexpected payload")
+            return MprisPropertyRead(plain_mapping(arguments[0]))
+        except MprisServiceUnavailable:
+            raise
+        except MprisBackendError as error:
+            if _RAW_PROPERTY_MAP_ERROR in str(error):
+                self._raw_get_all_observed = True
+            return self._read_properties_individually(service, interface, error)
 
     def get_property(self, service: str, interface: str, name: str) -> object:
         """Read one property, notably Position, without rapid polling."""
@@ -203,7 +255,12 @@ class QtDbusBackend:
         """Attach PropertiesChanged and Seeked directly to one MPRIS service."""
 
         self._ensure_connected()
-        receiver = PlayerSignalReceiver(service, on_properties_changed, on_seeked)
+        receiver = PlayerSignalReceiver(
+            service,
+            on_properties_changed,
+            on_seeked,
+            self.read_properties,
+        )
         properties_connected = False
         seeked_connected = False
         try:

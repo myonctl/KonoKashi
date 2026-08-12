@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 import signal
 import sys
 from collections.abc import Callable, Sequence
@@ -20,6 +21,20 @@ from lyricflow.application.ports import MprisRuntimePort
 from lyricflow.infrastructure.diagnostics import collect_local_diagnostics
 
 RuntimeFactory: TypeAlias = Callable[[], MprisRuntimePort]
+
+
+def _silence_broken_stdout() -> None:
+    """Prevent CPython's shutdown flush from replacing an intentional exit code."""
+
+    try:
+        stdout_fd = sys.stdout.fileno()
+        devnull_fd = os.open(os.devnull, os.O_WRONLY)
+        try:
+            os.dup2(devnull_fd, stdout_fd)
+        finally:
+            os.close(devnull_fd)
+    except (AttributeError, OSError, ValueError):
+        pass
 
 
 def _create_runtime() -> MprisRuntimePort:
@@ -86,8 +101,8 @@ def _run_watch(runtime: MprisRuntimePort) -> int:
         return 1
 
     current = ", ".join(start.current_services) if start.current_services else "none"
-    print("Watching MPRIS events. Press Ctrl+C to stop.")
-    print(f"Current players: {current}")
+    print("Watching MPRIS events. Press Ctrl+C to stop.", flush=True)
+    print(f"Current players: {current}", flush=True)
     interrupted = False
     previous_handler = signal.getsignal(signal.SIGINT)
 
@@ -97,6 +112,7 @@ def _run_watch(runtime: MprisRuntimePort) -> int:
         runtime.quit()
 
     signal.signal(signal.SIGINT, stop)
+    cleanup_error: RuntimeError | None = None
     try:
         exit_code = runtime.exec()
     except KeyboardInterrupt:
@@ -104,11 +120,20 @@ def _run_watch(runtime: MprisRuntimePort) -> int:
         runtime.quit()
         exit_code = 0
     finally:
-        runtime.monitor.close()
+        try:
+            runtime.monitor.close()
+        except RuntimeError as error:
+            cleanup_error = error
         signal.signal(signal.SIGINT, previous_handler)
     if interrupted:
-        print("Watch stopped.")
+        try:
+            print("Watch stopped.", flush=True)
+        except BrokenPipeError:
+            _silence_broken_stdout()
         return 130
+    if cleanup_error is not None:
+        print(f"Unable to stop MPRIS watcher cleanly: {cleanup_error}", file=sys.stderr)
+        return 1
     return exit_code
 
 
@@ -122,10 +147,7 @@ def _run_players(arguments: argparse.Namespace, runtime_factory: RuntimeFactory)
     if arguments.players_command == "list":
         result = runtime.client.list_players()
         print(render_player_list(result))
-        return int(
-            result.error is not None
-            or any(not inspection.succeeded for inspection in result.players)
-        )
+        return int(result.error is not None)
     if arguments.players_command == "inspect":
         inspection = runtime.client.inspect_player(arguments.service)
         print(render_player_inspection(inspection))
