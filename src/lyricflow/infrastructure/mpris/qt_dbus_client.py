@@ -3,13 +3,13 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Sequence
-from typing import NoReturn, TypeAlias, cast
+from typing import ClassVar, NoReturn, TypeAlias, cast
 
-from PySide6.QtCore import QCoreApplication, QEventLoop, QTimer
+from PySide6.QtCore import Property, QCoreApplication, QEventLoop, QObject, QTimer
 from PySide6.QtDBus import (
+    QDBusAbstractInterface,
     QDBusConnection,
     QDBusError,
-    QDBusInterface,
     QDBusMessage,
     QDBusPendingCallWatcher,
 )
@@ -38,10 +38,6 @@ DBUS_INTERFACE = "org.freedesktop.DBus"
 DBUS_PROPERTIES_INTERFACE = "org.freedesktop.DBus.Properties"
 
 _CloseCallback: TypeAlias = Callable[[], None]
-
-_RAW_PROPERTY_MAP_ERROR = (
-    "QDBusArgument conversion made no progress for signature a{sv}"
-)
 
 
 def _error_message(name: str, message: str) -> str:
@@ -72,6 +68,117 @@ class _CallableSubscription:
             callback()
 
 
+class _MprisInterface(QDBusAbstractInterface):
+    """Statically typed proxy base matching Qt's generated D-Bus proxies."""
+
+    interface_name: ClassVar[str]
+
+    def __init__(
+        self,
+        service: str,
+        connection: QDBusConnection,
+    ) -> None:
+        # PySide6's runtime accepts the textual interface and a null parent;
+        # its 6.11.1 stubs incorrectly require bytes and a non-null QObject.
+        super().__init__(
+            service,
+            MPRIS_OBJECT_PATH,
+            cast(bytes, self.interface_name),
+            connection,
+            cast(QObject, None),
+        )
+
+
+def _remote_value(interface: QDBusAbstractInterface, name: str) -> object:
+    """Delegate a declared Qt property to QDBusAbstractInterface."""
+
+    return interface.property(name)
+
+
+class _MprisRootInterface(_MprisInterface):
+    """Typed proxy for the standard org.mpris.MediaPlayer2 properties."""
+
+    interface_name = "org.mpris.MediaPlayer2"
+
+    CanQuit = Property(bool, lambda self: _remote_value(self, "CanQuit"))
+    CanRaise = Property(bool, lambda self: _remote_value(self, "CanRaise"))
+    CanSetFullscreen = Property(
+        bool, lambda self: _remote_value(self, "CanSetFullscreen")
+    )
+    DesktopEntry = Property(str, lambda self: _remote_value(self, "DesktopEntry"))
+    Fullscreen = Property(bool, lambda self: _remote_value(self, "Fullscreen"))
+    HasTrackList = Property(bool, lambda self: _remote_value(self, "HasTrackList"))
+    Identity = Property(str, lambda self: _remote_value(self, "Identity"))
+    SupportedMimeTypes = Property(
+        cast(type[object], "QStringList"),
+        lambda self: _remote_value(self, "SupportedMimeTypes"),
+    )
+    SupportedUriSchemes = Property(
+        cast(type[object], "QStringList"),
+        lambda self: _remote_value(self, "SupportedUriSchemes"),
+    )
+
+
+class _MprisPlayerInterface(_MprisInterface):
+    """Typed proxy for the standard org.mpris.MediaPlayer2.Player properties."""
+
+    interface_name = "org.mpris.MediaPlayer2.Player"
+
+    CanControl = Property(bool, lambda self: _remote_value(self, "CanControl"))
+    CanGoNext = Property(bool, lambda self: _remote_value(self, "CanGoNext"))
+    CanGoPrevious = Property(bool, lambda self: _remote_value(self, "CanGoPrevious"))
+    CanPause = Property(bool, lambda self: _remote_value(self, "CanPause"))
+    CanPlay = Property(bool, lambda self: _remote_value(self, "CanPlay"))
+    CanSeek = Property(bool, lambda self: _remote_value(self, "CanSeek"))
+    LoopStatus = Property(str, lambda self: _remote_value(self, "LoopStatus"))
+    MaximumRate = Property(float, lambda self: _remote_value(self, "MaximumRate"))
+    Metadata = Property(
+        cast(type[object], "QVariantMap"),
+        lambda self: _remote_value(self, "Metadata"),
+    )
+    MinimumRate = Property(float, lambda self: _remote_value(self, "MinimumRate"))
+    PlaybackStatus = Property(str, lambda self: _remote_value(self, "PlaybackStatus"))
+    Position = Property(
+        cast(type[object], "qlonglong"),
+        lambda self: _remote_value(self, "Position"),
+    )
+    Rate = Property(float, lambda self: _remote_value(self, "Rate"))
+    Shuffle = Property(bool, lambda self: _remote_value(self, "Shuffle"))
+    Volume = Property(float, lambda self: _remote_value(self, "Volume"))
+
+
+_PROPERTY_NAMES: dict[str, tuple[str, ...]] = {
+    _MprisRootInterface.interface_name: (
+        "CanQuit",
+        "CanRaise",
+        "CanSetFullscreen",
+        "DesktopEntry",
+        "Fullscreen",
+        "HasTrackList",
+        "Identity",
+        "SupportedMimeTypes",
+        "SupportedUriSchemes",
+    ),
+    _MprisPlayerInterface.interface_name: (
+        "CanControl",
+        "CanGoNext",
+        "CanGoPrevious",
+        "CanPause",
+        "CanPlay",
+        "CanSeek",
+        "LoopStatus",
+        "MaximumRate",
+        "Metadata",
+        "MinimumRate",
+        "PlaybackStatus",
+        "Position",
+        "Rate",
+        "Shuffle",
+        "Volume",
+    ),
+}
+
+
 class QtDbusBackend:
     """Session-bus implementation using asynchronous QtDBus method calls."""
 
@@ -84,7 +191,6 @@ class QtDbusBackend:
         self._connection = connection or QDBusConnection.sessionBus()
         self._timeout_ms = timeout_ms
         self._connection_interface = self._connection.interface()
-        self._raw_get_all_observed = False
 
     def _ensure_connected(self) -> None:
         if self._connection.isConnected():
@@ -121,16 +227,18 @@ class QtDbusBackend:
             _raise_call_error(watcher.error())
         return tuple(plain_dbus_value(value) for value in watcher.reply().arguments())
 
-    def _remote_interface(self, service: str, interface: str) -> QDBusInterface:
-        """Create a bounded typed-property interface for one MPRIS object."""
+    def _remote_interface(self, service: str, interface: str) -> QDBusAbstractInterface:
+        """Create a bounded, statically typed proxy for one MPRIS interface."""
 
         self._ensure_connected()
-        remote = QDBusInterface(
-            service,
-            MPRIS_OBJECT_PATH,
-            interface,
-            self._connection,
-        )
+        if interface == _MprisRootInterface.interface_name:
+            remote: QDBusAbstractInterface = _MprisRootInterface(
+                service, self._connection
+            )
+        elif interface == _MprisPlayerInterface.interface_name:
+            remote = _MprisPlayerInterface(service, self._connection)
+        else:
+            raise MprisBackendError(f"unsupported MPRIS interface {interface}")
         remote.setTimeout(self._timeout_ms)
         if not remote.isValid():
             _raise_call_error(remote.lastError())
@@ -156,28 +264,30 @@ class QtDbusBackend:
         self,
         service: str,
         interface: str,
-        get_all_error: MprisBackendError,
     ) -> MprisPropertyRead:
-        """Fall back to independent typed reads after a broken GetAll call."""
+        """Read every standard property through its declared Qt D-Bus type."""
 
-        remote = self._remote_interface(service, interface)
-        meta_object = remote.metaObject()
         properties: dict[str, object] = {}
-        diagnostics = []
-        if _RAW_PROPERTY_MAP_ERROR not in str(get_all_error):
-            diagnostics.append(
-                f"GetAll: unavailable ({get_all_error}); used individual property reads"
-            )
-        for index in range(meta_object.propertyOffset(), meta_object.propertyCount()):
-            property_meta = meta_object.property(index)
-            if not property_meta.isReadable():
-                continue
-            name = cast(str, property_meta.name())
+        diagnostics: list[str] = []
+        try:
+            names = _PROPERTY_NAMES[interface]
+        except KeyError as error:
+            raise MprisBackendError(
+                f"unsupported MPRIS interface {interface}"
+            ) from error
+        remote = self._remote_interface(service, interface)
+        for name in names:
             value = remote.property(name)
-            error = remote.lastError()
-            if error.isValid():
+            # QDBusAbstractInterface.lastError() is sticky after a failed
+            # property call. A concrete value proves this request succeeded;
+            # only a missing value may consume the current error state.
+            if value is None:
+                call_error = remote.lastError()
+                if not call_error.isValid():
+                    diagnostics.append(f"{name}: unavailable (no value returned)")
+                    continue
                 try:
-                    _raise_call_error(error)
+                    _raise_call_error(call_error)
                 except MprisServiceUnavailable:
                     raise
                 except MprisBackendError as property_error:
@@ -190,43 +300,22 @@ class QtDbusBackend:
         return MprisPropertyRead(plain_mapping(properties), tuple(diagnostics))
 
     def read_properties(self, service: str, interface: str) -> MprisPropertyRead:
-        """Prefer GetAll, falling back when one player or binding cannot decode it."""
+        """Read standard properties independently through statically typed proxies."""
 
-        if self._raw_get_all_observed:
-            return self._read_properties_individually(
-                service,
-                interface,
-                MprisBackendError(_RAW_PROPERTY_MAP_ERROR),
-            )
-        try:
-            arguments = self._call(
-                service,
-                MPRIS_OBJECT_PATH,
-                DBUS_PROPERTIES_INTERFACE,
-                "GetAll",
-                (interface,),
-            )
-            if len(arguments) != 1:
-                raise MprisBackendError("GetAll returned an unexpected payload")
-            return MprisPropertyRead(plain_mapping(arguments[0]))
-        except MprisServiceUnavailable:
-            raise
-        except MprisBackendError as error:
-            if _RAW_PROPERTY_MAP_ERROR in str(error):
-                self._raw_get_all_observed = True
-            return self._read_properties_individually(service, interface, error)
+        return self._read_properties_individually(service, interface)
 
     def get_property(self, service: str, interface: str, name: str) -> object:
         """Read one property, notably Position, without rapid polling."""
 
-        remote = self._remote_interface(service, interface)
-        property_index = remote.metaObject().indexOfProperty(name)
-        if property_index < 0:
+        if name not in _PROPERTY_NAMES.get(interface, ()):
             raise MprisBackendError(f"property {name} is not available")
+        remote = self._remote_interface(service, interface)
         value = remote.property(name)
-        error = remote.lastError()
-        if error.isValid():
-            _raise_call_error(error)
+        if value is None:
+            call_error = remote.lastError()
+            if call_error.isValid():
+                _raise_call_error(call_error)
+            raise MprisBackendError(f"property {name} returned no value")
         return plain_dbus_value(value)
 
     def subscribe_service_changes(

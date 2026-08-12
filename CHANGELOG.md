@@ -7,6 +7,9 @@ unreleased.
 
 ### Added
 
+- Regression coverage proving the production proxy declares Metadata as
+  `QVariantMap`, real-shaped local Metadata survives conversion, and one
+  property's D-Bus error cannot mark later successful properties unavailable.
 - Regressions for mixed-quality player enumeration, MaximumRate NotSupported,
   several simultaneous property failures, the live Firefox raw `a{sv}` signal
   shape, direct SIGINT, broken capture pipes, and controlled watcher cleanup.
@@ -53,10 +56,16 @@ unreleased.
 
 ### Changed
 
-- Made Stage 1 player inspection independently best-effort: normal GetAll reads
-  remain the fast path, broken compound reads fall back to typed properties,
-  unavailable fields stay visible with diagnostics, and one bad player no
-  longer makes `players list` fail.
+- Replaced raw `GetAll`/untyped fallback property retrieval with statically
+  typed MPRIS proxies, making list Metadata usable on PySide6 6.11.1 and
+  isolating sticky `lastError()` state per property result.
+- Recorded Stage 1 live retest #3 append-only as a substantial partial pass,
+  preserving its successful enumeration, direct inspections, watch signals,
+  seeks, and SIGINT while leaving metadata-change and lifecycle evidence pending
+  for retest #4.
+- Made Stage 1 player inspection independently best-effort: unavailable fields
+  stay visible with diagnostics, useful fields survive optional-property
+  failures, and one bad player no longer makes `players list` fail.
 - Recovered undecodable standard PropertiesChanged maps through a bounded typed
   interface refresh and made Ctrl+C return 130 even when a capture pipe closes
   during shutdown.

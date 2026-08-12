@@ -6,9 +6,9 @@ from collections.abc import Callable
 from typing import Any, cast
 
 import pytest
-from PySide6.QtDBus import QDBusVariant
+from PySide6.QtCore import QCoreApplication
+from PySide6.QtDBus import QDBusConnection, QDBusObjectPath, QDBusVariant
 
-from lyricflow.infrastructure.mpris import qt_dbus_client
 from lyricflow.infrastructure.mpris.backend import (
     MprisBackendError,
     MprisServiceUnavailable,
@@ -17,6 +17,7 @@ from lyricflow.infrastructure.mpris.backend import (
 from lyricflow.infrastructure.mpris.qt_dbus_client import (
     DBUS_PROPERTIES_INTERFACE,
     QtDbusBackend,
+    _MprisPlayerInterface,
 )
 from lyricflow.infrastructure.mpris.qt_dbus_values import (
     PROPERTIES_SLOT,
@@ -84,49 +85,42 @@ class _FakeConnection:
         return self.disconnect_results.pop(0)
 
 
-class _FakeProperty:
-    def __init__(self, name: str) -> None:
-        self._name = name
-
-    def isReadable(self) -> bool:
-        return True
-
-    def name(self) -> str:
-        return self._name
-
-
-class _FakeMetaObject:
-    _names = ("PlaybackStatus", "Metadata", "Position", "MaximumRate")
-
-    def propertyOffset(self) -> int:
-        return 0
-
-    def propertyCount(self) -> int:
-        return len(self._names)
-
-    def property(self, index: int) -> _FakeProperty:
-        return _FakeProperty(self._names[index])
-
-    def indexOfProperty(self, name: str) -> int:
-        try:
-            return self._names.index(name)
-        except ValueError:
-            return -1
-
-
 class _FakeRemoteInterface:
-    def __init__(self, failures: dict[str, _FakeError] | None = None) -> None:
+    def __init__(
+        self,
+        failures: dict[str, _FakeError] | None = None,
+        *,
+        sticky_error: bool = False,
+    ) -> None:
         self.timeout_ms: int | None = None
         self.failures = failures or {}
+        self.sticky_error = sticky_error
+        self.retained_error = _FakeError()
         self.last_property: str | None = None
         self.values = {
+            "CanControl": True,
+            "CanGoNext": True,
+            "CanGoPrevious": True,
+            "CanPause": True,
+            "CanPlay": True,
+            "CanSeek": True,
+            "LoopStatus": "None",
+            "MaximumRate": 2.0,
             "PlaybackStatus": "Playing",
             "Metadata": {
+                "mpris:artUrl": QDBusVariant("file:///tmp/cover.jpg"),
+                "mpris:length": QDBusVariant(9876543),
+                "mpris:trackid": QDBusVariant(QDBusObjectPath("/track/42")),
                 "xesam:title": QDBusVariant("Example"),
                 "xesam:artist": QDBusVariant(["Artist"]),
+                "xesam:album": QDBusVariant("Album"),
+                "xesam:url": QDBusVariant("file:///music/example.flac"),
             },
+            "MinimumRate": 1.0,
             "Position": 123456,
-            "MaximumRate": 2.0,
+            "Rate": 1.0,
+            "Shuffle": False,
+            "Volume": 0.75,
         }
 
     def setTimeout(self, timeout_ms: int) -> None:
@@ -138,13 +132,17 @@ class _FakeRemoteInterface:
     def lastError(self) -> _FakeError:
         if self.last_property is None:
             return _FakeError()
-        return self.failures.get(self.last_property, _FakeError())
-
-    def metaObject(self) -> _FakeMetaObject:
-        return _FakeMetaObject()
+        current = self.failures.get(self.last_property, _FakeError())
+        if current.isValid():
+            self.retained_error = current
+        if self.sticky_error:
+            return self.retained_error
+        return current
 
     def property(self, name: str) -> object:
         self.last_property = name
+        if self.failures.get(name, _FakeError()).isValid():
+            return None
         return self.values.get(name)
 
 
@@ -160,101 +158,104 @@ def _subscribe(backend: QtDbusBackend) -> Subscription:
     )
 
 
-def test_get_all_success_uses_one_compound_call(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    backend = _backend(_FakeConnection())
-    calls: list[tuple[object, ...]] = []
-
-    def successful_call(*arguments: object) -> tuple[object, ...]:
-        calls.append(arguments)
-        return (
-            {
-                "PlaybackStatus": "Playing",
-                "Metadata": {
-                    "xesam:title": QDBusVariant("Example"),
-                    "xesam:artist": QDBusVariant(["Artist"]),
-                },
-                "Position": 123456,
-            },
-        )
-
-    monkeypatch.setattr(backend, "_call", successful_call)
-
-    result = backend.read_properties(
-        "org.mpris.MediaPlayer2.test",
-        "org.mpris.MediaPlayer2.Player",
-    )
-
-    assert len(calls) == 1
-    assert result.diagnostics == ()
-    assert result.values == {
-        "PlaybackStatus": "Playing",
-        "Metadata": {
-            "xesam:title": "Example",
-            "xesam:artist": ("Artist",),
-        },
-        "Position": 123456,
+def test_player_proxy_declares_metadata_as_qvariant_map() -> None:
+    QCoreApplication.instance() or QCoreApplication(["lyricflow-test"])
+    connection = QDBusConnection("lyricflow-test-no-bus")
+    proxy = _MprisPlayerInterface("org.mpris.MediaPlayer2.test", connection)
+    meta_object = proxy.metaObject()
+    declared_types = {
+        meta_object.property(index).name(): meta_object.property(index).typeName()
+        for index in range(meta_object.propertyOffset(), meta_object.propertyCount())
     }
 
+    assert declared_types["Metadata"] == "QVariantMap"
+    assert declared_types["Position"] == "qlonglong"
 
-def test_broken_get_all_falls_back_and_keeps_optional_property_failure(
+
+def test_typed_property_reads_decode_real_shaped_metadata_without_get_all(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    remote = _FakeRemoteInterface(
-        {
-            "MaximumRate": _FakeError(
-                valid=True,
-                name="org.freedesktop.DBus.Error.NotSupported",
-                message="MaximumRate is not supported",
-            )
-        }
-    )
-    monkeypatch.setattr(qt_dbus_client, "QDBusInterface", lambda *_args: remote)
     backend = _backend(_FakeConnection())
-    get_all_calls = 0
+    remotes: list[_FakeRemoteInterface] = []
 
-    def broken_get_all(*_arguments: object) -> tuple[object, ...]:
-        nonlocal get_all_calls
-        get_all_calls += 1
-        raise MprisBackendError(
-            "QDBusArgument conversion made no progress for signature a{sv}"
-        )
+    def typed_remote(*_arguments: object) -> _FakeRemoteInterface:
+        remote = _FakeRemoteInterface()
+        remotes.append(remote)
+        return remote
 
-    monkeypatch.setattr(backend, "_call", broken_get_all)
+    monkeypatch.setattr(backend, "_remote_interface", typed_remote)
+    monkeypatch.setattr(
+        backend,
+        "_call",
+        lambda *_arguments: pytest.fail("property reads must not use raw GetAll"),
+    )
 
     result = backend.read_properties(
         "org.mpris.MediaPlayer2.test",
         "org.mpris.MediaPlayer2.Player",
     )
 
-    assert remote.timeout_ms == 5_000
+    assert len(remotes) == 1
+    assert result.diagnostics == ()
     assert result.values["PlaybackStatus"] == "Playing"
+    assert result.values["Position"] == 123456
     assert result.values["Metadata"] == {
+        "mpris:artUrl": "file:///tmp/cover.jpg",
+        "mpris:length": 9876543,
+        "mpris:trackid": "/track/42",
         "xesam:title": "Example",
         "xesam:artist": ("Artist",),
+        "xesam:album": "Album",
+        "xesam:url": "file:///music/example.flac",
     }
-    assert result.values["Position"] == 123456
-    assert "MaximumRate" not in result.values
-    assert not any("a{sv}" in item for item in result.diagnostics)
-    assert any("MaximumRate: unavailable" in item for item in result.diagnostics)
 
-    backend.read_properties(
-        "org.mpris.MediaPlayer2.another",
+
+def test_each_typed_property_read_has_independent_error_state(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    failures = {
+        "MinimumRate": _FakeError(
+            valid=True,
+            name="org.freedesktop.DBus.Error.NotSupported",
+            message="MinimumRate is not supported",
+        )
+    }
+    backend = _backend(_FakeConnection())
+    remotes: list[_FakeRemoteInterface] = []
+
+    def sticky_remote(*_arguments: object) -> _FakeRemoteInterface:
+        remote = _FakeRemoteInterface(failures, sticky_error=True)
+        remotes.append(remote)
+        return remote
+
+    monkeypatch.setattr(backend, "_remote_interface", sticky_remote)
+
+    result = backend.read_properties(
+        "org.mpris.MediaPlayer2.test",
         "org.mpris.MediaPlayer2.Player",
     )
-    assert get_all_calls == 1
+
+    assert len(remotes) == 1
+    assert result.values["PlaybackStatus"] == "Playing"
+    assert result.values["Position"] == 123456
+    assert result.values["Rate"] == 1.0
+    assert result.values["Volume"] == 0.75
+    assert "MinimumRate" not in result.values
+    assert result.diagnostics == (
+        "MinimumRate: unavailable (org.freedesktop.DBus.Error.NotSupported: "
+        "MinimumRate is not supported)",
+    )
 
 
-def test_service_disappearance_during_get_all_remains_player_level_failure(
+def test_service_disappearance_during_typed_read_remains_player_level_failure(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     backend = _backend(_FakeConnection())
 
-    def disappeared(*_arguments: object) -> tuple[object, ...]:
+    def disappeared(*_arguments: object) -> _FakeRemoteInterface:
         raise MprisServiceUnavailable("name has no owner")
 
-    monkeypatch.setattr(backend, "_call", disappeared)
+    monkeypatch.setattr(backend, "_remote_interface", disappeared)
 
     with pytest.raises(MprisServiceUnavailable, match="name has no owner"):
         backend.read_properties(
