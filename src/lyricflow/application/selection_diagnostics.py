@@ -15,7 +15,8 @@ def _value(value: object | None) -> str:
 def _artists(artists: tuple[str, ...] | None) -> str:
     if artists is None:
         return UNAVAILABLE
-    return ", ".join(artists) if artists else "<empty>"
+    rendered = ", ".join(artist for artist in artists if artist.strip())
+    return rendered or "<empty>"
 
 
 def _assessment_lines(assessment: PlayerAssessment) -> list[str]:

@@ -68,6 +68,21 @@ def test_presentation_suffixes_are_removed_only_from_candidate(
     )
 
 
+def test_firefox_youtube_decoration_is_not_misparsed_as_song_separator() -> None:
+    ambiguous = parse_youtube_title(
+        "(2) How China's Biggest Scammer Got Caught - YouTube", ("",)
+    )
+    musical = parse_youtube_title("Artist - Song - YouTube", ("Uploader",))
+
+    assert ambiguous is None
+    assert musical is not None
+    assert musical.artists == ("Artist",)
+    assert musical.title == "Song"
+    assert "removed browser presentation suffix '- YouTube'" in (
+        musical.transformations
+    )
+
+
 @pytest.mark.parametrize(
     "version_title",
     (

@@ -44,7 +44,10 @@ def _quality(snapshot: PlayerSnapshot) -> tuple[int, tuple[str, ...]]:
     metadata = snapshot.metadata
     evidence = (
         (metadata.title is not None and bool(metadata.title.strip()), "usable title"),
-        (bool(metadata.artists), "usable artist"),
+        (
+            any(artist.strip() for artist in metadata.artists or ()),
+            "usable artist",
+        ),
         (metadata.duration_us is not None, "usable duration"),
         (snapshot.position_us is not None, "usable position"),
         (metadata.url is not None and bool(metadata.url.strip()), "media URL"),

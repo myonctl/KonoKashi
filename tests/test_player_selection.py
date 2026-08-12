@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import json
+
 from lyricflow.domain.models import PlayerListResult
 from lyricflow.domain.tracks import PlayerSelectionConfig
 from tests.stage2_helpers import (
+    FIXTURES,
     fixture_snapshot,
     player_list,
     selection_service,
@@ -81,6 +84,49 @@ def test_weaker_firefox_duplicate_is_suppressed_naturally() -> None:
     assert "lower selection rank/metadata quality" in result.suppressed[0].reason
     assert result.selected is not None
     assert any("weaker duplicate" in reason for reason in result.selected.reasons)
+
+
+def test_blank_firefox_artist_and_youtube_suffix_do_not_beat_richer_duplicate() -> None:
+    fixture = json.loads(
+        (FIXTURES / "stage2/youtube_non_music_duplicate.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    url = f"https://www.youtube.com/watch?v={fixture['video_id']}"
+    firefox_data = fixture["firefox"]
+    plasma_data = fixture["plasma"]
+    firefox = snapshot(
+        firefox_data["service"],
+        status="Paused",
+        title=firefox_data["title"],
+        artists=tuple(firefox_data["artists"]),
+        url=url,
+        duration_us=firefox_data["duration_us"],
+        position_us=firefox_data["position_us"],
+    )
+    plasma = snapshot(
+        plasma_data["service"],
+        status="Paused",
+        title=plasma_data["title"],
+        artists=tuple(plasma_data["artists"]),
+        url=url,
+        duration_us=plasma_data["duration_us"],
+        position_us=plasma_data["position_us"],
+    )
+
+    result = selection_service().select(player_list(firefox, plasma))
+
+    assert selected_name(result) == "plasma-browser-integration"
+    assert result.selected is not None
+    assert result.selected.track.candidate.title == (
+        "How China's Biggest Scammer Got Caught"
+    )
+    assert result.selected.track.candidate.artists == ()
+    assert result.selected.track.confidence.value == "Low"
+    assert [
+        item.assessment.track.raw_snapshot.service_name for item in result.suppressed
+    ] == ["firefox.instance_1_58"]
+    assert "+ usable artist" not in result.suppressed[0].assessment.reasons
 
 
 def test_same_youtube_video_with_different_playlist_parameters_is_duplicate() -> None:

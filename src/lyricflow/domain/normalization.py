@@ -23,6 +23,7 @@ _QUOTE_TRANSLATION = str.maketrans(
 )
 _FEATURING = re.compile(r"\b(?:feat(?:uring)?|ft)\.?\s+", re.IGNORECASE)
 _LEADING_BROWSER_COUNT = re.compile(r"^\(\d+\)\s+")
+_BROWSER_YOUTUBE_SUFFIX = re.compile(r"\s+-\s+youtube\s*$", re.IGNORECASE)
 _PRESENTATION_GROUP = re.compile(
     r"\s*[\[(](?:official\s+(?:music\s+)?video|official\s+audio|lyrics?|"
     r"lyric\s+video|music\s+video|hd|4k|full\s+mtv)[\])]\s*$",
@@ -118,6 +119,10 @@ def parse_youtube_title(
     if without_count != title_text:
         transformations.append("removed browser notification-count prefix")
         title_text = without_count
+    without_youtube = _BROWSER_YOUTUBE_SUFFIX.sub("", title_text)
+    if without_youtube != title_text:
+        transformations.append("removed browser presentation suffix '- YouTube'")
+        title_text = without_youtube.rstrip()
 
     parts = re.split(r"\s+-\s+", title_text, maxsplit=1)
     if len(parts) != 2 or not parts[0].strip() or not parts[1].strip():

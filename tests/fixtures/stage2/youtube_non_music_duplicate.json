@@ -1,0 +1,22 @@
+{
+  "fixture_kind": "sanitized Stage 2 live-smoke regression",
+  "video_id": "a4EcjsnM6ro",
+  "firefox": {
+    "service": "firefox.instance_1_58",
+    "title": "(2) How China's Biggest Scammer Got Caught - YouTube",
+    "artists": [
+      ""
+    ],
+    "duration_us": 1799000000,
+    "position_us": 752000000
+  },
+  "plasma": {
+    "service": "plasma-browser-integration",
+    "title": "How China's Biggest Scammer Got Caught",
+    "artists": [
+      "fern"
+    ],
+    "duration_us": 1799621000,
+    "position_us": 752463062
+  }
+}
