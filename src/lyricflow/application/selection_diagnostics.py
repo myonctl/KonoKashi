@@ -39,8 +39,22 @@ def _assessment_lines(assessment: PlayerAssessment) -> list[str]:
         if candidate.duration_us is not None
         else "duration: <unavailable>",
         f"confidence: {track.confidence.value}",
-        "selection reasons:",
     ]
+    if track.automatic_candidate is not None:
+        automatic = track.automatic_candidate
+        lines.extend(
+            (
+                f"automatic artist: {_artists(automatic.artists)}",
+                f"automatic title: {_value(automatic.title)}",
+                "automatic confidence: "
+                + (
+                    UNAVAILABLE
+                    if track.automatic_confidence is None
+                    else track.automatic_confidence.value
+                ),
+            )
+        )
+    lines.append("selection reasons:")
     lines.extend(f"  {reason}" for reason in assessment.reasons)
     lines.append("resolution evidence:")
     lines.extend(f"  - {evidence}" for evidence in track.evidence)
@@ -49,6 +63,16 @@ def _assessment_lines(assessment: PlayerAssessment) -> list[str]:
         for evidence in candidate.evidence
         if evidence not in track.evidence
     )
+    if track.automatic_candidate is not None:
+        lines.append("automatic transformations:")
+        lines.extend(
+            (
+                f"  - {transformation}"
+                for transformation in track.automatic_candidate.transformations
+            )
+            if track.automatic_candidate.transformations
+            else ("  - none",)
+        )
     lines.append("transformations:")
     lines.extend(
         (f"  - {transformation}" for transformation in candidate.transformations)

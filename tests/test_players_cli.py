@@ -537,6 +537,9 @@ def test_players_select_approved_correction_survives_fresh_cli_objects(
     assert "resolved artist: S3RL feat. sara 日本語" in restarted
     assert "resolved title: Will to Be (User Radio Edit)" in restarted
     assert "confidence: Approved" in restarted
+    assert "automatic artist: S3RL feat. sara" in restarted
+    assert "automatic title: Will to be" in restarted
+    assert "automatic confidence: High" in restarted
     assert "user-approved correction" in restarted
 
     assert (

@@ -45,7 +45,7 @@ def test_relative_xdg_data_home_is_ignored(tmp_path: Path) -> None:
 
 
 def test_brand_new_unicode_database_migrates_in_order_and_reopens_noop(
-    tmp_path: Path,
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     path = tmp_path / "Unicode space 日本語" / "lyrics data.sqlite3"
     database = SQLiteDatabase(path)
@@ -54,6 +54,10 @@ def test_brand_new_unicode_database_migrates_in_order_and_reopens_noop(
     first_history = database.migration_history()
     assert [item[0] for item in first_history] == [1, 2]
 
+    def unexpected_transaction() -> None:
+        raise AssertionError("current-schema initialization opened a write transaction")
+
+    monkeypatch.setattr(database, "transaction", unexpected_transaction)
     assert database.initialize() == CURRENT_SCHEMA_VERSION
     assert database.migration_history() == first_history
 
@@ -88,7 +92,9 @@ def test_failed_migration_rolls_back_only_that_migration(tmp_path: Path) -> None
     assert "half_applied" not in names
 
 
-def test_unknown_newer_schema_is_refused_without_reset(tmp_path: Path) -> None:
+def test_unknown_newer_schema_is_refused_without_reset(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     database = SQLiteDatabase(tmp_path / "newer.sqlite3")
     database.initialize()
     with database.transaction() as connection:
@@ -98,6 +104,11 @@ def test_unknown_newer_schema_is_refused_without_reset(tmp_path: Path) -> None:
             VALUES (99, 'future', 'future', '2026-08-12T00:00:00+00:00')
             """
         )
+
+    def unexpected_transaction() -> None:
+        raise AssertionError("newer-schema refusal opened a write transaction")
+
+    monkeypatch.setattr(database, "transaction", unexpected_transaction)
 
     with pytest.raises(UnsupportedSchemaError, match="newer"):
         database.initialize()

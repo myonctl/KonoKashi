@@ -30,6 +30,15 @@ class TrackResolver:
         """Resolve one snapshot while retaining the entire raw snapshot."""
 
         source = self._sources.resolve(snapshot)
+        if isinstance(source.identity, YouTubeIdentity):
+            automatic_candidate = self._youtube_candidate(snapshot)
+        else:
+            automatic_candidate = self._reported_candidate(
+                snapshot, is_local=isinstance(source.identity, LocalFileIdentity)
+            )
+        automatic_confidence, automatic_warnings = self._confidence(
+            snapshot, automatic_candidate, source.identity
+        )
         approved = self._overrides.get(source.identity)
         if approved is not None:
             candidate = TrackCandidate(
@@ -48,26 +57,21 @@ class TrackResolver:
                 source.identity,
                 candidate,
                 Confidence.APPROVED,
-                source.evidence + candidate.evidence,
-                source.warnings,
+                source.evidence + automatic_candidate.evidence + candidate.evidence,
+                source.warnings + automatic_warnings,
                 user_approved=True,
+                automatic_candidate=automatic_candidate,
+                automatic_confidence=automatic_confidence,
             )
 
-        if isinstance(source.identity, YouTubeIdentity):
-            candidate = self._youtube_candidate(snapshot)
-        else:
-            candidate = self._reported_candidate(
-                snapshot, is_local=isinstance(source.identity, LocalFileIdentity)
-            )
-        confidence, warnings = self._confidence(snapshot, candidate, source.identity)
-        evidence = source.evidence + candidate.evidence
+        evidence = source.evidence + automatic_candidate.evidence
         return ResolvedTrack(
             snapshot,
             source.identity,
-            candidate,
-            confidence,
+            automatic_candidate,
+            automatic_confidence,
             evidence,
-            source.warnings + warnings,
+            source.warnings + automatic_warnings,
         )
 
     def _reported_candidate(

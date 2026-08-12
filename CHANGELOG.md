@@ -99,8 +99,9 @@ unreleased.
   remain pending, and Stage 4 remains unauthorized.
 - Replaced the production `players select` process-local override adapter with
   SQLite-backed corrections and persisted player settings while retaining the
-  in-memory adapter for fast application tests. Raw MPRIS snapshots remain
-  unchanged and generic session-only sources cannot receive durable approval.
+  in-memory adapter for fast application tests. Raw MPRIS snapshots and the
+  automatic candidate remain visible beneath an approved correction, while
+  generic session-only sources cannot receive durable approval.
 
 - Closed Stage 2 after the user-prepared real KDE session passed the tagged
   Strawberry local identity/version-marker check, exact JessKah YouTube

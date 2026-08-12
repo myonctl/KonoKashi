@@ -124,7 +124,8 @@ class SQLiteDatabase:
         expected_versions = tuple(range(1, len(ordered) + 1))
         if tuple(item.version for item in ordered) != expected_versions:
             raise ValueError("migrations must be sequential and start at version 1")
-        self._ensure_history_table()
+        if not self._history_table_exists():
+            self._ensure_history_table()
         applied = self.migration_history()
         by_version = {migration.version: migration for migration in ordered}
         if applied and applied[-1][0] > len(ordered):
@@ -160,6 +161,19 @@ class SQLiteDatabase:
                 )
                 """
             )
+
+    def _history_table_exists(self) -> bool:
+        if not self.path.exists():
+            return False
+        with self.connection(readonly=True) as connection:
+            row = connection.execute(
+                """
+                SELECT 1 FROM sqlite_master
+                WHERE type = 'table' AND name = ?
+                """,
+                ("schema_migrations",),
+            ).fetchone()
+        return row is not None
 
     def _apply_migration(self, migration: Migration) -> None:
         try:

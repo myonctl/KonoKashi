@@ -204,4 +204,8 @@ def test_user_approved_override_wins_for_same_stable_source() -> None:
 
     assert resolved.confidence is Confidence.APPROVED
     assert resolved.user_approved is True
+    assert resolved.automatic_candidate is not None
+    assert resolved.automatic_candidate.title == "Every Single Day"
+    assert resolved.automatic_candidate.artists == ("S3RL feat. JessKah",)
+    assert resolved.automatic_confidence is Confidence.HIGH
     assert "user-approved correction" in resolved.evidence[-1]

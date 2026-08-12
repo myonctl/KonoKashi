@@ -60,6 +60,13 @@ def _validate(document: LyricDocument) -> None:
                 and line.end_ms < line.start_ms
             ):
                 raise StorageValidationError("lyric end timestamps precede their start")
+            if (
+                line.source_line_id is not None
+                and line.source_line_id not in known_lines
+            ):
+                raise StorageValidationError(
+                    "lyric representation line references an unknown source line"
+                )
     for alignment in document.alignments:
         if (
             alignment.source_line_id not in known_lines

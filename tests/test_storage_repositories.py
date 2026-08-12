@@ -134,6 +134,8 @@ def test_persisted_override_wins_after_fresh_resolver_objects(tmp_path: Path) ->
     assert resolved.confidence is Confidence.APPROVED
     assert resolved.user_approved is True
     assert resolved.candidate.title == "Every Single Day (User Version)"
+    assert resolved.automatic_candidate == automatic.candidate
+    assert resolved.automatic_confidence is automatic.confidence
     assert resolved.raw_snapshot is raw
     assert any("user-approved correction" in item for item in resolved.evidence)
 
@@ -297,6 +299,31 @@ def test_untimed_document_and_explicit_delete_round_trip(tmp_path: Path) -> None
     assert repository.get("plain-1") == document
     assert repository.delete("plain-1") is True
     assert repository.delete("plain-1") is False
+
+
+def test_lyrics_reject_unknown_inherited_timing_source(tmp_path: Path) -> None:
+    repository = open_storage(tmp_path / "invalid-alignment.sqlite3").lyrics
+    document = LyricDocument(
+        "invalid-source",
+        LyricDocumentKind.PLAIN,
+        "local",
+        "line",
+        None,
+        ApprovalState.UNREVIEWED,
+        NOW,
+        representations=(
+            LyricRepresentation(
+                "translation",
+                RepresentationKind.TRANSLATED,
+                ContentProvenance.USER,
+                ApprovalState.UNREVIEWED,
+                (LyricLine("translated-1", "line", source_line_id="missing"),),
+            ),
+        ),
+    )
+
+    with pytest.raises(StorageValidationError, match="unknown source line"):
+        repository.put(document)
 
 
 def test_matches_and_provider_cache_remain_separate(tmp_path: Path) -> None:

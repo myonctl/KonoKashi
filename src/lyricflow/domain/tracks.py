@@ -50,6 +50,8 @@ class ResolvedTrack:
     evidence: tuple[str, ...] = field(default_factory=tuple)
     warnings: tuple[str, ...] = field(default_factory=tuple)
     user_approved: bool = False
+    automatic_candidate: TrackCandidate | None = None
+    automatic_confidence: Confidence | None = None
 
 
 @dataclass(frozen=True, slots=True)
