@@ -15,9 +15,14 @@ from lyricflow.infrastructure.mpris.backend import (
     Subscription,
 )
 from lyricflow.infrastructure.mpris.qt_dbus_client import (
+    DBUS_INTERFACE,
+    DBUS_PATH,
     DBUS_PROPERTIES_INTERFACE,
+    DBUS_SERVICE,
+    NAME_OWNER_CHANGED_SLOT,
     QtDbusBackend,
     _MprisPlayerInterface,
+    _NameOwnerChangedReceiver,
 )
 from lyricflow.infrastructure.mpris.qt_dbus_values import (
     PROPERTIES_SLOT,
@@ -158,6 +163,14 @@ def _subscribe(backend: QtDbusBackend) -> Subscription:
     )
 
 
+def _subscribe_services(
+    backend: QtDbusBackend,
+    registered: list[str],
+    unregistered: list[str],
+) -> Subscription:
+    return backend.subscribe_service_changes(registered.append, unregistered.append)
+
+
 def test_player_proxy_declares_metadata_as_qvariant_map() -> None:
     QCoreApplication.instance() or QCoreApplication(["lyricflow-test"])
     connection = QDBusConnection("lyricflow-test-no-bus")
@@ -262,6 +275,65 @@ def test_service_disappearance_during_typed_read_remains_player_level_failure(
             "org.mpris.MediaPlayer2.test",
             "org.mpris.MediaPlayer2.Player",
         )
+
+
+def test_service_lifecycle_uses_authoritative_name_owner_changed_signal() -> None:
+    connection = _FakeConnection(connect_results=(True,))
+    registered: list[str] = []
+    unregistered: list[str] = []
+    subscription = _subscribe_services(_backend(connection), registered, unregistered)
+
+    assert len(connection.connect_calls) == 1
+    call = connection.connect_calls[0]
+    assert call[:4] == (
+        DBUS_SERVICE,
+        DBUS_PATH,
+        DBUS_INTERFACE,
+        "NameOwnerChanged",
+    )
+    assert isinstance(call[-2], _NameOwnerChangedReceiver)
+    assert call[-1] == NAME_OWNER_CHANGED_SLOT
+    assert isinstance(call[-1], str)
+
+    receiver = cast(_NameOwnerChangedReceiver, call[-2])
+    receiver.nameOwnerChanged("org.mpris.MediaPlayer2.test", "", ":1.42")
+    receiver.nameOwnerChanged("org.mpris.MediaPlayer2.test", ":1.42", "")
+    receiver.nameOwnerChanged("org.mpris.MediaPlayer2.test", ":1.42", ":1.43")
+    receiver.nameOwnerChanged("org.mpris.MediaPlayer2.test", ":1.43", ":1.43")
+
+    assert registered == [
+        "org.mpris.MediaPlayer2.test",
+        "org.mpris.MediaPlayer2.test",
+    ]
+    assert unregistered == [
+        "org.mpris.MediaPlayer2.test",
+        "org.mpris.MediaPlayer2.test",
+    ]
+
+    subscription.close()
+    assert connection.disconnect_calls == [call]
+
+
+def test_false_lifecycle_connection_result_is_an_explicit_error() -> None:
+    connection = _FakeConnection(connect_results=(False,))
+
+    with pytest.raises(MprisBackendError, match="connect D-Bus lifecycle"):
+        _subscribe_services(_backend(connection), [], [])
+
+
+def test_lifecycle_binding_value_error_is_converted_to_backend_error() -> None:
+    connection = _FakeConnection(connect_error=ValueError("wrong argument values"))
+
+    with pytest.raises(MprisBackendError, match="lifecycle slot signature"):
+        _subscribe_services(_backend(connection), [], [])
+
+
+def test_false_lifecycle_disconnect_result_is_an_explicit_error() -> None:
+    connection = _FakeConnection(connect_results=(True,), disconnect_results=(False,))
+    subscription = _subscribe_services(_backend(connection), [], [])
+
+    with pytest.raises(MprisBackendError, match="disconnect D-Bus lifecycle"):
+        subscription.close()
 
 
 def test_player_signal_subscriptions_use_runtime_compatible_slot_strings() -> None:

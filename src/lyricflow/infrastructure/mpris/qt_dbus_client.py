@@ -5,7 +5,15 @@ from __future__ import annotations
 from collections.abc import Callable, Sequence
 from typing import ClassVar, NoReturn, TypeAlias, cast
 
-from PySide6.QtCore import Property, QCoreApplication, QEventLoop, QObject, QTimer
+from PySide6.QtCore import (
+    SLOT,
+    Property,
+    QCoreApplication,
+    QEventLoop,
+    QObject,
+    QTimer,
+    Slot,
+)
 from PySide6.QtDBus import (
     QDBusAbstractInterface,
     QDBusConnection,
@@ -36,6 +44,10 @@ DBUS_SERVICE = "org.freedesktop.DBus"
 DBUS_PATH = "/org/freedesktop/DBus"
 DBUS_INTERFACE = "org.freedesktop.DBus"
 DBUS_PROPERTIES_INTERFACE = "org.freedesktop.DBus.Properties"
+NAME_OWNER_CHANGED_SLOT = cast(
+    bytes,
+    SLOT("nameOwnerChanged(QString,QString,QString)"),
+)
 
 _CloseCallback: TypeAlias = Callable[[], None]
 
@@ -66,6 +78,35 @@ class _CallableSubscription:
         self._close_callback = None
         if callback is not None:
             callback()
+
+
+class _NameOwnerChangedReceiver(QObject):
+    """Translate daemon NameOwnerChanged signals into service lifecycle calls."""
+
+    def __init__(
+        self,
+        on_registered: ServiceHandler,
+        on_unregistered: ServiceHandler,
+    ) -> None:
+        super().__init__()
+        self._on_registered = on_registered
+        self._on_unregistered = on_unregistered
+
+    @Slot(str, str, str)
+    def nameOwnerChanged(
+        self,
+        name: str,
+        old_owner: str,
+        new_owner: str,
+    ) -> None:
+        """Report acquisition, loss, and direct owner replacement."""
+
+        if old_owner == new_owner:
+            return
+        if old_owner:
+            self._on_unregistered(name)
+        if new_owner:
+            self._on_registered(name)
 
 
 class _MprisInterface(QDBusAbstractInterface):
@@ -190,7 +231,6 @@ class QtDbusBackend:
     ) -> None:
         self._connection = connection or QDBusConnection.sessionBus()
         self._timeout_ms = timeout_ms
-        self._connection_interface = self._connection.interface()
 
     def _ensure_connected(self) -> None:
         if self._connection.isConnected():
@@ -323,15 +363,48 @@ class QtDbusBackend:
         on_registered: ServiceHandler,
         on_unregistered: ServiceHandler,
     ) -> _CallableSubscription:
-        """Use the connection interface's service lifecycle signals."""
+        """Subscribe directly to the daemon's authoritative owner changes."""
 
         self._ensure_connected()
-        self._connection_interface.serviceRegistered.connect(on_registered)
-        self._connection_interface.serviceUnregistered.connect(on_unregistered)
+        receiver = _NameOwnerChangedReceiver(on_registered, on_unregistered)
+        try:
+            connected = self._connection.connect(
+                DBUS_SERVICE,
+                DBUS_PATH,
+                DBUS_INTERFACE,
+                "NameOwnerChanged",
+                receiver,
+                NAME_OWNER_CHANGED_SLOT,
+            )
+        except (TypeError, ValueError) as binding_error:
+            receiver.deleteLater()
+            raise MprisBackendError(
+                "installed PySide6 rejected the D-Bus lifecycle slot signature"
+            ) from binding_error
+        if not connected:
+            error = self._connection.lastError()
+            receiver.deleteLater()
+            raise MprisBackendError(
+                "could not connect D-Bus lifecycle signal: "
+                f"{_error_message(error.name(), error.message())}"
+            )
 
         def close() -> None:
-            self._connection_interface.serviceRegistered.disconnect(on_registered)
-            self._connection_interface.serviceUnregistered.disconnect(on_unregistered)
+            disconnected = self._connection.disconnect(
+                DBUS_SERVICE,
+                DBUS_PATH,
+                DBUS_INTERFACE,
+                "NameOwnerChanged",
+                receiver,
+                NAME_OWNER_CHANGED_SLOT,
+            )
+            receiver.deleteLater()
+            if not disconnected:
+                error = self._connection.lastError()
+                raise MprisBackendError(
+                    "could not disconnect D-Bus lifecycle signal: "
+                    f"{_error_message(error.name(), error.message())}"
+                )
 
         return _CallableSubscription(close)
 
