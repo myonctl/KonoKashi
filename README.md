@@ -10,9 +10,11 @@ under it, and an optional translation forms a third layer.
 
 ## Current status
 
-Stage 1 — MPRIS diagnostic core — has complete implementation and automated
-coverage. Real KDE, Strawberry, Firefox, and Plasma Browser Integration
-verification is pending, so Stage 1 is not yet accepted as complete.
+Stage 1 — MPRIS diagnostic core — is **Completed**. The accepted live
+verification at `ba77489` covered Strawberry, Firefox native MPRIS, Plasma
+Browser Integration, three-player enumeration, live changes, player lifecycle,
+and clean interrupt handling. Stage 2 remains Proposed and awaits explicit user
+authorization.
 
 The [`myonctl/LyricFlow`](https://github.com/myonctl/LyricFlow) GitHub repository
 is private during pre-alpha development. Its `origin` remote and default branch
@@ -70,8 +72,8 @@ Supporting authorities:
 - `docs/DEVELOPMENT_WORKFLOW.md` — exact start, implementation, Git, bug, and
   handoff workflow.
 - `docs/STAGE_COMPLETION_TEMPLATE.md` — required stage completion report.
-- `docs/STAGE_1_COMPLETION.md` — Stage 1 implementation and pending manual-gate
-  evidence.
+- `docs/STAGE_1_COMPLETION.md` — completed Stage 1 implementation, automated,
+  and manual evidence.
 - `docs/adr/` — accepted and historical architecture/process decisions.
 
 `PLAN_MANIFEST.json` is a machine-readable document inventory, not an authority.

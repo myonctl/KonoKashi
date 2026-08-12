@@ -58,14 +58,22 @@ unreleased.
 
 ### Changed
 
+- Closed Stage 1 as Completed after explicit acceptance of the live
+  `ba77489` result and passing-evidence commit `9abdd59`. The accepted
+  cumulative result covers useful three-player enumeration, Strawberry and
+  Plasma Browser Integration inspection, best-effort native Firefox behavior,
+  metadata/Seeked/playback changes, Strawberry disappearance/appearance and
+  playback after relaunch, clean SIGINT exit 130 without traceback, and no
+  supported raw-`a{sv}` conversion warning. Stage 2 remains Proposed /
+  awaiting explicit authorization and is not Active.
 - Replaced the connection-interface lifecycle convenience signals with a direct
   typed D-Bus `NameOwnerChanged` subscription after live retest #4a missed a
   complete Strawberry service loss.
 - Recorded retest #4a append-only as a partial pass and retest #4b as a pass at
   `ba77489`, including typed list output, both metadata changes, explicit
   Strawberry disappearance/appearance and relaunch playback, and direct exit
-  130. Stage 1 remains unmarked pending explicit acceptance; Stage 2 remains
-  unauthorized.
+  130. The Stage 1 closure entry above records its later acceptance; Stage 2
+  remains unauthorized.
 - Replaced raw `GetAll`/untyped fallback property retrieval with statically
   typed MPRIS proxies, making list Metadata usable on PySide6 6.11.1 and
   isolating sticky `lastError()` state per property result.
