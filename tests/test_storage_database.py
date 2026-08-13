@@ -53,7 +53,7 @@ def test_brand_new_unicode_database_migrates_in_order_and_reopens_noop(
 
     assert database.initialize() == CURRENT_SCHEMA_VERSION
     first_history = database.migration_history()
-    assert [item[0] for item in first_history] == [1, 2, 3]
+    assert [item[0] for item in first_history] == [1, 2, 3, 4]
 
     def unexpected_transaction() -> None:
         raise AssertionError("current-schema initialization opened a write transaction")
@@ -99,7 +99,7 @@ def test_published_stage_three_database_upgrades_without_losing_approved_match(
             """
         )
 
-    assert database.initialize() == 3
+    assert database.initialize() == 4
 
     with database.connection(readonly=True) as connection:
         row = connection.execute(
@@ -113,7 +113,61 @@ def test_published_stage_three_database_upgrades_without_losing_approved_match(
         ).fetchone()
     assert tuple(row) == ("approved-doc", "approved", "Approved")
     assert evidence_table[0] == "lyrics_match_evidence"
-    assert [item[0] for item in database.migration_history()] == [1, 2, 3]
+    assert [item[0] for item in database.migration_history()] == [1, 2, 3, 4]
+
+
+def test_published_stage_four_database_upgrades_without_losing_original_lines(
+    tmp_path: Path,
+) -> None:
+    database = SQLiteDatabase(tmp_path / "stage-four.sqlite3")
+    database.initialize(MIGRATIONS[:3])
+    with database.transaction() as connection:
+        connection.execute(
+            """
+            INSERT INTO lyrics_documents(
+                document_id, document_kind, source_name, original_text,
+                raw_text_checksum, language, script, approval_state, retrieved_at
+            ) VALUES ('doc', 'synced', 'fixture', '君の声', 'checksum', 'ja',
+                      'Jpan', 'unreviewed', '2026-08-13T00:00:00+00:00')
+            """
+        )
+        connection.execute(
+            """
+            INSERT INTO lyric_representations(
+                document_id, representation_id, representation_kind, language,
+                script, provenance, approval_state, position
+            ) VALUES ('doc', 'original', 'original', 'ja', 'Jpan', 'provider',
+                      'unreviewed', 0)
+            """
+        )
+        connection.execute(
+            """
+            INSERT INTO lyric_lines(
+                document_id, representation_id, line_id, position, line_text,
+                start_ms, timing_provenance
+            ) VALUES ('doc', 'original', 'line-0042', 0, '君の声', 91820,
+                      'provider')
+            """
+        )
+
+    assert database.initialize() == 4
+
+    with database.connection(readonly=True) as connection:
+        original = connection.execute(
+            "SELECT line_id, line_text, start_ms FROM lyric_lines"
+        ).fetchone()
+        stage5_tables = {
+            str(row[0])
+            for row in connection.execute(
+                """
+                SELECT name FROM sqlite_master
+                WHERE type = 'table' AND name LIKE 'lyric_representation_%'
+                """
+            )
+        }
+    assert tuple(original) == ("line-0042", "君の声", 91_820)
+    assert "lyric_representation_candidates" in stage5_tables
+    assert "lyric_representation_decisions" in stage5_tables
 
 
 def test_failed_migration_rolls_back_only_that_migration(tmp_path: Path) -> None:

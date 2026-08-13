@@ -26,6 +26,13 @@ authorize implementation. Staged v1 ordering lives in `docs/ROADMAP.md`.
 
 ## UX improvements
 
+- **Per-track representation display overrides** — Extend Stage 5's durable
+  global original/romanized/translated toggles with optional stable-track
+  overrides when the desktop settings model exists. Why: the product spec
+  permits track-specific display choices without changing safe global defaults.
+  Status: Deferred to the desktop/settings stage. Prerequisites: Stage 7 UI and
+  a deliberate source-identity settings schema.
+
 - **Fast manual lyric synchronization** — When reliable synchronized lyrics
   cannot be found or generated, let the user paste or obtain correct plain
   lyrics, play the exact recording, and stamp each line start with one key or
@@ -82,43 +89,49 @@ authorize implementation. Staged v1 ordering lives in `docs/ROADMAP.md`.
 
 - **Original-script preservation** — Store and display original non-Latin
   lyrics without destructive conversion. Why: source text must remain
-  authoritative. Status: Planned core requirement. Prerequisites: lyric
-  representation model. Related: ADR 0006; Roadmap Stages 4–5.
+  authoritative. Status: Implemented in Stages 4–5 and tested through original
+  refresh/correction isolation. Related: ADR 0006; Roadmap Stages 4–5.
 - **Stacked representation layers** — Show romanized/transliterated text
   directly under the original and optional translation underneath that. Why:
-  readability must not replace the original. Status: Planned core requirement.
-  Prerequisites: stable line alignment. Related: ADR 0006.
+  readability must not replace the original. Status: Implemented at the Stage 5
+  application/CLI model; desktop rendering remains Stage 7. Related: ADR 0006.
 - **Other non-Latin scripts** — Support appropriate transliteration for
   Cyrillic, Greek, Arabic, Thai, and other scripts through replaceable engines.
-  Why: the model must not be limited to three languages. Status: Planned.
-  Prerequisites: language/script detection and adapter evaluation.
+  Why: the model must not be limited to three languages. Status: Initial
+  ICU-backed Cyrillic, Greek, Arabic, and Thai support is implemented; other or
+  unsupported scripts remain clean extension work.
 
 ## Romanization / transliteration
 
 - **Japanese romaji** — Generate or import aligned romaji while preserving
-  kanji/kana and ambiguous-reading diagnostics. Status: Planned.
-  Prerequisites: `RomanizationProviderPort`, provenance, correction UI.
+  kanji/kana and ambiguous-reading diagnostics. Status: Implemented in Stage 5
+  with Cutlet Modified Hepburn and durable CLI/application correction; desktop
+  UX remains later work.
 - **Korean romanization** — Generate or import aligned Hangul romanization with
-  uncertainty and pronunciation-aware correction. Status: Planned.
-  Prerequisites: `RomanizationProviderPort`, provenance, correction UI.
+  uncertainty and pronunciation-aware correction. Status: Implemented in Stage
+  5 with ICU Hangul-Latin and correction diagnostics.
 - **Chinese pinyin** — Generate or import pinyin where language, segmentation,
-  and readings can be handled responsibly. Status: Planned. Prerequisites:
-  language-aware engine evaluation and correction UI.
+  and readings can be handled responsibly. Status: Implemented in Stage 5 for
+  explicitly Chinese Han with ICU tone marks; ambiguous Han stays unavailable.
 - **Generated-output provenance** — Store generator name/version, source,
   confidence, uncertainty, and replacement history. Why: generated text must
-  never masquerade as provider or user-approved text. Status: Planned.
-  Prerequisites: representation persistence. Related: ADR 0006.
+  never masquerade as provider or user-approved text. Status: Implemented in
+  Stage 5 with qualitative uncertainty and typed schema 4 records. Related: ADR
+  0006.
 - **User romanization corrections** — Edit, approve, reject, or replace
-  generated lines without changing original lyrics. Status: Planned.
-  Prerequisites: aligned line identities and persistence. Related: Roadmap
-  Stages 5 and 8.
+  generated lines without changing original lyrics. Status: Implemented in
+  Stage 5 through current-document CLI/application operations; desktop UX
+  remains Stage 7/8. Related: Roadmap Stages 5 and 8.
 
 ## Translation
 
 - **Optional aligned translation** — Import or generate an independently
   toggleable third lyric layer. Why: meaning should be available without
-  replacing original or romanized text. Status: Planned. Prerequisites:
-  `TranslationProviderPort`, alignment, provenance and provider review.
+  replacing original or romanized text. Status: Imported/user-aligned storage,
+  approval, precedence, diagnostics, and toggle structure are implemented in
+  Stage 5. Translation generation remains Deferred; no cloud/API adapter exists.
+  Prerequisites for generation: `TranslationProviderPort`, provenance and
+  provider review.
 
 ## Sync improvements
 

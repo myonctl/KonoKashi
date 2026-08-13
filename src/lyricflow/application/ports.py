@@ -16,6 +16,7 @@ from lyricflow.domain.lyrics import (
     LyricsProviderResult,
     LyricsQuery,
     ProviderCacheEntry,
+    RepresentationKind,
 )
 from lyricflow.domain.models import (
     PlayerEvent,
@@ -23,6 +24,13 @@ from lyricflow.domain.models import (
     PlayerListResult,
     PlayerWatchStart,
     RawTrackMetadata,
+)
+from lyricflow.domain.representations import (
+    RepresentationCandidate,
+    RepresentationDecision,
+    RepresentationDisplaySettings,
+    RomanizationProviderResult,
+    RomanizationRequest,
 )
 from lyricflow.domain.tracks import (
     ApprovedTrackIdentity,
@@ -159,6 +167,14 @@ class SettingsRepositoryPort(Protocol):
     def put_player_selection(self, config: PlayerSelectionConfig) -> None:
         """Atomically replace preferred and ignored player settings."""
 
+    def get_representation_display(self) -> RepresentationDisplaySettings:
+        """Return durable layer toggles or the product defaults."""
+
+    def put_representation_display(
+        self, settings: RepresentationDisplaySettings
+    ) -> None:
+        """Atomically persist independent original/romanized/translated toggles."""
+
 
 class LyricsRepositoryPort(Protocol):
     """Store provider-neutral lyric documents without resolving providers."""
@@ -233,3 +249,44 @@ class LyricsCandidateDocumentPort(Protocol):
         self, candidate: LyricsProviderCandidate, retrieved_at: datetime
     ) -> tuple[LyricDocument | None, tuple[str, ...]]:
         """Build timed/plain/instrumental content or controlled diagnostics."""
+
+
+class RomanizationProviderPort(Protocol):
+    """Generate one line through replaceable offline language/script adapters."""
+
+    @property
+    def name(self) -> str:
+        """Stable composite provider name for diagnostics."""
+
+    def generate(self, request: RomanizationRequest) -> RomanizationProviderResult:
+        """Generate or return a controlled unavailable/failure result."""
+
+
+class RepresentationRepositoryPort(Protocol):
+    """Persist alternate candidates and user decisions independently of originals."""
+
+    def candidates(self, document_id: str) -> tuple[RepresentationCandidate, ...]:
+        """Return retained candidates in deterministic order."""
+
+    def decisions(self, document_id: str) -> tuple[RepresentationDecision, ...]:
+        """Return line-level user decisions in deterministic order."""
+
+    def put_candidates(self, candidates: tuple[RepresentationCandidate, ...]) -> None:
+        """Atomically insert or update explicitly aligned candidates."""
+
+    def replace_generated(
+        self,
+        document_id: str,
+        source_line_id: str,
+        kind: RepresentationKind,
+        candidate: RepresentationCandidate,
+    ) -> None:
+        """Atomically replace generated evidence for one exact original line."""
+
+    def put_decision(self, decision: RepresentationDecision) -> None:
+        """Atomically save one line-level draft, approval, or rejection."""
+
+    def delete_decision(
+        self, document_id: str, source_line_id: str, kind: RepresentationKind
+    ) -> bool:
+        """Reset only one selected line/kind decision."""

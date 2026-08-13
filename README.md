@@ -10,7 +10,10 @@ under it, and an optional translation forms a third layer.
 
 ## Current status
 
-Stages 1 through 4 are **Completed**. Stage 3 — persistence foundation — passed
+Stages 1 through 4 are **Completed**. Stage 5 — Romanization and multilingual
+layers — is Active and implemented locally; automated verification is in
+green and real manual verification/publication remain pending. Stage 3 —
+persistence foundation — passed
 the complete automated gate and real restart/persistence verification for
 schema initialization, approved corrections, and player settings. The policy
 selects one primary player,
@@ -19,8 +22,7 @@ identities, resolves conservative artist/title candidates, and persists
 approved corrections and accepted player settings in local SQLite storage.
 Stage 4 — lyrics resolution — passed its complete automated gate and accepted
 real Strawberry sidecar, LRCLIB, fresh-process offline-cache, and conservative
-no-result verification. Stage 5 is Proposed / awaiting explicit authorization
-and is not Active.
+no-result verification.
 
 The [`myonctl/LyricFlow`](https://github.com/myonctl/LyricFlow) GitHub repository
 is private during pre-alpha development. Its `origin` remote and default branch
@@ -35,9 +37,12 @@ without changing those raw observations. Stage 3 adds XDG-local SQLite
 migrations and typed repositories for identities, corrections, settings, and
 the provider-neutral lyric foundation. Stage 4 adds original-only LRC/plain
 parsing, adjacent and supported embedded sources, restart-safe cache/matches,
-and read-only LRCLIB retrieval. It does not synchronize playback, generate
-multilingual layers, or build a GUI. See `PROJECT_STATE.md` for evidence and
-`AGENT_TODO.md` for the only implementation authority.
+and read-only LRCLIB retrieval. Stage 5 adds offline, stable-line-aligned
+romanization/transliteration candidates, provider/import boundaries,
+provenance/uncertainty, durable user approval/rejection/reset, translation
+structure, and layer settings. It does not synchronize playback or build a
+GUI. See `PROJECT_STATE.md` for evidence and `AGENT_TODO.md` for the only
+implementation authority.
 
 ## Core product rules
 
@@ -89,8 +94,12 @@ Supporting authorities:
   storage, restart, cleanup, publication, and CI evidence.
 - `docs/STAGE_4_COMPLETION.md` — completed Stage 4 implementation, automated,
   local/provider/offline/no-result, publication, and CI evidence.
+- `docs/STAGE_5_COMPLETION.md` — Stage 5 implementation checkpoint and pending
+  automated/publication/manual verification gates.
 - `docs/adr/0010-stage4-lyrics-resolution.md` — accepted Stage 4 precedence,
   matching, cache/offline/refresh, privacy, and schema policy.
+- `docs/adr/0011-offline-romanization-routing.md` — accepted Stage 5 script
+  routing, offline engine, style, ambiguity, and replacement policy.
 - `docs/adr/` — accepted and historical architecture/process decisions.
 
 `PLAN_MANIFEST.json` is a machine-readable document inventory, not an authority.
@@ -106,9 +115,11 @@ python -m venv .venv
 .venv/bin/python -m pip install ".[dev]"
 ```
 
-PySide6, HTTPX, and Mutagen are runtime dependencies. pytest, Ruff, and mypy are
-development dependencies. Rationale, licensing cautions, and usage boundaries
-are recorded in `docs/DEPENDENCIES.md`.
+PySide6, HTTPX, Mutagen, Cutlet/Fugashi/UniDic-lite, and PyICU are runtime
+dependencies. PyICU requires system ICU development headers when installed
+from PyPI source. pytest, Ruff, and mypy are development dependencies.
+Rationale, licensing cautions, and usage boundaries are recorded in
+`docs/DEPENDENCIES.md`.
 
 ## Implemented commands
 
@@ -125,6 +136,9 @@ are recorded in `docs/DEPENDENCIES.md`.
 .venv/bin/lyricflow lyrics current
 .venv/bin/lyricflow lyrics current --offline
 .venv/bin/lyricflow lyrics current --refresh
+.venv/bin/lyricflow lyrics romanize current --language ja
+.venv/bin/lyricflow lyrics representations current --offline
+.venv/bin/lyricflow storage display show
 ```
 
 `doctor` checks local prerequisites only: Linux, the session D-Bus environment,
@@ -173,6 +187,35 @@ three-line preview; use `--full` only when deliberately printing complete lyric
 content. `--offline` forbids HTTP and reuses only local/durable data. `--refresh`
 bypasses automatic provider cache/matches while preserving approved data and a
 prior usable result on failure. The two flags cannot be combined.
+
+`lyrics romanize current` transforms each canonical original line locally and
+persists generated candidates by stable line ID. Use `--language ja`, `ko`, or
+`zh` when explicit metadata is needed to disambiguate short or Han-only text;
+Han-only input is not guessed as Japanese or Chinese. `--regenerate` replaces
+only generated cache for the selected `--line-id` values and never overwrites a
+user approval. `lyrics representations current` shows bounded stacked previews,
+candidate/decision counts, provenance, generator/version, uncertainty, missing
+alignment, and inherited original timing.
+
+The safe correction commands operate only on the current resolved lyric
+document and confirm its document and line IDs:
+
+```bash
+.venv/bin/lyricflow lyrics representations set current \
+  --offline --line-id LINE_ID --kind romanized --text "Corrected text"
+.venv/bin/lyricflow lyrics representations approve current \
+  --offline --line-id LINE_ID --kind romanized
+.venv/bin/lyricflow lyrics representations reject current \
+  --offline --line-id LINE_ID --kind romanized
+.venv/bin/lyricflow lyrics representations reset current \
+  --offline --line-id LINE_ID --kind romanized
+```
+
+Generated rejection suppresses generated fallback until explicit reset or
+regeneration. Approved user text wins over retained provider/imported/generated
+evidence across restart and provider refresh. `storage display set` persists
+independent original, romanized/transliterated, and translated toggles; defaults
+are original on, romanized on, and translated off.
 
 `players list` returns 0 whenever service enumeration itself succeeds, including
 when individual players or fields are unavailable; their diagnostics remain in

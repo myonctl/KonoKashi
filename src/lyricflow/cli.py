@@ -161,6 +161,20 @@ def _parser() -> argparse.ArgumentParser:
         default=[],
         help="ignore a player selector; bare names match service families (repeatable)",
     )
+    display = storage_commands.add_parser(
+        "display", help="inspect or update multilingual lyric layer toggles"
+    )
+    display_commands = display.add_subparsers(dest="display_command", required=True)
+    display_commands.add_parser("show", help="show durable lyric layer toggles")
+    display_set = display_commands.add_parser(
+        "set", help="update one or more durable lyric layer toggles"
+    )
+    for layer in ("original", "romanized", "translated"):
+        display_set.add_argument(
+            f"--{layer}",
+            choices=("on", "off"),
+            help=f"show or hide the {layer} layer",
+        )
     lyrics = subparsers.add_parser(
         "lyrics", help="resolve lyrics for the currently selected MPRIS recording"
     )
@@ -183,6 +197,46 @@ def _parser() -> argparse.ArgumentParser:
         action="store_true",
         help="explicitly print all lyric lines instead of a three-line preview",
     )
+    romanize = lyrics_commands.add_parser(
+        "romanize", help="generate and persist offline representations"
+    )
+    romanize.add_argument("target", choices=("current",))
+    romanize.add_argument("--offline", action="store_true")
+    romanize.add_argument(
+        "--language", help="explicit BCP-47-style language hint such as ja, ko, or zh"
+    )
+    romanize.add_argument("--line-id", action="append", default=None)
+    romanize.add_argument(
+        "--regenerate",
+        action="store_true",
+        help="replace generated cache and clear a draft/rejection, never an approval",
+    )
+    romanize.add_argument("--full", action="store_true")
+    representations = lyrics_commands.add_parser(
+        "representations", help="inspect or correct aligned lyric representations"
+    )
+    representation_commands = representations.add_subparsers(
+        dest="representations_command", required=True
+    )
+    representations_current = representation_commands.add_parser(
+        "current", help="show bounded multilingual representation diagnostics"
+    )
+    representations_current.add_argument("--offline", action="store_true")
+    representations_current.add_argument("--full", action="store_true")
+    for action in ("set", "approve", "reject", "reset"):
+        action_parser = representation_commands.add_parser(
+            action, help=f"{action} one representation for the current lyric document"
+        )
+        action_parser.add_argument("target", choices=("current",))
+        action_parser.add_argument("--offline", action="store_true")
+        action_parser.add_argument("--line-id", required=True)
+        action_parser.add_argument(
+            "--kind",
+            choices=("romanized", "transliterated", "translated"),
+            required=True,
+        )
+        if action == "set":
+            action_parser.add_argument("--text", required=True)
     return parser
 
 
@@ -381,6 +435,38 @@ def _run_storage(arguments: argparse.Namespace, database_path: Path | None) -> i
             print(f"preferred players: {preferred}")
             print(f"ignored players: {ignored}")
             return 0
+        if arguments.storage_command == "display":
+            from lyricflow.domain.representations import RepresentationDisplaySettings
+
+            current = storage.settings.get_representation_display()
+            if arguments.display_command == "set":
+                supplied = (
+                    arguments.original,
+                    arguments.romanized,
+                    arguments.translated,
+                )
+                if all(value is None for value in supplied):
+                    print(
+                        "Display update requires at least one layer option.",
+                        file=sys.stderr,
+                    )
+                    return 2
+
+                def selected(value: str | None, fallback: bool) -> bool:
+                    return fallback if value is None else value == "on"
+
+                current = RepresentationDisplaySettings(
+                    selected(arguments.original, current.show_original),
+                    selected(arguments.romanized, current.show_romanized),
+                    selected(arguments.translated, current.show_translated),
+                )
+                storage.settings.put_representation_display(current)
+                print("Saved multilingual lyric display settings.")
+            print(f"show original: {'on' if current.show_original else 'off'}")
+            romanized_state = "on" if current.show_romanized else "off"
+            print(f"show romanized/transliterated: {romanized_state}")
+            print(f"show translated: {'on' if current.show_translated else 'off'}")
+            return 0
     except StorageError as error:
         print(f"Unable to use LyricFlow storage: {error}", file=sys.stderr)
         return 1
@@ -393,7 +479,9 @@ def _run_lyrics(
     provider_factory: LyricsProviderFactory,
     database_path: Path | None,
 ) -> int:
-    if arguments.offline and arguments.refresh:
+    offline = bool(getattr(arguments, "offline", False))
+    refresh = bool(getattr(arguments, "refresh", False))
+    if offline and refresh:
         print("--offline and --refresh cannot be used together.", file=sys.stderr)
         return 2
     try:
@@ -444,8 +532,8 @@ def _run_lyrics(
             provider_cache=storage.provider_cache,
         ).resolve(
             selection.selected.track,
-            offline=arguments.offline,
-            refresh=arguments.refresh,
+            offline=offline,
+            refresh=refresh,
         )
     except (ImportError, RuntimeError) as error:
         print(f"Unable to initialize lyrics provider: {error}", file=sys.stderr)
@@ -454,9 +542,100 @@ def _run_lyrics(
         print(f"Unable to use LyricFlow storage: {error}", file=sys.stderr)
         return 1
 
-    print(
-        render_lyrics_resolution(selection.selected.track, result, full=arguments.full)
-    )
+    if arguments.lyrics_command == "current":
+        print(
+            render_lyrics_resolution(
+                selection.selected.track, result, full=arguments.full
+            )
+        )
+    else:
+        if result.document is None:
+            print(
+                render_lyrics_resolution(selection.selected.track, result, full=False)
+            )
+            print("No lyric document is available for multilingual representations.")
+            return 1
+        from lyricflow.application.representation_diagnostics import (
+            render_representations,
+        )
+        from lyricflow.application.representations import RepresentationService
+        from lyricflow.domain.lyrics import RepresentationKind
+        from lyricflow.infrastructure.romanization.offline import (
+            OfflineRomanizationProvider,
+        )
+
+        service = RepresentationService(
+            OfflineRomanizationProvider(), storage.representations
+        )
+        document = result.document
+        settings = storage.settings.get_representation_display()
+        track = selection.selected.track.candidate
+        heading = (
+            f"track: {track.title or '<unknown>'}\n"
+            f"artist: {', '.join(track.artists) or '<unknown>'}"
+        )
+        if arguments.lyrics_command == "romanize":
+            try:
+                report = service.generate(
+                    document,
+                    language_hint=arguments.language,
+                    line_ids=arguments.line_id,
+                    regenerate=arguments.regenerate,
+                )
+            except ValueError as error:
+                print(f"Unable to generate representation: {error}", file=sys.stderr)
+                return 2
+            print(heading)
+            print(
+                render_representations(
+                    document,
+                    service,
+                    settings,
+                    full=arguments.full,
+                    report=report,
+                )
+            )
+            return int(report.failed > 0)
+        action = arguments.representations_command
+        if action == "current":
+            print(heading)
+            print(
+                render_representations(document, service, settings, full=arguments.full)
+            )
+            return 0
+        kind = RepresentationKind(arguments.kind)
+        try:
+            if action == "set":
+                decision = service.set_draft(
+                    document, arguments.line_id, kind, arguments.text
+                )
+                result_message = "Saved user draft"
+            elif action == "approve":
+                decision = service.approve(document, arguments.line_id, kind)
+                result_message = "Saved user approval"
+            elif action == "reject":
+                decision = service.reject_generated(document, arguments.line_id, kind)
+                result_message = "Saved generated-value rejection"
+            else:
+                removed = service.reset(document, arguments.line_id, kind)
+                print(
+                    "Removed representation decision."
+                    if removed
+                    else "No representation decision existed."
+                )
+                print(f"lyric document: {document.document_id}")
+                print(f"line ID: {arguments.line_id}")
+                print(f"kind: {kind.value}")
+                return 0
+        except ValueError as error:
+            print(f"Unable to update representation: {error}", file=sys.stderr)
+            return 2
+        print(f"{result_message}.")
+        print(f"lyric document: {decision.document_id}")
+        print(f"line ID: {decision.source_line_id}")
+        print(f"kind: {decision.kind.value}")
+        print(f"state: {decision.approval_state.value}")
+        return 0
     failure_states = {
         LyricsResolutionStatus.PROVIDER_UNAVAILABLE,
         LyricsResolutionStatus.RATE_LIMITED,

@@ -85,6 +85,16 @@ def inspect_storage(path: Path) -> StorageStatus:
                             "SELECT COUNT(*) FROM provider_cache"
                         ).fetchone()[0]
                     ),
+                    representation_candidates=int(
+                        connection.execute(
+                            "SELECT COUNT(*) FROM lyric_representation_candidates"
+                        ).fetchone()[0]
+                    ),
+                    representation_decisions=int(
+                        connection.execute(
+                            "SELECT COUNT(*) FROM lyric_representation_decisions"
+                        ).fetchone()[0]
+                    ),
                 )
         if incompatible:
             return StorageStatus(

@@ -270,6 +270,93 @@ MIGRATIONS: tuple[Migration, ...] = (
             """,
         ),
     ),
+    Migration(
+        4,
+        "line representation candidates, decisions, and display settings",
+        (
+            """
+            CREATE TABLE lyric_representation_candidates (
+                candidate_id TEXT PRIMARY KEY,
+                document_id TEXT NOT NULL
+                    REFERENCES lyrics_documents(document_id) ON DELETE CASCADE,
+                source_line_id TEXT NOT NULL,
+                representation_kind TEXT NOT NULL CHECK (
+                    representation_kind IN ('romanized', 'transliterated', 'translated')
+                ),
+                candidate_status TEXT NOT NULL CHECK (
+                    candidate_status IN ('available', 'unavailable', 'failed')
+                ),
+                candidate_text TEXT,
+                language TEXT,
+                script TEXT,
+                provenance TEXT NOT NULL CHECK (
+                    provenance IN ('provider', 'local', 'imported', 'generated', 'user')
+                ),
+                source_name TEXT NOT NULL CHECK (length(source_name) > 0),
+                source_version TEXT,
+                approval_state TEXT NOT NULL CHECK (
+                    approval_state IN ('unreviewed', 'approved', 'rejected')
+                ),
+                uncertainty TEXT NOT NULL CHECK (
+                    uncertainty IN ('none', 'ambiguous')
+                ),
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                CHECK (
+                    (candidate_status = 'available' AND candidate_text IS NOT NULL)
+                    OR (candidate_status != 'available')
+                )
+            )
+            """,
+            """
+            CREATE INDEX lyric_representation_candidates_lookup
+            ON lyric_representation_candidates(
+                document_id, source_line_id, representation_kind, provenance
+            )
+            """,
+            """
+            CREATE TABLE lyric_representation_candidate_diagnostics (
+                candidate_id TEXT NOT NULL
+                    REFERENCES lyric_representation_candidates(candidate_id)
+                    ON DELETE CASCADE,
+                position INTEGER NOT NULL CHECK (position >= 0),
+                diagnostic TEXT NOT NULL CHECK (length(diagnostic) > 0),
+                PRIMARY KEY (candidate_id, position)
+            )
+            """,
+            """
+            CREATE TABLE lyric_representation_decisions (
+                document_id TEXT NOT NULL
+                    REFERENCES lyrics_documents(document_id) ON DELETE CASCADE,
+                source_line_id TEXT NOT NULL,
+                representation_kind TEXT NOT NULL CHECK (
+                    representation_kind IN ('romanized', 'transliterated', 'translated')
+                ),
+                approval_state TEXT NOT NULL CHECK (
+                    approval_state IN ('unreviewed', 'approved', 'rejected')
+                ),
+                decision_text TEXT,
+                based_on_candidate_id TEXT,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                PRIMARY KEY (document_id, source_line_id, representation_kind),
+                CHECK (
+                    approval_state = 'rejected'
+                    OR (decision_text IS NOT NULL AND length(decision_text) > 0)
+                )
+            )
+            """,
+            """
+            CREATE TABLE representation_display_settings (
+                settings_id INTEGER PRIMARY KEY CHECK (settings_id = 1),
+                show_original INTEGER NOT NULL CHECK (show_original IN (0, 1)),
+                show_romanized INTEGER NOT NULL CHECK (show_romanized IN (0, 1)),
+                show_translated INTEGER NOT NULL CHECK (show_translated IN (0, 1)),
+                updated_at TEXT NOT NULL
+            )
+            """,
+        ),
+    ),
 )
 
 CURRENT_SCHEMA_VERSION = MIGRATIONS[-1].version

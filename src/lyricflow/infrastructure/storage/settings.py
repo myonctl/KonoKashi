@@ -2,7 +2,11 @@
 
 from __future__ import annotations
 
-from lyricflow.application.settings import default_player_selection_config
+from lyricflow.application.settings import (
+    default_player_selection_config,
+    default_representation_display_settings,
+)
+from lyricflow.domain.representations import RepresentationDisplaySettings
 from lyricflow.domain.tracks import PlayerSelectionConfig
 from lyricflow.infrastructure.storage.errors import (
     InvalidStoredDataError,
@@ -93,4 +97,51 @@ class SQLiteSettingsRepository:
                 ) VALUES (?, ?, ?, ?)
                 """,
                 entries,
+            )
+
+    def get_representation_display(self) -> RepresentationDisplaySettings:
+        """Return durable layer toggles or the Stage 5 defaults."""
+
+        with self._database.connection(readonly=True) as connection:
+            row = connection.execute(
+                """
+                SELECT show_original, show_romanized, show_translated
+                FROM representation_display_settings WHERE settings_id = 1
+                """
+            ).fetchone()
+        if row is None:
+            return default_representation_display_settings()
+        values = tuple(
+            row[name] for name in ("show_original", "show_romanized", "show_translated")
+        )
+        if any(value not in (0, 1) for value in values):
+            raise InvalidStoredDataError(
+                "stored representation display setting is invalid"
+            )
+        return RepresentationDisplaySettings(*(bool(value) for value in values))
+
+    def put_representation_display(
+        self, settings: RepresentationDisplaySettings
+    ) -> None:
+        """Atomically persist independent layer toggles."""
+
+        with self._database.transaction() as connection:
+            connection.execute(
+                """
+                INSERT INTO representation_display_settings(
+                    settings_id, show_original, show_romanized,
+                    show_translated, updated_at
+                ) VALUES (1, ?, ?, ?, ?)
+                ON CONFLICT(settings_id) DO UPDATE SET
+                    show_original = excluded.show_original,
+                    show_romanized = excluded.show_romanized,
+                    show_translated = excluded.show_translated,
+                    updated_at = excluded.updated_at
+                """,
+                (
+                    int(settings.show_original),
+                    int(settings.show_romanized),
+                    int(settings.show_translated),
+                    utc_now_text(),
+                ),
             )

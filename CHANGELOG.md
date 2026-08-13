@@ -7,6 +7,28 @@ unreleased.
 
 ### Added
 
+- Stage 5 deterministic Unicode script composition and conservative routing
+  that distinguishes Latin, Han, kana, Hangul, Cyrillic, Greek, Arabic, Thai,
+  punctuation/numbers, mixed scripts, and ambiguous Han without inventing a
+  language claim.
+- Offline Cutlet/Fugashi/UniDic-lite Modified Hepburn generation for Japanese
+  and Unicode ICU transforms for Korean, explicitly Chinese Han/Pinyin,
+  Cyrillic, Greek, Arabic, and Thai, with embedded Latin preservation,
+  generator/version provenance, and qualitative uncertainty.
+- Schema migration 4 and a typed representation repository for per-original-
+  line provider/imported/generated candidates, ordered diagnostics, independent
+  user drafts/approvals/rejections, and global display settings. Original lyrics
+  and timestamps remain canonical and user approvals survive restart,
+  regeneration, and provider/original refresh.
+- Application precedence/import/correction services plus bounded
+  `lyrics romanize current`, `lyrics representations ...`, and
+  `storage display` commands. Translation is a functional imported/user third
+  layer; no translation engine, cloud API, lyric upload, or telemetry was added.
+- Stage 5 deterministic adapter, script, alignment, persistence, failure,
+  privacy, settings, and fresh-process CLI regressions using tiny sanitized
+  lyric excerpts only. ADR 0011 records routing, dependencies, styles, and
+  replacement paths.
+
 - Stage 4 provider-neutral local-first lyrics resolution with typed timed,
   untimed, instrumental, ambiguous, offline, rate-limit, invalid, and
   unavailable outcomes carrying source identity, provenance, confidence, and
@@ -108,6 +130,10 @@ unreleased.
   and ADR baselines.
 
 ### Changed
+
+- Activated Stage 5 after explicit user authorization on 2026-08-13. Its local
+  implementation is complete with automated and real manual/publication gates
+  tracked separately; Stage 6 remains Proposed and unauthorized.
 
 - Closed Stage 4 as Completed after the user accepted all final real-world
   scenarios on published baseline `05c7212`: exact adjacent Strawberry sidecar

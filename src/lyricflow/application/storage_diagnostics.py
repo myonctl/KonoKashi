@@ -14,6 +14,8 @@ class StorageCounts:
     lyric_documents: int = 0
     lyrics_matches: int = 0
     provider_cache_entries: int = 0
+    representation_candidates: int = 0
+    representation_decisions: int = 0
 
 
 @dataclass(frozen=True, slots=True)
@@ -65,6 +67,8 @@ def render_storage_status(status: StorageStatus) -> str:
                 f"lyric documents: {status.counts.lyric_documents}",
                 f"lyrics matches: {status.counts.lyrics_matches}",
                 f"provider cache entries: {status.counts.provider_cache_entries}",
+                f"representation candidates: {status.counts.representation_candidates}",
+                f"representation decisions: {status.counts.representation_decisions}",
             )
         )
     if status.error is not None:

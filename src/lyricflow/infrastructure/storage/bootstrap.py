@@ -13,6 +13,9 @@ from lyricflow.infrastructure.storage.paths import default_database_path
 from lyricflow.infrastructure.storage.provider_cache import (
     SQLiteProviderCacheRepository,
 )
+from lyricflow.infrastructure.storage.representations import (
+    SQLiteRepresentationRepository,
+)
 from lyricflow.infrastructure.storage.settings import SQLiteSettingsRepository
 from lyricflow.infrastructure.storage.source_identities import (
     SQLiteSourceIdentityRepository,
@@ -34,6 +37,7 @@ class StorageRepositories:
     lyrics: SQLiteLyricsRepository
     lyrics_matches: SQLiteLyricsMatchRepository
     provider_cache: SQLiteProviderCacheRepository
+    representations: SQLiteRepresentationRepository
 
 
 def open_storage(path: Path | None = None) -> StorageRepositories:
@@ -49,4 +53,5 @@ def open_storage(path: Path | None = None) -> StorageRepositories:
         lyrics=SQLiteLyricsRepository(database),
         lyrics_matches=SQLiteLyricsMatchRepository(database),
         provider_cache=SQLiteProviderCacheRepository(database),
+        representations=SQLiteRepresentationRepository(database),
     )
