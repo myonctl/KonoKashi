@@ -10,17 +10,17 @@ under it, and an optional translation forms a third layer.
 
 ## Current status
 
-Stages 1 through 3 are **Completed**. Stage 3 — persistence foundation — passed
+Stages 1 through 4 are **Completed**. Stage 3 — persistence foundation — passed
 the complete automated gate and real restart/persistence verification for
 schema initialization, approved corrections, and player settings. The policy
 selects one primary player,
 suppresses explainable duplicates, derives typed local/YouTube/generic source
 identities, resolves conservative artist/title candidates, and persists
 approved corrections and accepted player settings in local SQLite storage.
-Stage 4 — lyrics resolution — is implementation-complete with manual
-verification pending: local LRC/embedded resolution, conservative LRCLIB,
-cache/offline/refresh policy, and bounded CLI diagnostics are implemented.
-Stage 5 and all later stages remain unauthorized.
+Stage 4 — lyrics resolution — passed its complete automated gate and accepted
+real Strawberry sidecar, LRCLIB, fresh-process offline-cache, and conservative
+no-result verification. Stage 5 is Proposed / awaiting explicit authorization
+and is not Active.
 
 The [`myonctl/LyricFlow`](https://github.com/myonctl/LyricFlow) GitHub repository
 is private during pre-alpha development. Its `origin` remote and default branch
@@ -87,8 +87,8 @@ Supporting authorities:
   and real-player evidence.
 - `docs/STAGE_3_COMPLETION.md` — completed Stage 3 implementation, automated,
   storage, restart, cleanup, publication, and CI evidence.
-- `docs/STAGE_4_COMPLETION.md` — Stage 4 implementation checkpoint, automated
-  evidence, and pending minimal real-world verification.
+- `docs/STAGE_4_COMPLETION.md` — completed Stage 4 implementation, automated,
+  local/provider/offline/no-result, publication, and CI evidence.
 - `docs/adr/0010-stage4-lyrics-resolution.md` — accepted Stage 4 precedence,
   matching, cache/offline/refresh, privacy, and schema policy.
 - `docs/adr/` — accepted and historical architecture/process decisions.

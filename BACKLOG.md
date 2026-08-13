@@ -13,6 +13,16 @@ authorize implementation. Staged v1 ordering lives in `docs/ROADMAP.md`.
   approve or reject results, and preserve those choices. Why: metadata and
   provider matches are fallible. Status: Planned. Prerequisites: stable source
   identity and persistence. Related: Roadmap Stages 2, 3, and 8.
+- **Independent lyric text and timing corrections** — Let users correct lyric
+  text, individual line timestamps, and a whole-document/global offset while
+  preserving provider-original text/timing and provenance. User-approved
+  corrections must outrank provider/generated values, survive restart and
+  provider refresh, and reset independently. Why: a High recording match does
+  not guarantee perfect provider transcription or timing. Status: Planned;
+  explicitly not implemented by Stage 4 closure. Prerequisites: correction
+  model/UI, playback synchronization for timing review, and migrations that
+  preserve original plus approved layers. Related: Product specification match
+  confidence versus lyric quality; Roadmap Stages 6, 8, and 11+.
 
 ## UX improvements
 

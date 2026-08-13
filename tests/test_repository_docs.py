@@ -59,12 +59,11 @@ PROJECT_STATE_HEADINGS = (
     "## Continue here",
 )
 
-CURRENT_STAGE_HEADINGS = (
-    "## Objective",
-    "## Implemented deliverables",
-    "## Verification state",
-    "## Explicitly out of scope",
-    "## Exact continuation point",
+PROPOSED_STAGE_HEADINGS = (
+    "## Proposed next stage",
+    "## Proposed scope",
+    "## Explicitly unauthorized now",
+    "## Exact starting point",
 )
 
 COMPLETION_HEADINGS = (
@@ -165,16 +164,15 @@ def test_project_state_contains_the_continuation_contract() -> None:
     assert "/home/example/Documents/LyricFlow/" in content
 
 
-def test_agent_todo_authorizes_only_stage_four() -> None:
+def test_agent_todo_proposes_stage_five_without_authorizing_it() -> None:
     content = (REPOSITORY_ROOT / "AGENT_TODO.md").read_text(encoding="utf-8")
 
     assert content.startswith("# Current authorized stage\n")
-    assert "Stage 4 — Stage implementation complete; stage verification pending" in (
-        content
-    )
-    assert "Stage 3 — Persistence foundation is **Completed**" in content
-    assert "Stage 5" in content and "all later stages remain unauthorized" in content
-    assert all(heading in content for heading in CURRENT_STAGE_HEADINGS)
+    assert "None. No implementation stage is Active" in content
+    assert "Stage 4 — Lyrics resolution is **Completed**" in content
+    assert "Stage 5 — Romanization and multilingual layers is Proposed" in content
+    assert "Stage 5 is **NOT Active**" in content
+    assert all(heading in content for heading in PROPOSED_STAGE_HEADINGS)
 
 
 def test_manifest_is_inventory_not_authority() -> None:
@@ -183,8 +181,11 @@ def test_manifest_is_inventory_not_authority() -> None:
     )
 
     assert manifest["implementation_authority"] == "AGENT_TODO.md"
-    assert manifest["authorized_stage"] == "Stage 4 — Lyrics resolution"
-    assert manifest["proposed_stage"] is None
+    assert manifest["authorized_stage"] is None
+    assert manifest["proposed_stage"] == (
+        "Stage 5 — Romanization and multilingual layers "
+        "(awaiting explicit authorization; not Active)"
+    )
     assert all((REPOSITORY_ROOT / path).is_file() for path in manifest["files"])
 
 

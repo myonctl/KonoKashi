@@ -109,6 +109,14 @@ unreleased.
 
 ### Changed
 
+- Closed Stage 4 as Completed after the user accepted all final real-world
+  scenarios on published baseline `05c7212`: exact adjacent Strawberry sidecar
+  LRC with no network, live LRCLIB record `22395851` plus fresh-process offline
+  reuse, and conservative black-screen no-result behavior with no uploader-as-
+  artist query. Match confidence is now documented separately from provider
+  text/timing quality; provenance-preserving text, per-line timing, and global-
+  offset corrections remain planned and unimplemented. Stage 5 is Proposed /
+  awaiting explicit authorization and is not Active.
 - Finished the Stage 4 implementation checkpoint while leaving real-world
   provider/cache, local timed-lyrics, and failure/no-result verification
   pending. The Strawberry investigation found no documented stable lyrics
