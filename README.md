@@ -10,9 +10,9 @@ under it, and an optional translation forms a third layer.
 
 ## Current status
 
-Stages 1 through 4 are **Completed**. Stage 5 — Romanization and multilingual
-layers — is Active; its implementation is published and automated verification
-is green, while focused real manual verification remains pending. Stage 3 —
+Stages 1 through 5 are **Completed**. Stage 5 — Romanization and multilingual
+layers — passed its published automated gate and real Japanese generation,
+fresh-process correction/reset, and Latin no-duplicate verification. Stage 3 —
 persistence foundation — passed
 the complete automated gate and real restart/persistence verification for
 schema initialization, approved corrections, and player settings. The policy
@@ -94,8 +94,8 @@ Supporting authorities:
   storage, restart, cleanup, publication, and CI evidence.
 - `docs/STAGE_4_COMPLETION.md` — completed Stage 4 implementation, automated,
   local/provider/offline/no-result, publication, and CI evidence.
-- `docs/STAGE_5_COMPLETION.md` — Stage 5 implementation checkpoint and pending
-  automated/publication/manual verification gates.
+- `docs/STAGE_5_COMPLETION.md` — completed Stage 5 implementation, automated,
+  multilingual/correction/Latin-safety, publication, and CI evidence.
 - `docs/adr/0010-stage4-lyrics-resolution.md` — accepted Stage 4 precedence,
   matching, cache/offline/refresh, privacy, and schema policy.
 - `docs/adr/0011-offline-romanization-routing.md` — accepted Stage 5 script

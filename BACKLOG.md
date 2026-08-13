@@ -213,7 +213,9 @@ separate explicit authorization.
   Status: Ongoing policy. Related: `docs/DEPENDENCIES.md`.
 - **Romanization engine evaluation** — Compare offline behavior, linguistic
   quality, language coverage, licensing, maintenance, runtime cost, and
-  correction support. Status: Planned before Roadmap Stage 5.
+  correction support. Status: Completed for the Stage 5 baseline through the
+  Cutlet/UniDic and Unicode ICU review in `docs/DEPENDENCIES.md` and ADR 0011;
+  reassess before replacing or expanding engines.
 
 ## Rejected / intentionally deferred ideas
 

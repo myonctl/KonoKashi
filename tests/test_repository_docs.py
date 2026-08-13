@@ -166,12 +166,14 @@ def test_project_state_contains_the_continuation_contract() -> None:
     assert "/home/example/Documents/LyricFlow/" in content
 
 
-def test_agent_todo_authorizes_only_stage_five() -> None:
+def test_agent_todo_authorizes_no_stage_after_stage_five_closure() -> None:
     content = (REPOSITORY_ROOT / "AGENT_TODO.md").read_text(encoding="utf-8")
 
     assert content.startswith("# Current authorized stage\n")
-    assert "Stage 5 — Romanization and multilingual layers is Active" in content
-    assert "Stage 6 and later work remains unauthorized" in content
+    assert "None. No implementation stage is Active" in content
+    assert "Stage 5 — Romanization and multilingual layers is **Completed**" in content
+    assert "Stage 6 — Playback synchronization engine is Proposed" in content
+    assert "Stage 6 is **NOT Active**" in content
     assert "playback-clock" in content
     assert "interpolation/synchronization" in content
 
@@ -182,11 +184,10 @@ def test_manifest_is_inventory_not_authority() -> None:
     )
 
     assert manifest["implementation_authority"] == "AGENT_TODO.md"
-    assert manifest["authorized_stage"] == (
-        "Stage 5 — Romanization and multilingual layers"
-    )
+    assert manifest["authorized_stage"] is None
     assert manifest["proposed_stage"] == (
-        "Stage 6 — Playback synchronization engine (unauthorized)"
+        "Stage 6 — Playback synchronization engine "
+        "(awaiting explicit authorization; not Active)"
     )
     assert all((REPOSITORY_ROOT / path).is_file() for path in manifest["files"])
 

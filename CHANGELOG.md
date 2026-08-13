@@ -137,6 +137,11 @@ unreleased.
 - Published Stage 5 implementation commit `c55ccac` to canonical `main` after
   the 336-test local gate; GitHub Actions run `31746378400` passed the exact
   implementation SHA. Focused real manual verification remains pending.
+- Closed Stage 5 as Completed after real schema 4 migration, offline timed
+  Japanese generation with 47/51 aligned versioned candidates, fresh-process
+  user approval and exact reset, and a timed 59-line Latin document producing
+  zero redundant candidates or failures. Stage 6 is Proposed / awaiting
+  explicit authorization and is not Active.
 
 - Closed Stage 4 as Completed after the user accepted all final real-world
   scenarios on published baseline `05c7212`: exact adjacent Strawberry sidecar
