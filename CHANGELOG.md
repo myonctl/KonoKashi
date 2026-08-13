@@ -134,6 +134,9 @@ unreleased.
 - Activated Stage 5 after explicit user authorization on 2026-08-13. Its local
   implementation is complete with automated and real manual/publication gates
   tracked separately; Stage 6 remains Proposed and unauthorized.
+- Published Stage 5 implementation commit `c55ccac` to canonical `main` after
+  the 336-test local gate; GitHub Actions run `31746378400` passed the exact
+  implementation SHA. Focused real manual verification remains pending.
 
 - Closed Stage 4 as Completed after the user accepted all final real-world
   scenarios on published baseline `05c7212`: exact adjacent Strawberry sidecar

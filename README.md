@@ -11,8 +11,8 @@ under it, and an optional translation forms a third layer.
 ## Current status
 
 Stages 1 through 4 are **Completed**. Stage 5 — Romanization and multilingual
-layers — is Active and implemented locally; automated verification is in
-green and real manual verification/publication remain pending. Stage 3 —
+layers — is Active; its implementation is published and automated verification
+is green, while focused real manual verification remains pending. Stage 3 —
 persistence foundation — passed
 the complete automated gate and real restart/persistence verification for
 schema initialization, approved corrections, and player settings. The policy
