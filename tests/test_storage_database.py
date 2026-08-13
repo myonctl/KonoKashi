@@ -17,6 +17,7 @@ from lyricflow.infrastructure.storage.errors import (
 )
 from lyricflow.infrastructure.storage.migrations import (
     CURRENT_SCHEMA_VERSION,
+    MIGRATIONS,
     Migration,
 )
 from lyricflow.infrastructure.storage.paths import default_database_path
@@ -52,7 +53,7 @@ def test_brand_new_unicode_database_migrates_in_order_and_reopens_noop(
 
     assert database.initialize() == CURRENT_SCHEMA_VERSION
     first_history = database.migration_history()
-    assert [item[0] for item in first_history] == [1, 2]
+    assert [item[0] for item in first_history] == [1, 2, 3]
 
     def unexpected_transaction() -> None:
         raise AssertionError("current-schema initialization opened a write transaction")
@@ -60,6 +61,59 @@ def test_brand_new_unicode_database_migrates_in_order_and_reopens_noop(
     monkeypatch.setattr(database, "transaction", unexpected_transaction)
     assert database.initialize() == CURRENT_SCHEMA_VERSION
     assert database.migration_history() == first_history
+
+
+def test_published_stage_three_database_upgrades_without_losing_approved_match(
+    tmp_path: Path,
+) -> None:
+    database = SQLiteDatabase(tmp_path / "stage-three.sqlite3")
+    database.initialize(MIGRATIONS[:2])
+    with database.transaction() as connection:
+        connection.execute(
+            """
+            INSERT INTO source_identities(
+                source_kind, persistence_scope, local_path, youtube_video_id,
+                generic_service_name, generic_track_id, generic_media_url,
+                created_at
+            ) VALUES ('youtube', 'permanent', NULL, 'xa4WrgqI7q0', NULL, NULL,
+                      NULL, '2026-08-12T00:00:00+00:00')
+            """
+        )
+        connection.execute(
+            """
+            INSERT INTO lyrics_documents(
+                document_id, document_kind, source_name, original_text,
+                raw_text_checksum, provider_record_id, language, script,
+                duration_ms, approval_state, retrieved_at
+            ) VALUES ('approved-doc', 'plain', 'local', 'line', 'checksum',
+                      NULL, NULL, NULL, NULL, 'approved',
+                      '2026-08-12T00:00:00+00:00')
+            """
+        )
+        connection.execute(
+            """
+            INSERT INTO lyrics_matches(
+                source_identity_id, document_id, decision, provenance, updated_at
+            ) VALUES (1, 'approved-doc', 'approved', 'user',
+                      '2026-08-12T00:00:00+00:00')
+            """
+        )
+
+    assert database.initialize() == 3
+
+    with database.connection(readonly=True) as connection:
+        row = connection.execute(
+            "SELECT document_id, decision, match_confidence FROM lyrics_matches"
+        ).fetchone()
+        evidence_table = connection.execute(
+            """
+            SELECT name FROM sqlite_master
+            WHERE type = 'table' AND name = 'lyrics_match_evidence'
+            """
+        ).fetchone()
+    assert tuple(row) == ("approved-doc", "approved", "Approved")
+    assert evidence_table[0] == "lyrics_match_evidence"
+    assert [item[0] for item in database.migration_history()] == [1, 2, 3]
 
 
 def test_failed_migration_rolls_back_only_that_migration(tmp_path: Path) -> None:

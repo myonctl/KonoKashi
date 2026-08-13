@@ -92,8 +92,9 @@ class SQLiteLyricsRepository:
                 INSERT INTO lyrics_documents(
                     document_id, document_kind, source_name, original_text,
                     raw_text_checksum, provider_record_id, language, script,
-                    duration_ms, approval_state, retrieved_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    duration_ms, approval_state, retrieved_at, source_title,
+                    source_artist, source_album
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(document_id) DO UPDATE SET
                     document_kind = excluded.document_kind,
                     source_name = excluded.source_name,
@@ -104,7 +105,10 @@ class SQLiteLyricsRepository:
                     script = excluded.script,
                     duration_ms = excluded.duration_ms,
                     approval_state = excluded.approval_state,
-                    retrieved_at = excluded.retrieved_at
+                    retrieved_at = excluded.retrieved_at,
+                    source_title = excluded.source_title,
+                    source_artist = excluded.source_artist,
+                    source_album = excluded.source_album
                 """,
                 (
                     document.document_id,
@@ -118,6 +122,9 @@ class SQLiteLyricsRepository:
                     document.duration_ms,
                     document.approval_state.value,
                     _datetime_text(document.retrieved_at),
+                    document.source_title,
+                    document.source_artist,
+                    document.source_album,
                 ),
             )
             connection.execute(
@@ -314,6 +321,21 @@ class SQLiteLyricsRepository:
                     None
                     if document_row["duration_ms"] is None
                     else int(document_row["duration_ms"])
+                ),
+                source_title=(
+                    None
+                    if document_row["source_title"] is None
+                    else str(document_row["source_title"])
+                ),
+                source_artist=(
+                    None
+                    if document_row["source_artist"] is None
+                    else str(document_row["source_artist"])
+                ),
+                source_album=(
+                    None
+                    if document_row["source_album"] is None
+                    else str(document_row["source_album"])
                 ),
             )
         except (TypeError, ValueError) as error:

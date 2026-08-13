@@ -18,12 +18,13 @@ from lyricflow.application.player_diagnostics import (
     render_player_inspection,
     render_player_list,
 )
-from lyricflow.application.ports import MprisRuntimePort
+from lyricflow.application.ports import LyricsProviderPort, MprisRuntimePort
 from lyricflow.application.selection_diagnostics import render_player_selection
 from lyricflow.domain.tracks import PlayerSelectionConfig
 from lyricflow.infrastructure.diagnostics import collect_local_diagnostics
 
 RuntimeFactory: TypeAlias = Callable[[], MprisRuntimePort]
+LyricsProviderFactory: TypeAlias = Callable[[], LyricsProviderPort]
 
 
 def _silence_broken_stdout() -> None:
@@ -48,6 +49,14 @@ def _create_runtime() -> MprisRuntimePort:
     )
 
     return create_qt_mpris_runtime()
+
+
+def _create_lyrics_provider() -> LyricsProviderPort:
+    """Construct the network adapter lazily so offline diagnostics remain testable."""
+
+    from lyricflow.infrastructure.lyrics.lrclib import LrclibLyricsProvider
+
+    return LrclibLyricsProvider()
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -151,6 +160,28 @@ def _parser() -> argparse.ArgumentParser:
         action="append",
         default=[],
         help="ignore a player selector; bare names match service families (repeatable)",
+    )
+    lyrics = subparsers.add_parser(
+        "lyrics", help="resolve lyrics for the currently selected MPRIS recording"
+    )
+    lyrics_commands = lyrics.add_subparsers(dest="lyrics_command", required=True)
+    lyrics_current = lyrics_commands.add_parser(
+        "current", help="resolve and explain current lyrics"
+    )
+    lyrics_current.add_argument(
+        "--offline",
+        action="store_true",
+        help="use only exact local and persistent cache sources",
+    )
+    lyrics_current.add_argument(
+        "--refresh",
+        action="store_true",
+        help="re-query the provider without deleting previous usable lyrics",
+    )
+    lyrics_current.add_argument(
+        "--full",
+        action="store_true",
+        help="explicitly print all lyric lines instead of a three-line preview",
     )
     return parser
 
@@ -356,10 +387,90 @@ def _run_storage(arguments: argparse.Namespace, database_path: Path | None) -> i
     return 2
 
 
+def _run_lyrics(
+    arguments: argparse.Namespace,
+    runtime_factory: RuntimeFactory,
+    provider_factory: LyricsProviderFactory,
+    database_path: Path | None,
+) -> int:
+    if arguments.offline and arguments.refresh:
+        print("--offline and --refresh cannot be used together.", file=sys.stderr)
+        return 2
+    try:
+        runtime = runtime_factory()
+    except (ImportError, RuntimeError) as error:
+        print(f"Unable to initialize MPRIS: {error}", file=sys.stderr)
+        return 1
+
+    from lyricflow.application.lyrics_diagnostics import render_lyrics_resolution
+    from lyricflow.application.resolve_lyrics import LyricsResolver
+    from lyricflow.application.resolve_track import TrackResolver
+    from lyricflow.application.select_player import PlayerSelectionService
+    from lyricflow.application.source_identity import SourceIdentityResolver
+    from lyricflow.domain.lyrics import LyricsResolutionStatus
+    from lyricflow.infrastructure.lyrics.embedded import EmbeddedLyricsProvider
+    from lyricflow.infrastructure.lyrics.local_sidecar import (
+        LocalSidecarLyricsProvider,
+    )
+    from lyricflow.infrastructure.lyrics.provider_documents import (
+        ProviderLyricDocumentBuilder,
+    )
+    from lyricflow.infrastructure.metadata.local_paths import (
+        FilesystemLocalPathCanonicalizer,
+    )
+    from lyricflow.infrastructure.storage.bootstrap import open_storage
+    from lyricflow.infrastructure.storage.errors import StorageError
+
+    try:
+        storage = open_storage(database_path)
+        selection = PlayerSelectionService(
+            TrackResolver(
+                SourceIdentityResolver(FilesystemLocalPathCanonicalizer()),
+                storage.track_overrides,
+            )
+        ).select(runtime.client.list_players(), storage.settings.get_player_selection())
+        if selection.selected is None:
+            print("No selectable MPRIS track is available for lyrics resolution.")
+            for diagnostic in selection.unavailable_diagnostics:
+                print(f"  - {diagnostic}")
+            return 1
+        provider = provider_factory()
+        result = LyricsResolver(
+            local_sources=(LocalSidecarLyricsProvider(), EmbeddedLyricsProvider()),
+            provider=provider,
+            provider_documents=ProviderLyricDocumentBuilder(),
+            lyrics=storage.lyrics,
+            matches=storage.lyrics_matches,
+            provider_cache=storage.provider_cache,
+        ).resolve(
+            selection.selected.track,
+            offline=arguments.offline,
+            refresh=arguments.refresh,
+        )
+    except (ImportError, RuntimeError) as error:
+        print(f"Unable to initialize lyrics provider: {error}", file=sys.stderr)
+        return 1
+    except StorageError as error:
+        print(f"Unable to use LyricFlow storage: {error}", file=sys.stderr)
+        return 1
+
+    print(
+        render_lyrics_resolution(selection.selected.track, result, full=arguments.full)
+    )
+    failure_states = {
+        LyricsResolutionStatus.PROVIDER_UNAVAILABLE,
+        LyricsResolutionStatus.RATE_LIMITED,
+        LyricsResolutionStatus.INVALID_LOCAL_LYRICS,
+        LyricsResolutionStatus.INVALID_PROVIDER_RESPONSE,
+    }
+    return int(result.status in failure_states)
+
+
 def main(
     argv: Sequence[str] | None = None,
     *,
     runtime_factory: RuntimeFactory = _create_runtime,
+    lyrics_provider_factory: LyricsProviderFactory = _create_lyrics_provider,
     database_path: Path | None = None,
 ) -> int:
     """Run the CLI and return a process exit code."""
@@ -373,4 +484,8 @@ def main(
         return _run_players(arguments, runtime_factory, database_path)
     if arguments.command == "storage":
         return _run_storage(arguments, database_path)
+    if arguments.command == "lyrics":
+        return _run_lyrics(
+            arguments, runtime_factory, lyrics_provider_factory, database_path
+        )
     return 2

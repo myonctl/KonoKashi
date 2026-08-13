@@ -1,10 +1,12 @@
-"""Provider-neutral lyric persistence values for the Stage 3 foundation."""
+"""Provider-neutral lyric documents, provider candidates, and resolution states."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
+
+from lyricflow.domain.identity import SourceIdentity
 
 
 class ApprovalState(Enum):
@@ -102,6 +104,9 @@ class LyricDocument:
     language: str | None = None
     script: str | None = None
     duration_ms: int | None = None
+    source_title: str | None = None
+    source_artist: str | None = None
+    source_album: str | None = None
 
 
 class LyricsMatchDecision(Enum):
@@ -112,6 +117,15 @@ class LyricsMatchDecision(Enum):
     REJECTED = "rejected"
 
 
+class LyricsMatchConfidence(Enum):
+    """Confidence that lyric content belongs to one exact recording."""
+
+    APPROVED = "Approved"
+    HIGH = "High"
+    MEDIUM = "Medium"
+    LOW = "Low"
+
+
 @dataclass(frozen=True, slots=True)
 class LyricsMatch:
     """A typed persisted match decision with retained provenance."""
@@ -120,6 +134,8 @@ class LyricsMatch:
     decision: LyricsMatchDecision
     provenance: ContentProvenance
     updated_at: datetime
+    confidence: LyricsMatchConfidence = LyricsMatchConfidence.LOW
+    evidence: tuple[str, ...] = field(default_factory=tuple)
 
 
 @dataclass(frozen=True, slots=True)
@@ -131,3 +147,125 @@ class ProviderCacheEntry:
     payload: bytes
     retrieved_at: datetime
     expires_at: datetime | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class LyricsQuery:
+    """Minimum provider-safe metadata for one resolved recording."""
+
+    title: str
+    artists: tuple[str, ...]
+    album: str | None
+    duration_ms: int | None
+
+    @property
+    def artist_name(self) -> str:
+        """Return the provider-facing artist string without uploader substitution."""
+
+        return " & ".join(self.artists)
+
+
+@dataclass(frozen=True, slots=True)
+class LyricsProviderCandidate:
+    """One provider-neutral read-only lyrics record."""
+
+    provider: str
+    record_id: str
+    track_name: str
+    artist_name: str
+    album_name: str | None
+    duration_ms: int | None
+    instrumental: bool
+    plain_lyrics: str | None
+    synced_lyrics: str | None
+
+
+class LyricsProviderStatus(Enum):
+    """Outcome of one bounded provider request."""
+
+    RESULTS = "results"
+    NO_RESULT = "no-result"
+    RATE_LIMITED = "rate-limited"
+    UNAVAILABLE = "unavailable"
+    INVALID_RESPONSE = "invalid-response"
+
+
+@dataclass(frozen=True, slots=True)
+class LyricsProviderResult:
+    """Typed provider response with bounded diagnostics and cacheable raw bytes."""
+
+    status: LyricsProviderStatus
+    candidates: tuple[LyricsProviderCandidate, ...] = field(default_factory=tuple)
+    diagnostics: tuple[str, ...] = field(default_factory=tuple)
+    retry_after_seconds: int | None = None
+    raw_payload: bytes | None = None
+
+
+class LyricsResolutionStatus(Enum):
+    """User-visible terminal states for one lyrics resolution attempt."""
+
+    FOUND_TIMED = "Timed"
+    FOUND_UNTIMED = "Untimed"
+    INSTRUMENTAL = "Instrumental"
+    AMBIGUOUS = "Ambiguous"
+    NO_RESULT = "No result"
+    OFFLINE_MISS = "Offline miss"
+    PROVIDER_UNAVAILABLE = "Provider unavailable"
+    RATE_LIMITED = "Rate limited"
+    INVALID_LOCAL_LYRICS = "Invalid local lyrics"
+    INVALID_PROVIDER_RESPONSE = "Invalid provider response"
+
+
+@dataclass(frozen=True, slots=True)
+class LyricsResolutionResult:
+    """Explainable resolution state tied to the source that requested it."""
+
+    source_identity: SourceIdentity
+    status: LyricsResolutionStatus
+    document: LyricDocument | None = None
+    source_label: str | None = None
+    confidence: LyricsMatchConfidence | None = None
+    evidence: tuple[str, ...] = field(default_factory=tuple)
+    diagnostics: tuple[str, ...] = field(default_factory=tuple)
+    alternatives: tuple[LyricsProviderCandidate, ...] = field(default_factory=tuple)
+    cache_hit: bool = False
+    network_used: bool = False
+    retry_after_seconds: int | None = None
+
+
+class LyricsTextParseStatus(Enum):
+    """Whether lyric text safely produced synced, plain, or invalid content."""
+
+    SYNCED = "synced"
+    PLAIN = "plain"
+    INVALID = "invalid"
+
+
+@dataclass(frozen=True, slots=True)
+class ParsedLyricsText:
+    """Bounded parse output before source-specific document construction."""
+
+    status: LyricsTextParseStatus
+    lines: tuple[LyricLine, ...] = field(default_factory=tuple)
+    metadata: tuple[tuple[str, str], ...] = field(default_factory=tuple)
+    diagnostics: tuple[str, ...] = field(default_factory=tuple)
+    normalized_text: str = ""
+    raw_text_checksum: str | None = None
+
+
+class LocalLyricsStatus(Enum):
+    """Outcome of one exact-recording local lyrics source."""
+
+    FOUND = "found"
+    MISS = "miss"
+    INVALID = "invalid"
+
+
+@dataclass(frozen=True, slots=True)
+class LocalLyricsResult:
+    """Read-only local source result with no filesystem details in the core."""
+
+    status: LocalLyricsStatus
+    source_label: str
+    document: LyricDocument | None = None
+    diagnostics: tuple[str, ...] = field(default_factory=tuple)

@@ -3,13 +3,18 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime
 from enum import Enum
 from typing import Protocol
 
 from lyricflow.domain.identity import LocalFileIdentity, SourceIdentity
 from lyricflow.domain.lyrics import (
+    LocalLyricsResult,
     LyricDocument,
     LyricsMatch,
+    LyricsProviderCandidate,
+    LyricsProviderResult,
+    LyricsQuery,
     ProviderCacheEntry,
 )
 from lyricflow.domain.models import (
@@ -22,6 +27,7 @@ from lyricflow.domain.models import (
 from lyricflow.domain.tracks import (
     ApprovedTrackIdentity,
     PlayerSelectionConfig,
+    ResolvedTrack,
     TrackCandidate,
 )
 
@@ -191,3 +197,39 @@ class ProviderCacheRepositoryPort(Protocol):
 
     def delete(self, provider: str, cache_key: str) -> bool:
         """Remove only the selected optional cache entry."""
+
+
+class LyricsProviderPort(Protocol):
+    """Read-only provider adapter returning provider-neutral candidates."""
+
+    @property
+    def name(self) -> str:
+        """Stable provider name used for provenance and cache keys."""
+
+    def exact(self, query: LyricsQuery) -> LyricsProviderResult:
+        """Attempt one exact metadata lookup or explain why it was skipped."""
+
+    def search(self, query: LyricsQuery) -> LyricsProviderResult:
+        """Search for bounded candidates without auto-approving any result."""
+
+    def parse_cached(self, payload: bytes, *, search: bool) -> LyricsProviderResult:
+        """Reconstruct a typed provider result from an adapter-owned raw payload."""
+
+
+class LocalLyricsProviderPort(Protocol):
+    """Inspect one exact recording for a bounded read-only local lyrics source."""
+
+    def load(self, track: ResolvedTrack) -> LocalLyricsResult:
+        """Return found, miss, or invalid without changing local files or tags."""
+
+
+class LyricsCandidateDocumentPort(Protocol):
+    """Turn one provider-neutral candidate into a canonical original document."""
+
+    def document_id(self, candidate: LyricsProviderCandidate) -> str:
+        """Return the deterministic canonical document ID for deduplication."""
+
+    def build(
+        self, candidate: LyricsProviderCandidate, retrieved_at: datetime
+    ) -> tuple[LyricDocument | None, tuple[str, ...]]:
+        """Build timed/plain/instrumental content or controlled diagnostics."""

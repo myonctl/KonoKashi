@@ -5,7 +5,12 @@ from __future__ import annotations
 from datetime import UTC, datetime
 
 from lyricflow.domain.identity import PersistenceScope, SourceIdentity
-from lyricflow.domain.lyrics import ContentProvenance, LyricsMatch, LyricsMatchDecision
+from lyricflow.domain.lyrics import (
+    ContentProvenance,
+    LyricsMatch,
+    LyricsMatchConfidence,
+    LyricsMatchDecision,
+)
 from lyricflow.infrastructure.storage.errors import (
     InvalidStoredDataError,
     StorageValidationError,
@@ -31,6 +36,13 @@ class SQLiteLyricsMatchRepository:
                 "SELECT * FROM lyrics_matches WHERE source_identity_id = ?",
                 (source_id,),
             ).fetchone()
+            evidence_rows = connection.execute(
+                """
+                SELECT evidence FROM lyrics_match_evidence
+                WHERE source_identity_id = ? ORDER BY position
+                """,
+                (source_id,),
+            ).fetchall()
         if row is None:
             return None
         try:
@@ -39,6 +51,8 @@ class SQLiteLyricsMatchRepository:
                 decision=LyricsMatchDecision(str(row["decision"])),
                 provenance=ContentProvenance(str(row["provenance"])),
                 updated_at=datetime.fromisoformat(str(row["updated_at"])),
+                confidence=LyricsMatchConfidence(str(row["match_confidence"])),
+                evidence=tuple(str(item["evidence"]) for item in evidence_rows),
             )
         except (TypeError, ValueError) as error:
             raise InvalidStoredDataError("stored lyrics match is invalid") from error
@@ -59,13 +73,15 @@ class SQLiteLyricsMatchRepository:
             connection.execute(
                 """
                 INSERT INTO lyrics_matches(
-                    source_identity_id, document_id, decision, provenance, updated_at
-                ) VALUES (?, ?, ?, ?, ?)
+                    source_identity_id, document_id, decision, provenance, updated_at,
+                    match_confidence
+                ) VALUES (?, ?, ?, ?, ?, ?)
                 ON CONFLICT(source_identity_id) DO UPDATE SET
                     document_id = excluded.document_id,
                     decision = excluded.decision,
                     provenance = excluded.provenance,
-                    updated_at = excluded.updated_at
+                    updated_at = excluded.updated_at,
+                    match_confidence = excluded.match_confidence
                 """,
                 (
                     source_id,
@@ -73,6 +89,22 @@ class SQLiteLyricsMatchRepository:
                     match.decision.value,
                     match.provenance.value,
                     match.updated_at.astimezone(UTC).isoformat(),
+                    match.confidence.value,
+                ),
+            )
+            connection.execute(
+                "DELETE FROM lyrics_match_evidence WHERE source_identity_id = ?",
+                (source_id,),
+            )
+            connection.executemany(
+                """
+                INSERT INTO lyrics_match_evidence(
+                    source_identity_id, position, evidence
+                ) VALUES (?, ?, ?)
+                """,
+                (
+                    (source_id, position, evidence)
+                    for position, evidence in enumerate(match.evidence)
                 ),
             )
 

@@ -15,10 +15,12 @@ the complete automated gate and real restart/persistence verification for
 schema initialization, approved corrections, and player settings. The policy
 selects one primary player,
 suppresses explainable duplicates, derives typed local/YouTube/generic source
-identities, resolves conservative artist/title candidates without fetching
-lyrics, and can persist approved corrections and accepted player settings in
-local SQLite storage. Stage 4 — lyrics resolution — is Proposed / awaiting
-explicit authorization and is not Active.
+identities, resolves conservative artist/title candidates, and persists
+approved corrections and accepted player settings in local SQLite storage.
+Stage 4 — lyrics resolution — is implementation-complete with manual
+verification pending: local LRC/embedded resolution, conservative LRCLIB,
+cache/offline/refresh policy, and bounded CLI diagnostics are implemented.
+Stage 5 and all later stages remain unauthorized.
 
 The [`myonctl/LyricFlow`](https://github.com/myonctl/LyricFlow) GitHub repository
 is private during pre-alpha development. Its `origin` remote and default branch
@@ -31,8 +33,10 @@ The active tree can enumerate, inspect, and watch every raw MPRIS service throug
 a replaceable QtDBus boundary. A separate Stage 2 policy derives interpretations
 without changing those raw observations. Stage 3 adds XDG-local SQLite
 migrations and typed repositories for identities, corrections, settings, and
-the provider-neutral lyric foundation. It does not fetch or parse lyrics,
-synchronize playback, or build a GUI. See `PROJECT_STATE.md` for evidence and
+the provider-neutral lyric foundation. Stage 4 adds original-only LRC/plain
+parsing, adjacent and supported embedded sources, restart-safe cache/matches,
+and read-only LRCLIB retrieval. It does not synchronize playback, generate
+multilingual layers, or build a GUI. See `PROJECT_STATE.md` for evidence and
 `AGENT_TODO.md` for the only implementation authority.
 
 ## Core product rules
@@ -83,6 +87,10 @@ Supporting authorities:
   and real-player evidence.
 - `docs/STAGE_3_COMPLETION.md` — completed Stage 3 implementation, automated,
   storage, restart, cleanup, publication, and CI evidence.
+- `docs/STAGE_4_COMPLETION.md` — Stage 4 implementation checkpoint, automated
+  evidence, and pending minimal real-world verification.
+- `docs/adr/0010-stage4-lyrics-resolution.md` — accepted Stage 4 precedence,
+  matching, cache/offline/refresh, privacy, and schema policy.
 - `docs/adr/` — accepted and historical architecture/process decisions.
 
 `PLAN_MANIFEST.json` is a machine-readable document inventory, not an authority.
@@ -98,9 +106,9 @@ python -m venv .venv
 .venv/bin/python -m pip install ".[dev]"
 ```
 
-PySide6 is the only runtime dependency. pytest, Ruff, and mypy are development
-dependencies. Rationale and usage boundaries are recorded in
-`docs/DEPENDENCIES.md`.
+PySide6, HTTPX, and Mutagen are runtime dependencies. pytest, Ruff, and mypy are
+development dependencies. Rationale, licensing cautions, and usage boundaries
+are recorded in `docs/DEPENDENCIES.md`.
 
 ## Implemented commands
 
@@ -114,6 +122,9 @@ dependencies. Rationale and usage boundaries are recorded in
 .venv/bin/lyricflow storage status
 .venv/bin/lyricflow storage migrate
 .venv/bin/lyricflow storage settings show
+.venv/bin/lyricflow lyrics current
+.venv/bin/lyricflow lyrics current --offline
+.venv/bin/lyricflow lyrics current --refresh
 ```
 
 `doctor` checks local prerequisites only: Linux, the session D-Bus environment,
@@ -153,6 +164,15 @@ The default database is
 `$XDG_DATA_HOME/lyricflow/lyricflow.sqlite3`, falling back to
 `$HOME/.local/share/lyricflow/lyricflow.sqlite3`. Tests inject isolated temporary
 paths and never depend on the current working directory.
+
+`lyrics current` selects and resolves the current track, then applies approved,
+adjacent LRC, supported read-only embedded, durable High-confidence cache, and
+LRCLIB exact/search precedence. Normal output includes provenance, confidence,
+evidence, cache/network state, unsafe alternatives, line/timing counts, and a
+three-line preview; use `--full` only when deliberately printing complete lyric
+content. `--offline` forbids HTTP and reuses only local/durable data. `--refresh`
+bypasses automatic provider cache/matches while preserving approved data and a
+prior usable result on failure. The two flags cannot be combined.
 
 `players list` returns 0 whenever service enumeration itself succeeds, including
 when individual players or fields are unavailable; their diagnostics remain in

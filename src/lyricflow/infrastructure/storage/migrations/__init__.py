@@ -237,6 +237,39 @@ MIGRATIONS: tuple[Migration, ...] = (
             """,
         ),
     ),
+    Migration(
+        3,
+        "lyrics match confidence, evidence, and source metadata",
+        (
+            "ALTER TABLE lyrics_documents ADD COLUMN source_title TEXT",
+            "ALTER TABLE lyrics_documents ADD COLUMN source_artist TEXT",
+            "ALTER TABLE lyrics_documents ADD COLUMN source_album TEXT",
+            """
+            ALTER TABLE lyrics_matches ADD COLUMN match_confidence TEXT NOT NULL
+            DEFAULT 'Low' CHECK (
+                match_confidence IN ('Approved', 'High', 'Medium', 'Low')
+            )
+            """,
+            """
+            UPDATE lyrics_matches SET match_confidence = 'Approved'
+            WHERE decision = 'approved'
+            """,
+            """
+            CREATE TABLE lyrics_match_evidence (
+                source_identity_id INTEGER NOT NULL
+                    REFERENCES lyrics_matches(source_identity_id) ON DELETE CASCADE,
+                position INTEGER NOT NULL CHECK (position >= 0),
+                evidence TEXT NOT NULL CHECK (length(evidence) > 0),
+                PRIMARY KEY (source_identity_id, position)
+            )
+            """,
+            """
+            CREATE UNIQUE INDEX lyrics_provider_record_unique
+            ON lyrics_documents(source_name, provider_record_id)
+            WHERE provider_record_id IS NOT NULL
+            """,
+        ),
+    ),
 )
 
 CURRENT_SCHEMA_VERSION = MIGRATIONS[-1].version

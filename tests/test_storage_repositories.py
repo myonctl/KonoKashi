@@ -23,6 +23,7 @@ from lyricflow.domain.lyrics import (
     LyricLineAlignment,
     LyricRepresentation,
     LyricsMatch,
+    LyricsMatchConfidence,
     LyricsMatchDecision,
     ProviderCacheEntry,
     RepresentationKind,
@@ -36,6 +37,7 @@ from lyricflow.domain.tracks import (
 from lyricflow.infrastructure.storage.bootstrap import open_storage
 from lyricflow.infrastructure.storage.errors import (
     InvalidStoredDataError,
+    StorageError,
     StorageValidationError,
 )
 from tests.stage2_helpers import PredictableLocalPaths, fixture_snapshot
@@ -356,3 +358,74 @@ def test_matches_and_provider_cache_remain_separate(tmp_path: Path) -> None:
     assert restarted.provider_cache.delete("provider", "query-key") is True
     assert restarted.lyrics_matches.get(source) == rejected
     assert restarted.lyrics_matches.delete(source) is True
+
+
+def test_stage_four_source_metadata_match_confidence_and_evidence_round_trip(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "stage-four-fields.sqlite3"
+    storage = open_storage(path)
+    source = YouTubeIdentity("xa4WrgqI7q0")
+    document = LyricDocument(
+        "lrclib-42",
+        LyricDocumentKind.PLAIN,
+        "LRCLIB",
+        "君の声",
+        "checksum",
+        ApprovalState.UNREVIEWED,
+        NOW,
+        provider_record_id="42",
+        duration_ms=183_771,
+        source_title="Elevate (Radio Edit)",
+        source_artist="Little Sis Nora & S3RL",
+        source_album="Elevate",
+    )
+    match = LyricsMatch(
+        document.document_id,
+        LyricsMatchDecision.CANDIDATE,
+        ContentProvenance.PROVIDER,
+        NOW,
+        LyricsMatchConfidence.HIGH,
+        (
+            "normalized title matches",
+            "normalized musical artist matches",
+            "duration differs by 0 ms",
+        ),
+    )
+
+    storage.lyrics.put(document)
+    storage.lyrics_matches.put(source, match)
+    restarted = open_storage(path)
+
+    assert restarted.lyrics.get(document.document_id) == document
+    assert restarted.lyrics_matches.get(source) == match
+
+
+def test_provider_record_identity_prevents_duplicate_document_proliferation(
+    tmp_path: Path,
+) -> None:
+    storage = open_storage(tmp_path / "provider-record-unique.sqlite3")
+    first = LyricDocument(
+        "first-id",
+        LyricDocumentKind.INSTRUMENTAL,
+        "LRCLIB",
+        None,
+        None,
+        ApprovalState.UNREVIEWED,
+        NOW,
+        provider_record_id="77",
+    )
+    second = LyricDocument(
+        "second-id",
+        LyricDocumentKind.INSTRUMENTAL,
+        "LRCLIB",
+        None,
+        None,
+        ApprovalState.UNREVIEWED,
+        NOW,
+        provider_record_id="77",
+    )
+    storage.lyrics.put(first)
+
+    with pytest.raises(StorageError, match="UNIQUE"):
+        storage.lyrics.put(second)

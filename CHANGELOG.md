@@ -7,6 +7,21 @@ unreleased.
 
 ### Added
 
+- Stage 4 provider-neutral local-first lyrics resolution with typed timed,
+  untimed, instrumental, ambiguous, offline, rate-limit, invalid, and
+  unavailable outcomes carrying source identity, provenance, confidence, and
+  evidence.
+- Bounded LRC/plain parser; exact adjacent sidecars; read-only supported Mutagen
+  embedded fields; conservative LRCLIB exact/search through HTTPX; raw response
+  cache, normalized documents, durable match evidence, offline/refresh policy,
+  persistent instrumental/no-result behavior, and schema migration 3.
+- `lyricflow lyrics current` with `--offline`, `--refresh`, and deliberate
+  `--full`; normal diagnostics use a bounded preview and never dump complete
+  lyrics implicitly.
+- Stage 4 parser/local/provider/matcher/cache/restart/privacy/failure/CLI tests
+  and sanitized Strawberry, JessKah, black-screen, and LRCLIB fixtures. ADR 0010
+  records acceptance thresholds and cache semantics.
+
 - Stage 3 XDG-local SQLite persistence with explicit per-operation connection
   ownership, foreign keys, transactions, controlled errors, and two append-only
   checksummed migrations.
@@ -94,6 +109,11 @@ unreleased.
 
 ### Changed
 
+- Finished the Stage 4 implementation checkpoint while leaving real-world
+  provider/cache, local timed-lyrics, and failure/no-result verification
+  pending. The Strawberry investigation found no documented stable lyrics
+  export/API or versioned read-only cache contract, so no private-schema adapter
+  was added. Stage 5 remains unauthorized.
 - Closed Stage 3 as Completed after all real-XDG scenarios passed: schema
   migration/status diagnostics, approved-correction persistence and precedence
   after restart, correction reset, durable preferred/ignored player settings,

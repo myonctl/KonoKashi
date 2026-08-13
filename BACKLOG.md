@@ -46,8 +46,16 @@ authorize implementation. Staged v1 ordering lives in `docs/ROADMAP.md`.
 - **Strawberry lyrics interoperability** — Determine whether Strawberry offers
   a documented interface, portable file, or safely versioned read-only cache.
   Why: reuse already available lyrics without duplicate requests. Status:
-  Investigation. Prerequisites: compatibility evidence and a replacement-safe
-  adapter. Related: ADR 0005; Roadmap Stage 4.
+  Investigated in Stage 4 and deferred: no documented stable lyrics API/export
+  or versioned read-only cache contract was found; adjacent LRC and embedded
+  lyrics remain supported. Prerequisites for reconsideration: a published
+  compatibility contract and replacement-safe adapter. Related: ADR 0005.
+- **YouTube transcript timing hints** — A later manual-alignment workflow may
+  optionally use transcript timestamps as rough reviewable hints, never as
+  authoritative lyric text or approved timing. Status: Deferred beyond Stage
+  4; no transcript fetching/import exists. Prerequisites: explicit
+  authorization, consent/privacy policy, provenance, quality evaluation, and a
+  manual review workflow. Related: manual synchronization fallback; Stage 11+.
 
 ## Player integrations
 
