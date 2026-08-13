@@ -10,15 +10,15 @@ under it, and an optional translation forms a third layer.
 
 ## Current status
 
-Stage 1 — MPRIS diagnostic core — and Stage 2 — player selection and track
-identity — are **Completed**. Stage 2 passed both the complete automated gate
-and real Strawberry/JessKah/multiple-player verification. Stage 3 — persistence
-foundation — is **Active** after explicit authorization; its manual gate remains
-pending. The policy selects one primary player,
+Stages 1 through 3 are **Completed**. Stage 3 — persistence foundation — passed
+the complete automated gate and real restart/persistence verification for
+schema initialization, approved corrections, and player settings. The policy
+selects one primary player,
 suppresses explainable duplicates, derives typed local/YouTube/generic source
 identities, resolves conservative artist/title candidates without fetching
 lyrics, and can persist approved corrections and accepted player settings in
-local SQLite storage. Stage 4 and all later stages remain unauthorized.
+local SQLite storage. Stage 4 — lyrics resolution — is Proposed / awaiting
+explicit authorization and is not Active.
 
 The [`myonctl/LyricFlow`](https://github.com/myonctl/LyricFlow) GitHub repository
 is private during pre-alpha development. Its `origin` remote and default branch
@@ -81,6 +81,8 @@ Supporting authorities:
   and manual evidence.
 - `docs/STAGE_2_COMPLETION.md` — completed Stage 2 implementation, automated,
   and real-player evidence.
+- `docs/STAGE_3_COMPLETION.md` — completed Stage 3 implementation, automated,
+  storage, restart, cleanup, publication, and CI evidence.
 - `docs/adr/` — accepted and historical architecture/process decisions.
 
 `PLAN_MANIFEST.json` is a machine-readable document inventory, not an authority.

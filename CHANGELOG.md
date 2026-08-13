@@ -94,6 +94,12 @@ unreleased.
 
 ### Changed
 
+- Closed Stage 3 as Completed after all real-XDG scenarios passed: schema
+  migration/status diagnostics, approved-correction persistence and precedence
+  after restart, correction reset, durable preferred/ignored player settings,
+  corrected service-family selection in a fresh process, and clean settings
+  cleanup with integrity `ok`. Stage 4 is Proposed / awaiting explicit
+  authorization and is not Active.
 - Made preferred/ignored player selector semantics explicit and deterministic:
   bare selectors match only MPRIS service families, typed selectors opt into
   exact service/Identity/DesktopEntry matching, no media/descriptive-field
@@ -101,11 +107,11 @@ unreleased.
   precedence over preference. This fixes persisted `--ignore firefox`
   incorrectly suppressing KDE Plasma Browser Integration when it reports
   Firefox-related descriptive properties. Published fix `f739b54` passed GitHub
-  Actions run `31641111236`; the live Scenario C-only retest remains pending.
+  Actions run `31641111236`; the final live Scenario C-only retest passed.
 - Activated Stage 3 after explicit authorization. Durable local implementation
-  and the complete automated gate pass. Published implementation through
-  `d374542` and verified passing GitHub Actions run `31631263888`; manual
-  verification remains pending, and Stage 4 remains unauthorized.
+  and the complete automated gate passed. Published implementation through
+  `d374542` and verified passing GitHub Actions run `31631263888`; its later
+  manual closure is recorded above.
 - Replaced the production `players select` process-local override adapter with
   SQLite-backed corrections and persisted player settings while retaining the
   in-memory adapter for fast application tests. Raw MPRIS snapshots and the

@@ -28,6 +28,7 @@ REQUIRED_DOCUMENTS = (
     "docs/STAGE_COMPLETION_TEMPLATE.md",
     "docs/STAGE_1_COMPLETION.md",
     "docs/STAGE_2_COMPLETION.md",
+    "docs/STAGE_3_COMPLETION.md",
 )
 
 REQUIRED_EVIDENCE_FIXTURES = (
@@ -56,18 +57,11 @@ PROJECT_STATE_HEADINGS = (
     "## Continue here",
 )
 
-STAGE_HEADINGS = (
-    "## Objective",
-    "## Why this stage exists",
-    "## Required deliverables",
-    "## Required tests",
-    "## Required manual verification",
-    "## Acceptance criteria",
-    "## Explicitly out of scope",
-    "## Known constraints",
-    "## Dependencies / prerequisites",
-    "## Completion evidence",
-    "## Handoff",
+PROPOSED_STAGE_HEADINGS = (
+    "## Proposed next stage",
+    "## Proposed scope",
+    "## Explicitly unauthorized now",
+    "## Exact starting point",
 )
 
 COMPLETION_HEADINGS = (
@@ -168,14 +162,15 @@ def test_project_state_contains_the_continuation_contract() -> None:
     assert "/home/example/Documents/LyricFlow/" in content
 
 
-def test_agent_todo_authorizes_only_stage_three() -> None:
+def test_agent_todo_proposes_stage_four_without_authorizing_it() -> None:
     content = (REPOSITORY_ROOT / "AGENT_TODO.md").read_text(encoding="utf-8")
 
     assert content.startswith("# Current authorized stage\n")
-    assert "Stage 3 — Persistence foundation is Active" in content
-    assert "Stage 4 and all later stages remain unauthorized" in content
-    assert "Stage 2 — Player selection and track identity has passed" in content
-    assert all(heading in content for heading in STAGE_HEADINGS)
+    assert "None. No implementation stage is Active" in content
+    assert "Stage 3 — Persistence foundation is **Completed**" in content
+    assert "Stage 4 — Lyrics resolution is Proposed / awaiting explicit" in content
+    assert "Stage 4 is **NOT Active**" in content
+    assert all(heading in content for heading in PROPOSED_STAGE_HEADINGS)
 
 
 def test_manifest_is_inventory_not_authority() -> None:
@@ -184,8 +179,10 @@ def test_manifest_is_inventory_not_authority() -> None:
     )
 
     assert manifest["implementation_authority"] == "AGENT_TODO.md"
-    assert manifest["authorized_stage"] == "Stage 3 — Persistence foundation"
-    assert manifest["proposed_stage"] is None
+    assert manifest["authorized_stage"] is None
+    assert manifest["proposed_stage"] == (
+        "Stage 4 — Lyrics resolution (awaiting explicit authorization; not Active)"
+    )
     assert all((REPOSITORY_ROOT / path).is_file() for path in manifest["files"])
 
 
