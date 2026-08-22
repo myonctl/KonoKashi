@@ -38,12 +38,16 @@ def test_core_layers_do_not_import_frameworks_or_adapters() -> None:
     assert violations == []
 
 
-def test_pyside_imports_are_confined_to_infrastructure() -> None:
+def test_pyside_imports_are_confined_to_qt_adapters() -> None:
     source_root = Path(__file__).parents[1] / "src" / "lyricflow"
     violations: list[str] = []
 
     for path in source_root.rglob("*.py"):
-        if "infrastructure" in path.relative_to(source_root).parts:
+        relative_parts = path.relative_to(source_root).parts
+        if "infrastructure" in relative_parts or relative_parts[:2] == (
+            "presentation",
+            "desktop",
+        ):
             continue
         for imported in _imports(path):
             if imported == "PySide6" or imported.startswith("PySide6."):

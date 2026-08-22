@@ -10,7 +10,11 @@ under it, and an optional translation forms a third layer.
 
 ## Current status
 
-Stages 1 through 5 are **Completed**. Stage 5 — Romanization and multilingual
+Stages 1 through 6 are **Completed**. Stage 7 — Desktop MVP is **implementation
+complete; verification pending**, with
+implementation and automated verification complete; required real KDE,
+playback, scaling, theme, and longer-run verification remains pending. Stage 5
+— Romanization and multilingual
 layers — passed its published automated gate and real Japanese generation,
 fresh-process correction/reset, and Latin no-duplicate verification. Stage 3 —
 persistence foundation — passed
@@ -40,12 +44,15 @@ parsing, adjacent and supported embedded sources, restart-safe cache/matches,
 and read-only LRCLIB retrieval. Stage 5 adds offline, stable-line-aligned
 romanization/transliteration candidates, provider/import boundaries,
 provenance/uncertainty, durable user approval/rejection/reset, translation
-structure, and layer settings. Stage 6 implementation adds a precision/
+structure, and layer settings. Stage 6 adds a precision/
 uncertainty-aware playback clock, separate audio/lyric/presentation calibration,
 durable document/output residual settings, active-line deadlines, a shared
 frontend-neutral snapshot, and diagnostic `sync` commands. Its automated and
-real cooperative Strawberry/timed-lyrics closure gates pass. It does not build
-the desktop or full-screen TUI. See
+real cooperative Strawberry/timed-lyrics closure gates pass. Stage 7 adds a
+real PySide6 Widgets main window driven by the same frontend-neutral
+application state, with synchronized multilingual lyrics, explicit normal and
+failure states, progress, shared display settings, and bounded details. The
+full-screen TUI remains future work. See
 `PROJECT_STATE.md` for evidence and `AGENT_TODO.md` for the only implementation
 authority.
 
@@ -103,6 +110,10 @@ Supporting authorities:
   multilingual/correction/Latin-safety, publication, and CI evidence.
 - `docs/STAGE_6_COMPLETION.md` — completed Stage 6 implementation, automated,
   real-player/timed-lyrics, delay, publication, and CI evidence.
+- `docs/STAGE_7_COMPLETION.md` — Stage 7 implementation, automated evidence,
+  limitations, and the exact pending real KDE verification matrix.
+- `docs/PRODUCT_GAP_RESEARCH.md` — bounded public product-feedback findings and
+  Stage 7/future/rejected scope decisions.
 - `docs/adr/0010-stage4-lyrics-resolution.md` — accepted Stage 4 precedence,
   matching, cache/offline/refresh, privacy, and schema policy.
 - `docs/adr/0011-offline-romanization-routing.md` — accepted Stage 5 script
@@ -133,6 +144,7 @@ Rationale, licensing cautions, and usage boundaries are recorded in
 ```bash
 .venv/bin/lyricflow --version
 .venv/bin/lyricflow doctor
+.venv/bin/lyricflow desktop
 .venv/bin/lyricflow players list
 .venv/bin/lyricflow players inspect <service>
 .venv/bin/lyricflow players watch
@@ -241,6 +253,16 @@ estimate predicts. Both are durable and independently resettable. PipeWire
 evidence is diagnostic-only whenever current stream routing is unproven; unknown
 latency is never printed or applied as zero.
 
+`desktop` opens the normal resizable Stage 7 application. It stays open in a
+deliberate waiting state when no player is available, automatically follows
+player/source changes, invalidates old lyrics before resolving a new track,
+and displays timed, untimed, instrumental, ambiguous, no-result, offline, and
+provider-failure states without diagnostic clutter. Settings edits use the
+same durable original/romanized/translated toggles as the CLI. Provider,
+filesystem, and storage work runs outside the Qt UI thread; in-flight provider
+requests are cancelled on source changes and shutdown. Detailed limitations
+remain available from the Details button.
+
 `players list` returns 0 whenever service enumeration itself succeeds, including
 when individual players or fields are unavailable; their diagnostics remain in
 the output. It returns 1 only when the player set cannot be enumerated.
@@ -266,6 +288,8 @@ Run from the repository root:
 .venv/bin/python -m mypy src
 .venv/bin/lyricflow --version
 .venv/bin/lyricflow doctor
+.venv/bin/lyricflow storage status
+.venv/bin/lyricflow desktop --help
 ```
 
 Exact current results belong in `PROJECT_STATE.md` and `AGENT_TODO.md`.

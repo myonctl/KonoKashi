@@ -7,7 +7,9 @@ authorize implementation. Staged v1 ordering lives in `docs/ROADMAP.md`.
 ## Confirmed future features
 
 - **Synced lyrics display** — Resolve and display timestamped lyrics against
-  playback. Why: this is the core product outcome. Status: Planned.
+  playback. Why: this is the core product outcome. Status: Implemented through
+  the Stage 7 desktop/application model and tested automatically; real KDE
+  verification pending.
   Prerequisites: Stages 1–6. Related: Roadmap Stages 4, 6, and 7.
 - **User-approved corrections** — Let users correct track and lyrics matches,
   approve or reject results, and preserve those choices. Why: metadata and
@@ -34,6 +36,15 @@ authorize implementation. Staged v1 ordering lives in `docs/ROADMAP.md`.
   6. Prerequisites: the Stage 6 synchronization engine and shared application
   state. Related: Product specification first-class terminal frontend and
   planned presentation architecture.
+
+- **Machine-readable current-line/event output** — Provide a stable stdout
+  current-line mode and/or JSON event stream for reusable consumers such as
+  Waybar, eww, AGS, OBS, and Discord RPC. Why: public neighboring-project
+  feedback shows demand for composition with desktop/status/streaming tools,
+  while separate integration-specific business logic would fragment the core.
+  Status: Planned future work; explicitly not Stage 7. Prerequisites: stabilize
+  the shared frontend snapshot/subscription contract through real desktop use.
+  Related: `docs/PRODUCT_GAP_RESEARCH.md` and the first-class TUI requirement.
 
 - **Per-track representation display overrides** — Extend Stage 5's durable
   global original/romanized/translated toggles with optional stable-track
@@ -103,7 +114,8 @@ authorize implementation. Staged v1 ordering lives in `docs/ROADMAP.md`.
 - **Stacked representation layers** — Show romanized/transliterated text
   directly under the original and optional translation underneath that. Why:
   readability must not replace the original. Status: Implemented at the Stage 5
-  application/CLI model; desktop rendering remains Stage 7. Related: ADR 0006.
+  application/CLI model and Stage 7 desktop rendering; real KDE verification
+  remains pending. Related: ADR 0006.
 - **Other non-Latin scripts** — Support appropriate transliteration for
   Cyrillic, Greek, Arabic, Thai, and other scripts through replaceable engines.
   Why: the model must not be limited to three languages. Status: Initial

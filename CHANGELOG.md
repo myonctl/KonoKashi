@@ -7,6 +7,27 @@ unreleased.
 
 ### Added
 
+- Activated the repository-defined Stage 7 Desktop MVP after explicit user
+  authorization on 2026-08-22 while preserving the future first-class
+  `lyricflow tui` and leaving Stage 8+ unauthorized.
+- Added a Qt-free frontend session/state boundary combining existing player
+  selection, lyric resolution, multilingual representation settings, timing,
+  generation rejection, snapshots, and controlled user-facing states for both
+  the desktop and future TUI.
+- Added `lyricflow desktop`: a responsive PySide6 Widgets main window with a
+  current-track header, active/nearby synchronized lyric hierarchy, untimed and
+  instrumental presentation, progress/playback state, durable representation
+  toggles, compact source/sync status, and bounded details.
+- Added worker-owned storage/provider/filesystem work, source-change and
+  shutdown cancellation for LRCLIB requests, semantic snapshot publication,
+  and clean no-player/player-change recovery without widget-owned D-Bus, SQL,
+  provider, matching, or romanization policy.
+- Added deterministic desktop state, stale A-to-B event, pause/resume/seek,
+  outcome, settings, multilingual/Unicode, plain-text escaping, logical resize,
+  100-200% scale-factor, light/dark palette, launch, shutdown, and cancellable-
+  request regressions. The bounded public feedback synthesis and Stage 7 scope
+  decisions are recorded in `docs/PRODUCT_GAP_RESEARCH.md`.
+
 - Activated Stage 6 after explicit user authorization on 2026-08-22 and made
   the accepted future full-screen `lyricflow tui` requirement durable in the
   product specification, architecture, and backlog. The Stage 6 terminal

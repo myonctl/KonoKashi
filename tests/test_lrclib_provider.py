@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from threading import Event, Thread
 
 import httpx
 import pytest
@@ -299,3 +300,49 @@ def test_cached_payload_round_trips_without_request() -> None:
     assert result.status is LyricsProviderStatus.RESULTS
     assert result.candidates[0].record_id == "3396226"
     assert miss.status is LyricsProviderStatus.NO_RESULT
+
+
+def test_inflight_request_can_be_cancelled_after_frontend_source_change() -> None:
+    started = Event()
+    released = Event()
+
+    class BlockingStream(httpx.SyncByteStream):
+        def __iter__(self):  # type: ignore[no-untyped-def]
+            started.set()
+            released.wait(2)
+            yield b"[]"
+
+        def close(self) -> None:
+            released.set()
+
+    class BlockingTransport(httpx.BaseTransport):
+        def __init__(self) -> None:
+            self.stream = BlockingStream()
+
+        def handle_request(self, request: httpx.Request) -> httpx.Response:
+            return httpx.Response(
+                200,
+                headers={"content-type": "application/json"},
+                stream=self.stream,
+                request=request,
+            )
+
+        def close(self) -> None:
+            self.stream.close()
+
+    provider = LrclibLyricsProvider(transport=BlockingTransport())
+    results = []
+    worker = Thread(
+        target=lambda: results.append(
+            provider.search(LyricsQuery("Song", ("Artist",), None, None))
+        )
+    )
+    worker.start()
+    assert started.wait(1)
+
+    provider.cancel_inflight()
+    worker.join(1)
+
+    assert not worker.is_alive()
+    assert released.is_set()
+    assert results

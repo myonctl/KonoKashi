@@ -152,6 +152,10 @@ def _parser() -> argparse.ArgumentParser:
         "doctor",
         help="check local platform and desktop prerequisites",
     )
+    subparsers.add_parser(
+        "desktop",
+        help="open the PySide6 synchronized-lyrics desktop application",
+    )
     players = subparsers.add_parser(
         "players",
         help="inspect MPRIS players on the session D-Bus",
@@ -1565,6 +1569,10 @@ def main(
         report = build_doctor_report(collect_local_diagnostics())
         print(report.render())
         return report.exit_code
+    if arguments.command == "desktop":
+        from lyricflow.presentation.desktop.app import run_desktop
+
+        return run_desktop(["lyricflow"], database_path=database_path)
     if arguments.command == "players":
         return _run_players(arguments, runtime_factory, database_path)
     if arguments.command == "storage":

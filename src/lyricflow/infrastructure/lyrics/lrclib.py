@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from decimal import ROUND_HALF_UP, Decimal, DecimalException
+from threading import Lock
 from typing import Any
 
 import httpx
@@ -48,12 +49,22 @@ class LrclibLyricsProvider:
         )
         self._transport = transport
         self._user_agent = user_agent
+        self._active_clients: set[httpx.Client] = set()
+        self._active_clients_lock = Lock()
 
     @property
     def timeout(self) -> httpx.Timeout:
         """Expose immutable timeout configuration for diagnostics/tests."""
 
         return self._timeout
+
+    def cancel_inflight(self) -> None:
+        """Close active read-only requests after a frontend source change."""
+
+        with self._active_clients_lock:
+            clients = tuple(self._active_clients)
+        for client in clients:
+            client.close()
 
     def exact(self, query: LyricsQuery) -> LyricsProviderResult:
         """Use `/api/get` only when every official signature field is available."""
@@ -115,14 +126,17 @@ class LrclibLyricsProvider:
         self, path: str, params: dict[str, str], *, search: bool
     ) -> LyricsProviderResult:
         headers = {"User-Agent": self._user_agent, "Accept": "application/json"}
+        client = httpx.Client(
+            timeout=self._timeout,
+            follow_redirects=False,
+            transport=self._transport,
+            headers=headers,
+        )
+        with self._active_clients_lock:
+            self._active_clients.add(client)
         try:
             with (
-                httpx.Client(
-                    timeout=self._timeout,
-                    follow_redirects=False,
-                    transport=self._transport,
-                    headers=headers,
-                ) as client,
+                client,
                 client.stream(
                     "GET", f"{self._base_url}{path}", params=params
                 ) as response,
@@ -151,6 +165,9 @@ class LrclibLyricsProvider:
                 LyricsProviderStatus.UNAVAILABLE,
                 diagnostics=(f"LRCLIB network request failed: {error}",),
             )
+        finally:
+            with self._active_clients_lock:
+                self._active_clients.discard(client)
 
         if status == 404:
             return LyricsProviderResult(

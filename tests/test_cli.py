@@ -1,11 +1,13 @@
 """Behavior tests for the public command-line interface."""
 
+from pathlib import Path
 from types import ModuleType
 
 import pytest
 
 from lyricflow import cli
 from lyricflow.application.ports import DiagnosticCheck, DiagnosticStatus
+from lyricflow.presentation.desktop import app as desktop_app
 
 
 def test_version_output(capsys: pytest.CaptureFixture[str]) -> None:
@@ -14,6 +16,21 @@ def test_version_output(capsys: pytest.CaptureFixture[str]) -> None:
 
     assert exit_info.value.code == 0
     assert capsys.readouterr().out == "lyricflow 0.1.0\n"
+
+
+def test_desktop_command_dispatches_to_the_qt_entry_point(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    observed: list[tuple[list[str], object]] = []
+
+    def launch(argv: list[str], *, database_path: Path | None) -> int:
+        observed.append((argv, database_path))
+        return 23
+
+    monkeypatch.setattr(desktop_app, "run_desktop", launch)
+
+    assert cli.main(["desktop"], database_path=tmp_path / "desktop.sqlite3") == 23
+    assert observed == [(["lyricflow"], tmp_path / "desktop.sqlite3")]
 
 
 def test_doctor_success_output_and_exit_code(
