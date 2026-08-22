@@ -7,6 +7,7 @@ from pathlib import Path
 
 import pytest
 
+from lyricflow.infrastructure.storage.bootstrap import open_storage_readonly
 from lyricflow.infrastructure.storage.errors import (
     StorageCorruptError,
     StorageError,
@@ -53,7 +54,7 @@ def test_brand_new_unicode_database_migrates_in_order_and_reopens_noop(
 
     assert database.initialize() == CURRENT_SCHEMA_VERSION
     first_history = database.migration_history()
-    assert [item[0] for item in first_history] == [1, 2, 3, 4]
+    assert [item[0] for item in first_history] == [1, 2, 3, 4, 5]
 
     def unexpected_transaction() -> None:
         raise AssertionError("current-schema initialization opened a write transaction")
@@ -61,6 +62,40 @@ def test_brand_new_unicode_database_migrates_in_order_and_reopens_noop(
     monkeypatch.setattr(database, "transaction", unexpected_transaction)
     assert database.initialize() == CURRENT_SCHEMA_VERSION
     assert database.migration_history() == first_history
+
+
+def test_readonly_repository_open_never_upgrades_a_pending_schema(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "pending.sqlite3"
+    database = SQLiteDatabase(path)
+    database.initialize(MIGRATIONS[:4])
+    history = database.migration_history()
+
+    with pytest.raises(UnsupportedSchemaError, match="read-only"):
+        open_storage_readonly(path)
+
+    assert database.migration_history() == history
+    assert [item[0] for item in history] == [1, 2, 3, 4]
+    with database.connection(readonly=True) as connection:
+        timing_table = connection.execute(
+            "SELECT 1 FROM sqlite_master WHERE name = 'lyric_document_timing'"
+        ).fetchone()
+    assert timing_table is None
+
+
+def test_readonly_repository_open_uses_current_schema_without_writes(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "current.sqlite3"
+    database = SQLiteDatabase(path)
+    database.initialize()
+    history = database.migration_history()
+
+    repositories = open_storage_readonly(path)
+
+    assert repositories.settings.get_player_selection().preferred_players == ()
+    assert database.migration_history() == history
 
 
 def test_published_stage_three_database_upgrades_without_losing_approved_match(
@@ -99,7 +134,7 @@ def test_published_stage_three_database_upgrades_without_losing_approved_match(
             """
         )
 
-    assert database.initialize() == 4
+    assert database.initialize() == 5
 
     with database.connection(readonly=True) as connection:
         row = connection.execute(
@@ -113,7 +148,7 @@ def test_published_stage_three_database_upgrades_without_losing_approved_match(
         ).fetchone()
     assert tuple(row) == ("approved-doc", "approved", "Approved")
     assert evidence_table[0] == "lyrics_match_evidence"
-    assert [item[0] for item in database.migration_history()] == [1, 2, 3, 4]
+    assert [item[0] for item in database.migration_history()] == [1, 2, 3, 4, 5]
 
 
 def test_published_stage_four_database_upgrades_without_losing_original_lines(
@@ -150,7 +185,7 @@ def test_published_stage_four_database_upgrades_without_losing_original_lines(
             """
         )
 
-    assert database.initialize() == 4
+    assert database.initialize() == 5
 
     with database.connection(readonly=True) as connection:
         original = connection.execute(

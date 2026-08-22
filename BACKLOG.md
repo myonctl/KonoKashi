@@ -26,6 +26,15 @@ authorize implementation. Staged v1 ordering lives in `docs/ROADMAP.md`.
 
 ## UX improvements
 
+- **First-class full-screen TUI** — Provide an everyday-use terminal frontend,
+  conceptually `lyricflow tui`, with current track, synchronized multilingual
+  lyrics, explicit states, corrections, and settings through the same
+  application services used by the desktop frontend. It is not a diagnostic
+  log or reduced fallback. Status: Planned; explicitly not implemented in Stage
+  6. Prerequisites: the Stage 6 synchronization engine and shared application
+  state. Related: Product specification first-class terminal frontend and
+  planned presentation architecture.
+
 - **Per-track representation display overrides** — Extend Stage 5's durable
   global original/romanized/translated toggles with optional stable-track
   overrides when the desktop settings model exists. Why: the product spec
@@ -136,9 +145,17 @@ authorize implementation. Staged v1 ordering lives in `docs/ROADMAP.md`.
 ## Sync improvements
 
 - **Manual global and per-line timing repair** — Let users correct offsets and
-  broken line timing after synchronization. Status: Planned for global offset
-  in v1; per-line repair is part of the deferred fast manual synchronization
-  workflow above. Prerequisites: playback clock and correction persistence.
+  broken line timing after synchronization. Status: whole-document delay is
+  implemented and restart-safe in Stage 6; durable per-line repair/editor is
+  part of the deferred fast manual synchronization workflow above.
+  Prerequisites: correction UI and approved per-line persistence semantics.
+- **Qualified current-stream audio routing** — Replace default-sink-only
+  diagnostic evidence with a proven selected-MPRIS-stream-to-output mapping
+  where PipeWire exposes one safely, so fresh graph/device latency plus the
+  exact-device residual may be applied automatically. Status: Investigation;
+  Stage 6 deliberately leaves current default-sink evidence diagnostic-only.
+  Prerequisites: stable route identity, output-change events, real analog/USB/
+  HDMI/Bluetooth evaluation, and no audio capture.
 - **Automatic timing/alignment drafts** — Investigate vocal separation and
   audio/text alignment that proposes, but does not silently approve, timings.
   Why: expand synced coverage. Status: Deferred. Prerequisites: stable manual

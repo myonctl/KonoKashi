@@ -16,6 +16,8 @@ class StorageCounts:
     provider_cache_entries: int = 0
     representation_candidates: int = 0
     representation_decisions: int = 0
+    lyric_document_delays: int = 0
+    audio_output_calibrations: int = 0
 
 
 @dataclass(frozen=True, slots=True)
@@ -69,6 +71,8 @@ def render_storage_status(status: StorageStatus) -> str:
                 f"provider cache entries: {status.counts.provider_cache_entries}",
                 f"representation candidates: {status.counts.representation_candidates}",
                 f"representation decisions: {status.counts.representation_decisions}",
+                f"lyric document delays: {status.counts.lyric_document_delays}",
+                f"audio output calibrations: {status.counts.audio_output_calibrations}",
             )
         )
     if status.error is not None:

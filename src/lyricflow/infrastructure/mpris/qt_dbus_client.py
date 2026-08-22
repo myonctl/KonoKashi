@@ -11,6 +11,7 @@ from PySide6.QtCore import (
     QCoreApplication,
     QEventLoop,
     QObject,
+    Qt,
     QTimer,
     Slot,
 )
@@ -22,6 +23,7 @@ from PySide6.QtDBus import (
     QDBusPendingCallWatcher,
 )
 
+from lyricflow.infrastructure.clocks import LinuxClock
 from lyricflow.infrastructure.mpris.backend import (
     MprisBackendError,
     MprisPropertyRead,
@@ -31,7 +33,11 @@ from lyricflow.infrastructure.mpris.backend import (
     ServiceHandler,
 )
 from lyricflow.infrastructure.mpris.metadata_mapper import MPRIS_OBJECT_PATH
-from lyricflow.infrastructure.mpris.player_registry import MprisClient, MprisMonitor
+from lyricflow.infrastructure.mpris.player_registry import (
+    MprisClient,
+    MprisMonitor,
+    MprisPositionSampler,
+)
 from lyricflow.infrastructure.mpris.qt_dbus_values import (
     PROPERTIES_SLOT,
     SEEKED_SLOT,
@@ -518,8 +524,11 @@ class QtMprisRuntime:
         self._signal_timer = QTimer(application)
         self._signal_timer.setInterval(250)
         self._signal_timer.timeout.connect(lambda: None)
+        self._wait_loop: QEventLoop | None = None
         self.client = MprisClient(backend)
         self.monitor = MprisMonitor(backend)
+        self.clock = LinuxClock()
+        self.timing = MprisPositionSampler(backend, self.clock.monotonic_ns)
 
     def exec(self) -> int:
         """Run Qt while periodically returning to Python for SIGINT delivery."""
@@ -534,6 +543,29 @@ class QtMprisRuntime:
         """Request a clean stop of the Qt event loop."""
 
         self._application.quit()
+
+    def wait(self, timeout_ms: int) -> None:
+        """Process D-Bus signals during a bounded diagnostic sampling interval."""
+
+        if timeout_ms < 0:
+            raise ValueError("wait timeout cannot be negative")
+        loop = QEventLoop(self._application)
+        timer = QTimer(loop)
+        timer.setSingleShot(True)
+        timer.setTimerType(Qt.TimerType.PreciseTimer)
+        timer.timeout.connect(loop.quit)
+        timer.start(timeout_ms)
+        self._wait_loop = loop
+        try:
+            loop.exec()
+        finally:
+            self._wait_loop = None
+
+    def wake(self) -> None:
+        """Wake a one-shot wait so seek/status/track state is rendered now."""
+
+        if self._wait_loop is not None:
+            self._wait_loop.quit()
 
 
 def create_qt_mpris_runtime() -> QtMprisRuntime:

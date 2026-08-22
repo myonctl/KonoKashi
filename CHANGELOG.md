@@ -7,6 +7,26 @@ unreleased.
 
 ### Added
 
+- Activated Stage 6 after explicit user authorization on 2026-08-22 and made
+  the accepted future full-screen `lyricflow tui` requirement durable in the
+  product specification, architecture, and backlog. The Stage 6 terminal
+  synchronization display remains a diagnostic prototype, not that future TUI.
+- Added midpoint-bracketed MPRIS Position sampling; a pure monotonic playback
+  clock with fixed-point rates, pause/seek/track/rate/suspend resets, adaptive
+  resampling, stale/duplicate/slow-read rejection, no-rewind phase slew, robust
+  bounded drift fitting, health/uncertainty evidence, and exact trajectory-aware
+  line deadlines.
+- Added separate typed audio-output, lyric timestamp, and presentation latency
+  terms; schema 5 persistence for per-document display delay and stable-output
+  residual calibration; a bounded read-only PipeWire default-sink diagnostic;
+  and `sync current/probe/delay/audio` surfaces. Unsafe or stale latency remains
+  diagnostic-only and unknown never becomes zero.
+- Added immutable frontend-neutral synchronization snapshots, aligned Stage 5
+  representation layers, source-generation guards, and leak-free meaningful-
+  change subscriptions so future desktop/TUI adapters do not depend on MPRIS,
+  PipeWire, storage, lyrics providers, or linguistic adapters. ADR 0012 records
+  the timing, persistence, sampling, and publication policy.
+
 - Stage 5 deterministic Unicode script composition and conservative routing
   that distinguishes Latin, Han, kana, Hangul, Cyrillic, Greek, Arabic, Thai,
   punctuation/numbers, mixed scripts, and ambiguous Han without inventing a

@@ -40,9 +40,14 @@ parsing, adjacent and supported embedded sources, restart-safe cache/matches,
 and read-only LRCLIB retrieval. Stage 5 adds offline, stable-line-aligned
 romanization/transliteration candidates, provider/import boundaries,
 provenance/uncertainty, durable user approval/rejection/reset, translation
-structure, and layer settings. It does not synchronize playback or build a
-GUI. See `PROJECT_STATE.md` for evidence and `AGENT_TODO.md` for the only
-implementation authority.
+structure, and layer settings. Stage 6 implementation adds a precision/
+uncertainty-aware playback clock, separate audio/lyric/presentation calibration,
+durable document/output residual settings, active-line deadlines, a shared
+frontend-neutral snapshot, and diagnostic `sync` commands. Its 424-test local
+gate passes; required cooperative Strawberry/timed-lyrics verification remains
+pending. It does not build the desktop or full-screen TUI. See
+`PROJECT_STATE.md` for evidence and `AGENT_TODO.md` for the only implementation
+authority.
 
 ## Core product rules
 
@@ -96,6 +101,8 @@ Supporting authorities:
   local/provider/offline/no-result, publication, and CI evidence.
 - `docs/STAGE_5_COMPLETION.md` — completed Stage 5 implementation, automated,
   multilingual/correction/Latin-safety, publication, and CI evidence.
+- `docs/STAGE_6_COMPLETION.md` — Stage 6 implementation evidence and exact
+  pending real-player verification/publication gate.
 - `docs/adr/0010-stage4-lyrics-resolution.md` — accepted Stage 4 precedence,
   matching, cache/offline/refresh, privacy, and schema policy.
 - `docs/adr/0011-offline-romanization-routing.md` — accepted Stage 5 script
@@ -139,6 +146,10 @@ Rationale, licensing cautions, and usage boundaries are recorded in
 .venv/bin/lyricflow lyrics romanize current --language ja
 .venv/bin/lyricflow lyrics representations current --offline
 .venv/bin/lyricflow storage display show
+.venv/bin/lyricflow sync current --offline
+.venv/bin/lyricflow sync probe --duration-seconds 30
+.venv/bin/lyricflow sync delay show --offline
+.venv/bin/lyricflow sync audio status
 ```
 
 `doctor` checks local prerequisites only: Linux, the session D-Bus environment,
@@ -216,6 +227,19 @@ regeneration. Approved user text wins over retained provider/imported/generated
 evidence across restart and provider refresh. `storage display set` persists
 independent original, romanized/transliterated, and translated toggles; defaults
 are original on, romanized on, and translated off.
+
+`sync current` follows a selected timed document with locally interpolated
+frames and adaptive authoritative MPRIS checks. It renders media versus
+qualified audible position, clock health/RTT/residual/drift evidence, separated
+automatic-output/residual/document/presentation terms, aligned active
+multilingual lines, and the next deadline. `sync probe` is bounded, loads no
+lyrics, uses no provider network, and reports clock/audio quality independently
+from provider timestamps. Positive `sync delay set +250ms` displays the current
+document later without modifying its stored provider lines; `sync audio
+calibrate +25ms` means the exact current output is heard later than an automatic
+estimate predicts. Both are durable and independently resettable. PipeWire
+evidence is diagnostic-only whenever current stream routing is unproven; unknown
+latency is never printed or applied as zero.
 
 `players list` returns 0 whenever service enumeration itself succeeds, including
 when individual players or fields are unavailable; their diagnostics remain in

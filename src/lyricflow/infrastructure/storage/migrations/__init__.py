@@ -357,6 +357,28 @@ MIGRATIONS: tuple[Migration, ...] = (
             """,
         ),
     ),
+    Migration(
+        5,
+        "document timing delay and output-device residual calibration",
+        (
+            """
+            CREATE TABLE lyric_document_timing (
+                document_id TEXT PRIMARY KEY
+                    REFERENCES lyrics_documents(document_id) ON DELETE CASCADE,
+                lyrics_display_delay_us INTEGER NOT NULL,
+                updated_at TEXT NOT NULL
+            )
+            """,
+            """
+            CREATE TABLE audio_output_calibrations (
+                device_key TEXT PRIMARY KEY CHECK (length(device_key) > 0),
+                device_label TEXT NOT NULL CHECK (length(device_label) > 0),
+                residual_delay_us INTEGER NOT NULL,
+                updated_at TEXT NOT NULL
+            )
+            """,
+        ),
+    ),
 )
 
 CURRENT_SCHEMA_VERSION = MIGRATIONS[-1].version

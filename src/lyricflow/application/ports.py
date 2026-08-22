@@ -22,6 +22,7 @@ from lyricflow.domain.models import (
     PlayerEvent,
     PlayerInspection,
     PlayerListResult,
+    PlayerSnapshot,
     PlayerWatchStart,
     RawTrackMetadata,
 )
@@ -31,6 +32,13 @@ from lyricflow.domain.representations import (
     RepresentationDisplaySettings,
     RomanizationProviderResult,
     RomanizationRequest,
+)
+from lyricflow.domain.synchronization import (
+    AudioLatencyProbeResult,
+    LyricDocumentTiming,
+    ObservationReason,
+    OutputDeviceCalibration,
+    PositionObservation,
 )
 from lyricflow.domain.tracks import (
     ApprovedTrackIdentity,
@@ -85,6 +93,58 @@ class PlayerMonitorPort(Protocol):
         """Disconnect all signal subscriptions."""
 
 
+class PlayerPositionSamplerPort(Protocol):
+    """Capture one Position read with local monotonic timing evidence."""
+
+    def sample(
+        self,
+        snapshot: PlayerSnapshot,
+        session_id: str,
+        *,
+        reason: ObservationReason = ObservationReason.PERIODIC,
+    ) -> PositionObservation:
+        """Return a bracketed observation or raise a controlled runtime error."""
+
+
+class AudioLatencyProbePort(Protocol):
+    """Read graph latency evidence without capturing or modifying audio."""
+
+    def probe(self) -> AudioLatencyProbeResult:
+        """Return a bounded diagnostic result or controlled unavailable state."""
+
+
+class ClockPort(Protocol):
+    """High-resolution local clocks used without wall-clock interpolation."""
+
+    def monotonic_ns(self) -> int:
+        """Return an integer monotonic timestamp."""
+
+    def boottime_ns(self) -> int | None:
+        """Return suspend-aware Linux boottime, or None when unavailable."""
+
+
+class TimingCalibrationRepositoryPort(Protocol):
+    """Persist document delay and per-device residuals as separate values."""
+
+    def get_document_timing(self, document_id: str) -> LyricDocumentTiming:
+        """Return the document delay or the explicit zero default."""
+
+    def put_document_timing(self, timing: LyricDocumentTiming) -> None:
+        """Persist one whole-document display delay without editing lyrics."""
+
+    def delete_document_timing(self, document_id: str) -> bool:
+        """Reset only the selected document delay."""
+
+    def get_output_calibration(self, device_key: str) -> OutputDeviceCalibration | None:
+        """Return one device residual; never fall back to another device."""
+
+    def put_output_calibration(self, calibration: OutputDeviceCalibration) -> None:
+        """Persist a residual only for a stable output-device identity."""
+
+    def delete_output_calibration(self, device_key: str) -> bool:
+        """Reset only the selected output device's residual."""
+
+
 class MprisRuntimePort(Protocol):
     """CLI runtime containing ports plus event-loop lifecycle control."""
 
@@ -96,11 +156,25 @@ class MprisRuntimePort(Protocol):
     def monitor(self) -> PlayerMonitorPort:
         """Player event-monitoring port."""
 
+    @property
+    def timing(self) -> PlayerPositionSamplerPort:
+        """Precision position-sampling port."""
+
+    @property
+    def clock(self) -> ClockPort:
+        """Shared integer clock for sampling, deadlines, and suspend detection."""
+
     def exec(self) -> int:
         """Run the event loop until stopped."""
 
     def quit(self) -> None:
         """Request clean event-loop shutdown."""
+
+    def wait(self, timeout_ms: int) -> None:
+        """Process adapter events for a bounded interval between samples."""
+
+    def wake(self) -> None:
+        """Interrupt a bounded wait after a meaningful player event."""
 
 
 @dataclass(frozen=True, slots=True)

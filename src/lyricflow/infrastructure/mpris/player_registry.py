@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 
 from lyricflow.application.ports import PlayerEventHandler
 from lyricflow.domain.models import (
@@ -11,7 +11,13 @@ from lyricflow.domain.models import (
     PlayerEventKind,
     PlayerInspection,
     PlayerListResult,
+    PlayerSnapshot,
     PlayerWatchStart,
+)
+from lyricflow.domain.synchronization import (
+    ObservationReason,
+    PlaybackState,
+    PositionObservation,
 )
 from lyricflow.infrastructure.mpris.backend import (
     MprisBackendError,
@@ -131,6 +137,62 @@ class MprisClient:
             raise
         except MprisBackendError as error:
             return MprisPropertyRead(diagnostics=(f"{label}: unavailable ({error})",))
+
+
+class MprisPositionSampler:
+    """Bracket an isolated MPRIS Position request with monotonic timestamps."""
+
+    def __init__(
+        self,
+        backend: MprisBusBackend,
+        monotonic_ns: Callable[[], int],
+    ) -> None:
+        self._backend = backend
+        self._monotonic_ns = monotonic_ns
+
+    def sample(
+        self,
+        snapshot: PlayerSnapshot,
+        session_id: str,
+        *,
+        reason: ObservationReason = ObservationReason.PERIODIC,
+    ) -> PositionObservation:
+        """Read Position using signal/refreshed status, rate, and track context."""
+
+        started_ns = self._monotonic_ns()
+        value = self._backend.get_property(
+            snapshot.bus_name,
+            MPRIS_PLAYER_INTERFACE,
+            "Position",
+        )
+        received_ns = self._monotonic_ns()
+        if not isinstance(value, int) or isinstance(value, bool):
+            raise MprisBackendError(
+                f"Position returned {type(value).__name__}, expected integer "
+                "microseconds"
+            )
+        if value < 0:
+            raise MprisBackendError(f"Position returned negative value {value}")
+        state = PlaybackState.from_mpris(snapshot.playback_status)
+        if snapshot.rate is None and state is PlaybackState.PLAYING:
+            raise MprisBackendError(
+                "Rate is unavailable; refusing to interpolate a playing clock"
+            )
+        rate = snapshot.rate if snapshot.rate is not None else 1.0
+        try:
+            return PositionObservation(
+                session_id=session_id,
+                position_us=value,
+                state=state,
+                rate=rate,
+                request_started_ns=started_ns,
+                response_received_ns=received_ns,
+                reason=reason,
+            )
+        except ValueError as error:
+            raise MprisBackendError(
+                f"invalid MPRIS timing observation: {error}"
+            ) from error
 
 
 class MprisMonitor:

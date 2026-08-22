@@ -95,6 +95,16 @@ def inspect_storage(path: Path) -> StorageStatus:
                             "SELECT COUNT(*) FROM lyric_representation_decisions"
                         ).fetchone()[0]
                     ),
+                    lyric_document_delays=int(
+                        connection.execute(
+                            "SELECT COUNT(*) FROM lyric_document_timing"
+                        ).fetchone()[0]
+                    ),
+                    audio_output_calibrations=int(
+                        connection.execute(
+                            "SELECT COUNT(*) FROM audio_output_calibrations"
+                        ).fetchone()[0]
+                    ),
                 )
         if incompatible:
             return StorageStatus(

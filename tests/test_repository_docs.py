@@ -166,16 +166,19 @@ def test_project_state_contains_the_continuation_contract() -> None:
     assert "/home/example/Documents/LyricFlow/" in content
 
 
-def test_agent_todo_authorizes_no_stage_after_stage_five_closure() -> None:
+def test_agent_todo_authorizes_only_stage_six() -> None:
     content = (REPOSITORY_ROOT / "AGENT_TODO.md").read_text(encoding="utf-8")
 
     assert content.startswith("# Current authorized stage\n")
-    assert "None. No implementation stage is Active" in content
-    assert "Stage 5 — Romanization and multilingual layers is **Completed**" in content
-    assert "Stage 6 — Playback synchronization engine is Proposed" in content
-    assert "Stage 6 is **NOT Active**" in content
-    assert "playback-clock" in content
-    assert "interpolation/synchronization" in content
+    assert (
+        "Stage 6 — Precision playback clock and lyrics synchronization engine"
+        in content
+    )
+    assert "Active" in content
+    assert "explicitly authorized Stage 6 on 2026-08-22" in content
+    assert "Stage 5 remains\n**Completed**" in content
+    assert "Do not implement the full-screen TUI" in content
+    assert "any Stage 7+ behavior" in content
 
 
 def test_manifest_is_inventory_not_authority() -> None:
@@ -184,11 +187,10 @@ def test_manifest_is_inventory_not_authority() -> None:
     )
 
     assert manifest["implementation_authority"] == "AGENT_TODO.md"
-    assert manifest["authorized_stage"] is None
-    assert manifest["proposed_stage"] == (
-        "Stage 6 — Playback synchronization engine "
-        "(awaiting explicit authorization; not Active)"
+    assert manifest["authorized_stage"] == (
+        "Stage 6 — Precision playback clock and lyrics synchronization engine"
     )
+    assert manifest["proposed_stage"] is None
     assert all((REPOSITORY_ROOT / path).is_file() for path in manifest["files"])
 
 
