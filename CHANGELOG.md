@@ -158,7 +158,8 @@ unreleased.
   storage cleanup. A visible paused-start resume race was fixed with guarded
   post-subscription authoritative refresh. The structurally mismatched S3RL
   timeline remains rejected provider-quality evidence; Stage 7 is Proposed /
-  unauthorized.
+  unauthorized. Verified-closure commit `00a3d25` was published normally and
+  GitHub Actions run `32586628479` passed all jobs.
 - Published Stage 6 implementation commit `8502968` to canonical `main` under
   the verified `myonctl` identity. GitHub Actions run `32583407778` passed the
   complete quality job. Evidence checkpoint `70f5b8b` and Actions run
