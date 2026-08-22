@@ -29,6 +29,11 @@ unreleased.
   decisions are recorded in `docs/PRODUCT_GAP_RESEARCH.md`.
 - Added the minimal CI `libegl1` system prerequisite required to import
   QtGui/QtWidgets and run the desktop suite offscreen on GitHub's base image.
+- Hardened desktop player re-selection so unrelated player events and
+  same-source policy re-evaluation preserve the valid lyric session, while
+  selected metadata/disappearance and genuinely changed sources still
+  invalidate immediately. Added coordinator, stale-selection, keyboard-focus,
+  Escape-dialog, and fixed-widget-tree regressions.
 
 - Activated Stage 6 after explicit user authorization on 2026-08-22 and made
   the accepted future full-screen `lyricflow tui` requirement durable in the

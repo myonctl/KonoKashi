@@ -241,7 +241,27 @@ class DesktopCoordinator(QObject):
                     )
                 )
                 return
-            self._begin_track(result.selected.track)
+            selected_track = result.selected.track
+            session = self._playback_session
+            current_track = self._track
+            if (
+                session is not None
+                and current_track is not None
+                and selected_track.source_identity == current_track.source_identity
+                and selected_track.raw_snapshot.service_name
+                == current_track.raw_snapshot.service_name
+            ):
+                # Selection-affecting events can still resolve to the current
+                # source. Refresh its raw playback context without flashing a
+                # resolving state or performing provider/storage work again.
+                self._track = selected_track
+                session.replace_source(
+                    selected_track.raw_snapshot,
+                    _session_id(selected_track),
+                )
+                self._sync_tick()
+                return
+            self._begin_track(selected_track)
 
         self._start_job(select, selected)
 
@@ -403,16 +423,41 @@ class DesktopCoordinator(QObject):
                     self._frontend.cancel_inflight()
                 self._track = None
                 self._window.render_state(self._controller.source_changed())
-            self._selection_timer.start()
+            self._schedule_selection()
             return
-        if session.handle_event(event):
-            if session.requires_reload:
-                self._load_serial += 1
-                self._window.render_state(self._controller.source_changed())
-                self._clear_sync_only()
-                self._selection_timer.start()
-            else:
-                self._sync_tick()
+        selected_service = session.snapshot.service_name
+        if not session.handle_event(event):
+            return
+        selected_source_invalidated = (
+            event.service_name == selected_service
+            and event.kind
+            in {
+                PlayerEventKind.PLAYER_DISAPPEARED,
+                PlayerEventKind.METADATA_CHANGED,
+            }
+        )
+        if selected_source_invalidated:
+            self._load_serial += 1
+            self._window.render_state(self._controller.source_changed())
+            self._clear_sync_only()
+            self._schedule_selection()
+            return
+        if (
+            session.requires_reload
+            or event.kind is PlayerEventKind.PLAYBACK_STATUS_CHANGED
+        ):
+            # Re-run shared selection when another player may now outrank the
+            # current one. Keep the valid current presentation until selection
+            # actually chooses a different source.
+            self._schedule_selection()
+        if not session.requires_reload:
+            self._sync_tick()
+
+    def _schedule_selection(self) -> None:
+        """Debounce selection and reject any result captured before this event."""
+
+        self._selection_serial += 1
+        self._selection_timer.start()
 
     def _save_display_settings(self, value: Any) -> None:
         if not isinstance(value, RepresentationDisplaySettings):

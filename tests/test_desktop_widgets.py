@@ -10,7 +10,8 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 import pytest
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QColor, QPalette
-from PySide6.QtWidgets import QApplication, QLabel
+from PySide6.QtTest import QTest
+from PySide6.QtWidgets import QApplication, QLabel, QWidget
 
 from lyricflow.application.desktop_state import (
     DesktopLyricGroup,
@@ -19,7 +20,11 @@ from lyricflow.application.desktop_state import (
 )
 from lyricflow.domain.synchronization import ClockHealth, PlaybackState
 from lyricflow.presentation.desktop.app import run_desktop
-from lyricflow.presentation.desktop.main_window import MainWindow
+from lyricflow.presentation.desktop.main_window import (
+    DiagnosticsDialog,
+    MainWindow,
+    RepresentationSettingsDialog,
+)
 
 
 @pytest.fixture(scope="module")
@@ -191,4 +196,53 @@ def test_system_palette_remains_the_theme_authority(
     assert labels
     assert all(label.styleSheet() == "" for label in labels)
     assert window.active_band.palette().color(QPalette.ColorRole.WindowText).isValid()
+    window.close()
+
+
+def test_keyboard_focus_order_and_escape_dialog_behavior(
+    qt_app: QApplication,
+) -> None:
+    window = MainWindow()
+    window.render_state(_state())
+    window.show()
+    window.settings_button.setFocus()
+    qt_app.processEvents()
+
+    assert qt_app.focusWidget() is window.settings_button
+    QTest.keyClick(window.settings_button, Qt.Key.Key_Tab)
+    assert qt_app.focusWidget() is window.details_button
+
+    dialogs = (
+        RepresentationSettingsDialog(window.representation_settings, window),
+        DiagnosticsDialog(window.state, window),
+    )
+    for dialog in dialogs:
+        dialog.show()
+        qt_app.processEvents()
+        assert dialog.isVisible()
+        QTest.keyClick(dialog, Qt.Key.Key_Escape)
+        qt_app.processEvents()
+        assert not dialog.isVisible()
+    window.close()
+
+
+def test_lyric_transitions_reuse_the_existing_widget_tree(
+    qt_app: QApplication,
+) -> None:
+    window = MainWindow()
+    window.render_state(_state())
+    window.show()
+    qt_app.processEvents()
+    initial_widgets = {id(widget) for widget in window.findChildren(QWidget)}
+
+    for index in range(100):
+        state = replace(
+            _state(original=f"line {index}"),
+            position_us=index * 1_000_000,
+            progress_fraction=index / 100,
+        )
+        window.render_state(state)
+    qt_app.processEvents()
+
+    assert {id(widget) for widget in window.findChildren(QWidget)} == initial_widgets
     window.close()
