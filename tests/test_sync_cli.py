@@ -3,12 +3,20 @@
 from __future__ import annotations
 
 import time
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
 
 from lyricflow import cli
-from lyricflow.domain.models import PlayerEvent, PlayerEventKind
+from lyricflow.application.ports import PlayerDiscoveryPort
+from lyricflow.domain.models import (
+    PlayerEvent,
+    PlayerEventKind,
+    PlayerInspection,
+    PlayerListResult,
+    PlayerSnapshot,
+)
 from lyricflow.domain.synchronization import (
     AudioLatencyProbeResult,
     AudioLatencyProbeStatus,
@@ -58,6 +66,41 @@ class FailingSecondTiming(FakeTiming):
         return super().sample(_snapshot, session_id, reason=reason)
 
 
+class SnapshotStateTiming(FakeTiming):
+    def sample(
+        self,
+        snapshot: PlayerSnapshot,
+        session_id: str,
+        *,
+        reason: ObservationReason = ObservationReason.PERIODIC,
+    ) -> PositionObservation:
+        self.reasons.append(reason)
+        now_ns = time.monotonic_ns()
+        return PositionObservation(
+            session_id,
+            next(self._positions),
+            PlaybackState.from_mpris(snapshot.playback_status),
+            snapshot.rate or 1.0,
+            now_ns,
+            now_ns,
+            reason,
+        )
+
+
+class SequencedClient:
+    def __init__(self, inspections: tuple[PlayerInspection, ...]) -> None:
+        self.inspections = inspections
+        self.calls = 0
+
+    def list_players(self) -> PlayerListResult:
+        inspection = self.inspections[min(self.calls, len(self.inspections) - 1)]
+        self.calls += 1
+        return PlayerListResult((inspection,))
+
+    def inspect_player(self, _service_name: str) -> PlayerInspection:
+        return self.inspections[min(self.calls, len(self.inspections) - 1)]
+
+
 class SyncRuntime:
     def __init__(
         self,
@@ -66,7 +109,7 @@ class SyncRuntime:
         seek_during_wait: bool = False,
     ) -> None:
         base = _runtime()
-        self.client = base.client
+        self.client: PlayerDiscoveryPort = base.client
         self.monitor = base.monitor
         self.timing = FakeTiming(positions_us)
         self.clock = _TestClock()
@@ -183,6 +226,46 @@ def test_sync_current_renders_separate_calibrations_and_pipewire_evidence(
     assert runtime.monitor.closed is True
 
 
+def test_sync_current_reconciles_playback_state_after_monitor_subscription(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    runtime = SyncRuntime((2_150_000,))
+    original = runtime.client.inspection.snapshot
+    assert original is not None
+    paused_snapshot = replace(original, playback_status="Paused")
+    playing_snapshot = replace(original, playback_status="Playing")
+    client = SequencedClient(
+        (
+            PlayerInspection(
+                paused_snapshot.service_name,
+                paused_snapshot.bus_name,
+                paused_snapshot,
+            ),
+            PlayerInspection(
+                playing_snapshot.service_name,
+                playing_snapshot.bus_name,
+                playing_snapshot,
+            ),
+        )
+    )
+    runtime.client = client
+    runtime.timing = SnapshotStateTiming((2_150_000,))
+
+    exit_code = cli.main(
+        ["sync", "current", "--samples", "1", "--no-pipewire"],
+        runtime_factory=lambda: runtime,
+        lyrics_provider_factory=lambda: _CliProvider(),
+        database_path=tmp_path / "startup-resume.sqlite3",
+    )
+    output = capsys.readouterr().out
+
+    assert exit_code == 0
+    assert client.calls == 2
+    assert "media position: 00:02.150 (Playing)" in output
+    assert "clock health: Converging" in output
+
+
 def test_seek_signal_causes_next_position_sample_to_reset_clock(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
@@ -250,6 +333,44 @@ def test_sync_probe_is_bounded_and_never_loads_or_dumps_lyrics(
     assert "active:" not in output
     assert "lyrics_display_delay" not in output
     assert database_path.exists() is False
+
+
+def test_sync_probe_reconciles_playback_state_after_monitor_subscription(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    runtime = SyncRuntime((1_000_000,))
+    original = runtime.client.inspection.snapshot
+    assert original is not None
+    paused_snapshot = replace(original, playback_status="Paused")
+    playing_snapshot = replace(original, playback_status="Playing")
+    client = SequencedClient(
+        (
+            PlayerInspection(
+                paused_snapshot.service_name,
+                paused_snapshot.bus_name,
+                paused_snapshot,
+            ),
+            PlayerInspection(
+                playing_snapshot.service_name,
+                playing_snapshot.bus_name,
+                playing_snapshot,
+            ),
+        )
+    )
+    runtime.client = client
+    runtime.timing = SnapshotStateTiming((1_000_000,))
+
+    exit_code = cli.main(
+        ["sync", "probe", "--samples", "1", "--no-pipewire"],
+        runtime_factory=lambda: runtime,
+        database_path=tmp_path / "startup-resume-probe.sqlite3",
+    )
+    output = capsys.readouterr().out
+
+    assert exit_code == 0
+    assert client.calls == 2
+    assert "playback status: Playing" in output
 
 
 def test_sync_probe_ctrl_c_returns_130_without_traceback(

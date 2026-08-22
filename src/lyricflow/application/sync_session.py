@@ -69,6 +69,12 @@ class PlaybackSyncSession:
         return self._generation
 
     @property
+    def event_serial(self) -> int:
+        """Identify whether a signal arrived across an external refresh."""
+
+        return self._event_serial
+
+    @property
     def last_event_update(self) -> ClockUpdate | None:
         """Expose an immediate signal-driven update to presentation subscribers."""
 
@@ -89,6 +95,13 @@ class PlaybackSyncSession:
         self._generation += 1
         self._event_serial += 1
         self._request_reason(ObservationReason.SUSPEND_RESUME)
+
+    def invalidate_selection(self) -> None:
+        """Request a fresh selected source before another clock observation."""
+
+        self._selection_dirty = True
+        self._event_serial += 1
+        self._request_reason(ObservationReason.TRACK)
 
     def replace_source(self, snapshot: PlayerSnapshot, session_id: str) -> None:
         """Install refreshed source context and request a track reset if changed."""

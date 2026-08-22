@@ -1101,6 +1101,23 @@ def _run_sync_probe(
         runtime.monitor.close()
         print(f"Unable to monitor MPRIS synchronization events: {start.error}")
         return 1
+    refresh_serial = session.event_serial
+    try:
+        refreshed_track = (
+            _select_sync_track(runtime, storage)
+            if storage is not None
+            else _select_sync_track_without_storage(runtime)
+        )
+    except (ImportError, RuntimeError, StorageError) as error:
+        runtime.monitor.close()
+        print(f"Unable to refresh synchronization source: {error}", file=sys.stderr)
+        return 1
+    if refreshed_track is None:
+        runtime.monitor.close()
+        return 1
+    if session.event_serial == refresh_serial:
+        track = refreshed_track
+        session.replace_source(track.raw_snapshot, _sync_session_id(track))
     started_ns = runtime.clock.monotonic_ns()
     deadline_ns = started_ns + arguments.duration_seconds * 1_000_000_000
     attempts = 0
@@ -1381,6 +1398,23 @@ def _run_sync(
         runtime.monitor.close()
         print(f"Unable to monitor MPRIS synchronization events: {start.error}")
         return 1
+    refresh_serial = session.event_serial
+    try:
+        refreshed_track = _select_sync_track(runtime, storage)
+    except (ImportError, RuntimeError, StorageError) as error:
+        runtime.monitor.close()
+        print(f"Unable to refresh synchronization source: {error}", file=sys.stderr)
+        return 1
+    if refreshed_track is None:
+        runtime.monitor.close()
+        return 1
+    if session.event_serial == refresh_serial:
+        refreshed_session_id = _sync_session_id(refreshed_track)
+        if refreshed_session_id == _sync_session_id(track):
+            track = refreshed_track
+            session.replace_source(track.raw_snapshot, refreshed_session_id)
+        else:
+            session.invalidate_selection()
 
     completed = 0
     last_update = None

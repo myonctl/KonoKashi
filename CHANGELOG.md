@@ -151,10 +151,18 @@ unreleased.
 
 ### Changed
 
+- Closed Stage 6 after the real Strawberry matrix passed: a three-minute Locked
+  stability probe, exact pause/resume, forward/backward rapid seeks, track
+  invalidation, aligned Japanese/romaji transitions, perceived delay direction
+  and fresh-process persistence/reset, clean direct interrupts, and final
+  storage cleanup. A visible paused-start resume race was fixed with guarded
+  post-subscription authoritative refresh. The structurally mismatched S3RL
+  timeline remains rejected provider-quality evidence; Stage 7 is Proposed /
+  unauthorized.
 - Published Stage 6 implementation commit `8502968` to canonical `main` under
   the verified `myonctl` identity. GitHub Actions run `32583407778` passed the
-  complete quality job; cooperative Strawberry/timed-lyrics verification
-  remains pending, so Stage 6 is not yet Completed.
+  complete quality job. Evidence checkpoint `70f5b8b` and Actions run
+  `32583856426` preserved the pre-closure state.
 
 - Activated Stage 5 after explicit user authorization on 2026-08-13. Its local
   implementation is complete with automated and real manual/publication gates

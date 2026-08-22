@@ -43,9 +43,9 @@ provenance/uncertainty, durable user approval/rejection/reset, translation
 structure, and layer settings. Stage 6 implementation adds a precision/
 uncertainty-aware playback clock, separate audio/lyric/presentation calibration,
 durable document/output residual settings, active-line deadlines, a shared
-frontend-neutral snapshot, and diagnostic `sync` commands. Its 424-test local
-gate passes; required cooperative Strawberry/timed-lyrics verification remains
-pending. It does not build the desktop or full-screen TUI. See
+frontend-neutral snapshot, and diagnostic `sync` commands. Its automated and
+real cooperative Strawberry/timed-lyrics closure gates pass. It does not build
+the desktop or full-screen TUI. See
 `PROJECT_STATE.md` for evidence and `AGENT_TODO.md` for the only implementation
 authority.
 
@@ -101,8 +101,8 @@ Supporting authorities:
   local/provider/offline/no-result, publication, and CI evidence.
 - `docs/STAGE_5_COMPLETION.md` — completed Stage 5 implementation, automated,
   multilingual/correction/Latin-safety, publication, and CI evidence.
-- `docs/STAGE_6_COMPLETION.md` — published, CI-green Stage 6 implementation
-  evidence and the exact pending real-player verification gate.
+- `docs/STAGE_6_COMPLETION.md` — completed Stage 6 implementation, automated,
+  real-player/timed-lyrics, delay, publication, and CI evidence.
 - `docs/adr/0010-stage4-lyrics-resolution.md` — accepted Stage 4 precedence,
   matching, cache/offline/refresh, privacy, and schema policy.
 - `docs/adr/0011-offline-romanization-routing.md` — accepted Stage 5 script

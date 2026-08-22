@@ -31,6 +31,7 @@ REQUIRED_DOCUMENTS = (
     "docs/STAGE_3_COMPLETION.md",
     "docs/STAGE_4_COMPLETION.md",
     "docs/STAGE_5_COMPLETION.md",
+    "docs/STAGE_6_COMPLETION.md",
     "docs/adr/0011-offline-romanization-routing.md",
     "docs/adr/0010-stage4-lyrics-resolution.md",
 )
@@ -59,13 +60,6 @@ PROJECT_STATE_HEADINGS = (
     "## Important accepted decisions",
     "## Current repository path",
     "## Continue here",
-)
-
-PROPOSED_STAGE_HEADINGS = (
-    "## Proposed next stage",
-    "## Proposed scope",
-    "## Explicitly unauthorized now",
-    "## Exact starting point",
 )
 
 COMPLETION_HEADINGS = (
@@ -166,19 +160,16 @@ def test_project_state_contains_the_continuation_contract() -> None:
     assert "/home/example/Documents/LyricFlow/" in content
 
 
-def test_agent_todo_authorizes_only_stage_six() -> None:
+def test_agent_todo_proposes_stage_seven_without_authorizing_it() -> None:
     content = (REPOSITORY_ROOT / "AGENT_TODO.md").read_text(encoding="utf-8")
 
-    assert content.startswith("# Current authorized stage\n")
-    assert (
-        "Stage 6 — Precision playback clock and lyrics synchronization engine"
-        in content
-    )
-    assert "Active" in content
-    assert "explicitly authorized Stage 6 on 2026-08-22" in content
-    assert "Stage 5 remains\n**Completed**" in content
-    assert "Do not implement the full-screen TUI" in content
-    assert "any Stage 7+ behavior" in content
+    assert content.startswith("# Proposed next stage — not authorized\n")
+    assert "Stage 6 — Precision playback clock and lyrics synchronization" in content
+    assert "**Completed**" in content
+    assert "Stage 7 — Desktop MVP is Proposed / unauthorized" in content
+    assert "There is no currently\nauthorized implementation stage" in content
+    assert "Do not implement Stage 7" in content
+    assert "without separate explicit user authorization" in content
 
 
 def test_manifest_is_inventory_not_authority() -> None:
@@ -187,10 +178,8 @@ def test_manifest_is_inventory_not_authority() -> None:
     )
 
     assert manifest["implementation_authority"] == "AGENT_TODO.md"
-    assert manifest["authorized_stage"] == (
-        "Stage 6 — Precision playback clock and lyrics synchronization engine"
-    )
-    assert manifest["proposed_stage"] is None
+    assert manifest["authorized_stage"] is None
+    assert manifest["proposed_stage"] == "Stage 7 — Desktop MVP"
     assert all((REPOSITORY_ROOT / path).is_file() for path in manifest["files"])
 
 
