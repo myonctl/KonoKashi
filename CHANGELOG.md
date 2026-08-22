@@ -151,6 +151,11 @@ unreleased.
 
 ### Changed
 
+- Published Stage 6 implementation commit `8502968` to canonical `main` under
+  the verified `myonctl` identity. GitHub Actions run `32583407778` passed the
+  complete quality job; cooperative Strawberry/timed-lyrics verification
+  remains pending, so Stage 6 is not yet Completed.
+
 - Activated Stage 5 after explicit user authorization on 2026-08-13. Its local
   implementation is complete with automated and real manual/publication gates
   tracked separately; Stage 6 remains Proposed and unauthorized.

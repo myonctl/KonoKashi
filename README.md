@@ -101,8 +101,8 @@ Supporting authorities:
   local/provider/offline/no-result, publication, and CI evidence.
 - `docs/STAGE_5_COMPLETION.md` — completed Stage 5 implementation, automated,
   multilingual/correction/Latin-safety, publication, and CI evidence.
-- `docs/STAGE_6_COMPLETION.md` — Stage 6 implementation evidence and exact
-  pending real-player verification/publication gate.
+- `docs/STAGE_6_COMPLETION.md` — published, CI-green Stage 6 implementation
+  evidence and the exact pending real-player verification gate.
 - `docs/adr/0010-stage4-lyrics-resolution.md` — accepted Stage 4 precedence,
   matching, cache/offline/refresh, privacy, and schema policy.
 - `docs/adr/0011-offline-romanization-routing.md` — accepted Stage 5 script
