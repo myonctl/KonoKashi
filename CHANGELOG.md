@@ -22,7 +22,9 @@ No changes yet.
   configuration, backups, music, or virtual environment.
 - Added reproducible same-epoch source/wheel builds with pinned build backend,
   byte comparison, SHA-256 reporting, required-content inspection, and a clean
-  Ubuntu venv artifact lifecycle in CI.
+  Ubuntu venv artifact lifecycle in CI. The exact backend is also part of the
+  development extra so the deliberately non-isolated comparison environment is
+  complete rather than relying on an implicit pip build sandbox.
 - Added a non-overwriting, verified, mode-0600 SQLite online backup command; a
   privacy-bounded versioned JSON diagnostic export; controlled top-level
   desktop startup errors; and schema-8-to-9 release upgrade preservation.
