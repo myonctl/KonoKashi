@@ -26,6 +26,11 @@ unreleased.
   non-regression, Latin no-duplicate, generic-script, desktop, and sync tests.
   Real Wowkie/Japanese/Latin acceptance and repair publication evidence remain
   pending; Stage 10 has not begun.
+- The first live disposable Chinese desktop check passed, then exposed a
+  separate generic-script presentation defect on real Cyrillic lyrics. Fixed
+  synchronization snapshot selection so an empty romanized placeholder cannot
+  mask an available transliterated line; added an exact regression for the
+  original-empty/Cyrillic-populated combination.
 - Authorized the repository-defined Stage 9 Music-directory scanner and batch
   downloads scope on 2026-08-23. Stage 10 and later work remain unauthorized.
 - Implemented Stage 9 typed global library settings; deterministic read-only

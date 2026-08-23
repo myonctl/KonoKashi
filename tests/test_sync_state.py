@@ -122,6 +122,55 @@ def test_snapshot_retains_explained_missing_representation_diagnostics() -> None
     )
 
 
+def test_snapshot_uses_transliteration_when_romanized_placeholder_has_no_text() -> None:
+    lyric_document = document()
+    original = lyric_document.representations[0].lines[1]
+    missing_romanized = EffectiveRepresentationLine(
+        original,
+        RepresentationKind.ROMANIZED,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        inherited_start_ms=original.start_ms,
+    )
+    cyrillic = EffectiveRepresentationLine(
+        original,
+        RepresentationKind.TRANSLITERATED,
+        "Ona budto muzyka tišiny",
+        ContentProvenance.GENERATED,
+        ApprovalState.UNREVIEWED,
+        "Unicode ICU",
+        "test",
+        RepresentationUncertainty.NONE,
+        inherited_start_ms=original.start_ms,
+    )
+    raw = replace(fixture_snapshot("stage2/youtube_jesskah.json"), rate=1.0)
+    track = ResolvedTrack(
+        raw,
+        YouTubeIdentity("xa4WrgqI7q0"),
+        TrackCandidate("Track", ("Artist",), None, 5_000_000),
+        Confidence.HIGH,
+    )
+    calibration = SynchronizationCalibration(AudioOutputLatency(0, 0, "test"))
+    current_estimate = estimate()
+
+    snapshot = build_sync_snapshot(
+        generation=1,
+        track=track,
+        document=lyric_document,
+        estimate=current_estimate,
+        frame=synchronize(lyric_document, current_estimate, calibration),
+        calibration=calibration,
+        representations=(missing_romanized, cyrillic),
+    )
+
+    assert snapshot.active[0].romanized_or_transliterated == cyrillic.text
+    assert snapshot.active[0].representation_provenance == ("generated",)
+
+
 def test_publisher_suppresses_identical_state_and_unsubscribes_cleanly() -> None:
     lyric_document = document()
     raw = replace(fixture_snapshot("stage2/youtube_jesskah.json"), rate=1.0)

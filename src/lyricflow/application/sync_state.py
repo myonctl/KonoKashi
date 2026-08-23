@@ -128,7 +128,13 @@ def _line_bundle(
         (line.line_id, RepresentationKind.TRANSLITERATED)
     )
     translation = representations.get((line.line_id, RepresentationKind.TRANSLATED))
-    alternate = romanized if romanized is not None else transliterated
+    alternate = (
+        romanized
+        if romanized is not None and romanized.text is not None
+        else transliterated
+        if transliterated is not None
+        else romanized
+    )
     selected = tuple(
         item
         for item in (alternate, translation)
