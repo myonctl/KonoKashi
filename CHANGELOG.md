@@ -31,6 +31,13 @@ unreleased.
   synchronization snapshot selection so an empty romanized placeholder cannot
   mask an available transliterated line; added an exact regression for the
   original-empty/Cyrillic-populated combination.
+- Accepted the complete real multilingual repair matrix on 2026-08-23. The
+  disposable Chinese document displayed aligned tone-mark Pinyin; the actual
+  Cyrillic original displayed its repaired ICU transliteration; the previously
+  accepted Ado Han+kana document remained Japanese with romaji; and the Latin
+  document retained its normal original-only layout without a duplicate layer.
+  Disposable Chinese source/match state was removed and the audio hash, size,
+  and mtime remained unchanged.
 - Authorized the repository-defined Stage 9 Music-directory scanner and batch
   downloads scope on 2026-08-23. Stage 10 and later work remain unauthorized.
 - Implemented Stage 9 typed global library settings; deterministic read-only
