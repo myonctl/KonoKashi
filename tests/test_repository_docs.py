@@ -173,12 +173,12 @@ def test_project_state_contains_the_continuation_contract() -> None:
     assert "/home/example/Documents/LyricFlow/" in content
 
 
-def test_agent_todo_authorizes_only_stage_ten() -> None:
+def test_agent_todo_stops_after_completed_stage_ten() -> None:
     content = (REPOSITORY_ROOT / "AGENT_TODO.md").read_text(encoding="utf-8")
 
-    assert content.startswith("# Stage 10 — Packaging and v1 release\n")
-    assert "Stage 10 is **Active**" in content
-    assert "Stages 1 through 9 and the repair" in content
+    assert content.startswith("# No active implementation stage\n")
+    assert "Stage 10 — Packaging and v1 release is **Completed**" in content
+    assert "1 through 9 and the multilingual repair remain historically" in content
     assert "No PyPI, public-repository, or public artifact publication" in content
     assert "Stage 11 and later work remain Proposed / unauthorized" in content
 
@@ -189,7 +189,7 @@ def test_manifest_is_inventory_not_authority() -> None:
     )
 
     assert manifest["implementation_authority"] == "AGENT_TODO.md"
-    assert manifest["authorized_stage"] == "Stage 10 — Packaging and v1 release"
+    assert manifest["authorized_stage"] is None
     assert manifest["proposed_stage"] == "Stage 11+ — Post-v1 backlog"
     assert all((REPOSITORY_ROOT / path).is_file() for path in manifest["files"])
 

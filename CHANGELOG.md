@@ -5,12 +5,13 @@ unreleased.
 
 ## Unreleased
 
-### Fixed
+### Changed
 
 - Generated desktop launchers now reference the exact installed SVG path.
-  This avoids a missing KDE application-menu icon when the icon-theme lookup
-  does not expose a user-local reverse-DNS icon name; paths containing spaces
-  use desktop-entry escaping and pass launcher validation.
+  This avoids reliance on user-local icon-theme name discovery; paths
+  containing spaces use desktop-entry escaping and pass launcher validation.
+  KDE still showed a cosmetic placeholder in the accepted real installation,
+  which is explicitly deferred and does not prevent menu launch.
 
 ## 1.0.0 — 2026-08-23
 

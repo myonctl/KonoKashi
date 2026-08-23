@@ -10,9 +10,10 @@ under it, and an optional translation forms a third layer.
 
 ## Current status
 
-Stages 1 through 9 and the post-Stage-5 Chinese/Pinyin repair are **Completed**.
-Stage 10 — Packaging and v1 release is **Active** after the repair's published
-real Chinese/Cyrillic/Japanese/Latin matrix and exact-SHA CI passed. Stage 8 —
+Stages 1 through 10 and the post-Stage-5 Chinese/Pinyin repair are **Completed**.
+The installed private v1 is launchable from KDE's application menu; its
+remaining cosmetic placeholder icon is explicitly deferred. Stage 11 and later
+work remain Proposed / unauthorized. Stage 8 —
 Review and correction workflow
 passed its automated gate and accepted real Strawberry/desktop correction,
 restart, preservation, and cleanup matrix on 2026-08-23. Stage 9 —
