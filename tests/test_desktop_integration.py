@@ -33,7 +33,7 @@ def test_install_and_remove_touch_only_owned_integration_files(tmp_path: Path) -
     executable.parent.mkdir(parents=True)
     executable.write_text("#!/bin/sh\n", encoding="utf-8")
     executable.chmod(0o755)
-    data_home = tmp_path / "data"
+    data_home = tmp_path / "data home"
     database = data_home / "lyricflow" / "lyricflow.sqlite3"
     database.parent.mkdir(parents=True)
     database.write_bytes(b"private-data")
@@ -45,7 +45,9 @@ def test_install_and_remove_touch_only_owned_integration_files(tmp_path: Path) -
     desktop = installed.desktop_file.read_text(encoding="utf-8")
     assert f'Exec="{executable.resolve()}" desktop' in desktop
     assert "TryExec=" not in desktop
-    assert "Icon=io.github.myonctl.LyricFlow" in desktop
+    escaped_icon = str(installed.icon_file.resolve()).replace(" ", "\\s")
+    assert f"Icon={escaped_icon}" in desktop
+    assert "Icon=io.github.myonctl.LyricFlow" not in desktop
     assert installed.icon_file.read_text(encoding="utf-8").startswith("<svg")
 
     removed = remove_desktop_integration(data_home)

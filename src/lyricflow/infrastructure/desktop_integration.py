@@ -73,6 +73,20 @@ def _desktop_exec_argument(value: str) -> str:
     return f'"{escaped}"'
 
 
+def _desktop_string(value: str) -> str:
+    """Escape a desktop-entry string value without relying on shell quoting."""
+
+    if "\0" in value:
+        raise DesktopIntegrationError("desktop-entry value contains a null character")
+    return (
+        value.replace("\\", "\\\\")
+        .replace("\n", "\\n")
+        .replace("\t", "\\t")
+        .replace("\r", "\\r")
+        .replace(" ", "\\s")
+    )
+
+
 def _resource_bytes(name: str) -> bytes:
     return files("lyricflow").joinpath("resources", name).read_bytes()
 
@@ -107,9 +121,16 @@ def install_desktop_integration(
         )
     status = integration_status(data_home)
     template = _resource_bytes(f"{APP_ID}.desktop.in").decode("utf-8")
-    rendered = template.replace(
-        "@LYRICFLOW_EXECUTABLE@", _desktop_exec_argument(str(resolved_executable))
-    ).encode("utf-8")
+    rendered = (
+        template.replace(
+            "@LYRICFLOW_EXECUTABLE@", _desktop_exec_argument(str(resolved_executable))
+        )
+        .replace(
+            "@LYRICFLOW_ICON@",
+            _desktop_string(str(status.icon_file.expanduser().resolve())),
+        )
+        .encode("utf-8")
+    )
     try:
         _atomic_write(status.icon_file, _resource_bytes(f"{APP_ID}.svg"))
         _atomic_write(status.desktop_file, rendered)
