@@ -28,6 +28,8 @@ unreleased.
   gate passed 510 tests plus Ruff, format, mypy, doctor, installed CLI smokes,
   and final storage/library checks. Stage 9 is Completed; Stage 10 — Packaging
   and v1 release is Proposed / unauthorized.
+- Published Stage 9 verified closure commit `dd63cb0` under `myonctl`; exact-SHA
+  GitHub Actions run `32653969635` passed the complete quality job in 53 seconds.
 - Authorized the repository-defined Stage 8 Review and correction workflow on
   2026-08-23 after confirming it remains exactly the roadmap's alternative
   lyric selection, source-identity correction, match approval/rejection,
