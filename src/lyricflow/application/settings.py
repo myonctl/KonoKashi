@@ -2,6 +2,7 @@
 
 from dataclasses import dataclass
 
+from lyricflow.domain.library import LibrarySettings
 from lyricflow.domain.representations import RepresentationDisplaySettings
 from lyricflow.domain.tracks import PlayerSelectionConfig
 
@@ -29,3 +30,9 @@ def default_desktop_interaction_settings() -> DesktopInteractionSettings:
     """Keep lyrics passive until text selection is explicitly enabled."""
 
     return DesktopInteractionSettings()
+
+
+def default_library_settings() -> LibrarySettings:
+    """Keep scanning and downloads dormant until roots are explicitly configured."""
+
+    return LibrarySettings()

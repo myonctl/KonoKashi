@@ -7,6 +7,7 @@ from pathlib import Path
 
 from lyricflow.infrastructure.storage.diagnostics import inspect_storage
 from lyricflow.infrastructure.storage.errors import UnsupportedSchemaError
+from lyricflow.infrastructure.storage.library import SQLiteLibraryRepository
 from lyricflow.infrastructure.storage.lyrics import SQLiteLyricsRepository
 from lyricflow.infrastructure.storage.lyrics_matches import (
     SQLiteLyricsMatchRepository,
@@ -44,6 +45,7 @@ class StorageRepositories:
     provider_cache: SQLiteProviderCacheRepository
     representations: SQLiteRepresentationRepository
     timing_calibrations: SQLiteTimingCalibrationRepository
+    library: SQLiteLibraryRepository
 
 
 def _repositories(database: SQLiteDatabase) -> StorageRepositories:
@@ -57,6 +59,7 @@ def _repositories(database: SQLiteDatabase) -> StorageRepositories:
         provider_cache=SQLiteProviderCacheRepository(database),
         representations=SQLiteRepresentationRepository(database),
         timing_calibrations=SQLiteTimingCalibrationRepository(database),
+        library=SQLiteLibraryRepository(database),
     )
 
 

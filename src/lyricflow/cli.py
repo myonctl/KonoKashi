@@ -257,6 +257,52 @@ def _parser() -> argparse.ArgumentParser:
             choices=("on", "off"),
             help=f"show or hide the {layer} layer",
         )
+    library = subparsers.add_parser(
+        "library", help="configure and incrementally scan local music directories"
+    )
+    library_commands = library.add_subparsers(dest="library_command", required=True)
+    library_settings = library_commands.add_parser(
+        "settings", help="show or replace typed global scanner settings"
+    )
+    library_settings.add_argument(
+        "--root",
+        action="append",
+        default=None,
+        metavar="ABSOLUTE_PATH",
+        help="replace configured roots (repeatable; omit to show)",
+    )
+    library_settings.add_argument(
+        "--clear-roots",
+        action="store_true",
+        help="explicitly remove every configured root",
+    )
+    library_settings.add_argument(
+        "--automatic-downloads",
+        choices=("on", "off"),
+        help="opt in or out of policy-approved batch downloads",
+    )
+    library_settings.add_argument(
+        "--workers",
+        type=int,
+        choices=range(1, 9),
+        metavar="1..8",
+        help="bounded metadata worker count (default: 4)",
+    )
+    library_scan = library_commands.add_parser(
+        "scan", help="run or resume one incremental configured-root scan"
+    )
+    library_scan.add_argument(
+        "--offline",
+        action="store_true",
+        help="allow only local lyrics and existing provider cache entries",
+    )
+    library_commands.add_parser(
+        "status", help="show aggregate scanner state without private paths"
+    )
+    library_review = library_commands.add_parser(
+        "review", help="show uncertain items requiring explicit review"
+    )
+    library_review.add_argument("--limit", type=int, default=100)
     lyrics = subparsers.add_parser(
         "lyrics", help="resolve lyrics for the currently selected MPRIS recording"
     )
@@ -645,6 +691,115 @@ def _run_storage(arguments: argparse.Namespace, database_path: Path | None) -> i
         print(f"Unable to use LyricFlow storage: {error}", file=sys.stderr)
         return 1
     return 2
+
+
+def _run_library(
+    arguments: argparse.Namespace,
+    provider_factory: LyricsProviderFactory,
+    database_path: Path | None,
+) -> int:
+    from lyricflow.application.library_scan import LibraryScanService
+    from lyricflow.domain.library import LibrarySettings
+    from lyricflow.infrastructure.lyrics.library_download import LibraryLyricsDownloader
+    from lyricflow.infrastructure.metadata.library import (
+        MusicDirectoryFilesystem,
+        MutagenLibraryMetadataReader,
+    )
+    from lyricflow.infrastructure.storage.bootstrap import open_storage
+    from lyricflow.infrastructure.storage.errors import StorageError
+
+    try:
+        storage = open_storage(database_path)
+        if arguments.library_command == "settings":
+            current = storage.library.get_settings()
+            changing = any(
+                value is not None
+                for value in (
+                    arguments.root,
+                    arguments.clear_roots or None,
+                    arguments.automatic_downloads,
+                    arguments.workers,
+                )
+            )
+            if changing:
+                if arguments.root is not None and arguments.clear_roots:
+                    print(
+                        "--root and --clear-roots cannot be used together.",
+                        file=sys.stderr,
+                    )
+                    return 2
+                roots = current.roots
+                if arguments.clear_roots:
+                    roots = ()
+                elif arguments.root is not None:
+                    roots = tuple(str(Path(root).resolve()) for root in arguments.root)
+                current = LibrarySettings(
+                    roots,
+                    current.automatic_downloads
+                    if arguments.automatic_downloads is None
+                    else arguments.automatic_downloads == "on",
+                    current.worker_count
+                    if arguments.workers is None
+                    else arguments.workers,
+                )
+                storage.library.put_settings(current)
+                print("Saved typed music-library settings.")
+            print(f"roots: {len(current.roots)}")
+            for root in current.roots:
+                print(f"  - {root}")
+            enabled = "on" if current.automatic_downloads else "off"
+            print(f"automatic downloads: {enabled}")
+            print(f"metadata workers: {current.worker_count}")
+            print("scope: global; reload: next scan; audio files remain read-only")
+            return 0
+        if arguments.library_command == "status":
+            settings = storage.library.get_settings()
+            root_count, tracks, review = storage.library.counts()
+            print("LyricFlow music-library status")
+            print(f"configured roots: {root_count}")
+            print(f"indexed active tracks: {tracks}")
+            print(f"review queue: {review}")
+            enabled = "on" if settings.automatic_downloads else "off"
+            print(f"automatic downloads: {enabled}")
+            print(f"metadata workers: {settings.worker_count}")
+            return 0
+        if arguments.library_command == "review":
+            items = storage.library.review_items(arguments.limit)
+            print(f"LyricFlow music-library review queue ({len(items)})")
+            for item in items:
+                artists = " & ".join(item.artists) or "unknown artist"
+                print(f"- {item.path}")
+                print(f"  metadata: {artists} — {item.title or 'unknown title'}")
+                print(f"  reason: {item.reason}")
+            return 0
+
+        settings = storage.library.get_settings()
+        downloader = None
+        if settings.automatic_downloads:
+            downloader = LibraryLyricsDownloader(storage, provider_factory())
+        service = LibraryScanService(
+            MusicDirectoryFilesystem(),
+            MutagenLibraryMetadataReader(),
+            storage.library,
+            downloader=downloader,
+            overrides=storage.track_overrides,
+        )
+        summary = service.scan(offline=arguments.offline)
+        print(f"LyricFlow library scan {summary.scan_id}")
+        print(f"discovered: {summary.discovered}")
+        print(f"processed: {summary.processed}")
+        print(f"unchanged: {summary.unchanged}")
+        print(f"moved: {summary.moved}")
+        print(f"missing: {summary.missing}")
+        print(f"review queued: {summary.review}")
+        print(f"lyrics downloaded: {summary.downloaded}")
+        print(f"download misses: {summary.download_misses}")
+        print(f"errors: {summary.errors}")
+        print(f"cancelled: {'yes' if summary.cancelled else 'no'}")
+        return 130 if summary.cancelled else int(summary.errors > 0)
+    except (ImportError, RuntimeError, StorageError, ValueError) as error:
+        print(f"Unable to use the music library scanner: {error}", file=sys.stderr)
+        return 1
 
 
 def _run_lyrics(
@@ -1577,6 +1732,8 @@ def main(
         return _run_players(arguments, runtime_factory, database_path)
     if arguments.command == "storage":
         return _run_storage(arguments, database_path)
+    if arguments.command == "library":
+        return _run_library(arguments, lyrics_provider_factory, database_path)
     if arguments.command == "lyrics":
         return _run_lyrics(
             arguments, runtime_factory, lyrics_provider_factory, database_path

@@ -349,6 +349,26 @@ def test_review_is_enabled_only_after_source_resolution(qt_app: QApplication) ->
     window.close()
 
 
+def test_library_scan_button_emits_typed_start_and_cancel_intents(
+    qt_app: QApplication,
+) -> None:
+    window = MainWindow()
+    starts: list[str] = []
+    cancels: list[str] = []
+    window.library_scan_requested.connect(lambda: starts.append("start"))
+    window.library_scan_cancel_requested.connect(lambda: cancels.append("cancel"))
+
+    QTest.mouseClick(window.library_button, Qt.MouseButton.LeftButton)
+    window.set_library_scan_state(True, "Scanning in background")
+    QTest.mouseClick(window.library_button, Qt.MouseButton.LeftButton)
+
+    assert starts == ["start"]
+    assert cancels == ["cancel"]
+    assert window.library_button.text() == "Cancel scan"
+    assert window.library_button.accessibleDescription() == "Scanning in background"
+    window.close()
+
+
 def _review_snapshot() -> ReviewCorrectionSnapshot:
     candidate = LyricsProviderCandidate(
         "LRCLIB",

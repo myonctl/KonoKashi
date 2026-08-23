@@ -228,10 +228,12 @@ authorize implementation. Staged v1 ordering lives in `docs/ROADMAP.md`.
 ## Library management
 
 - **Directory scanning** — Incrementally scan configured music roots while
-  handling moved, missing, and inaccessible files. Status: Planned.
+  handling moved, missing, and inaccessible files. Status: Implemented in Stage
+  9; small-directory verification pending.
   Prerequisites: persistence and metadata reader. Related: Roadmap Stage 9.
 - **Batch lyrics downloading** — Pre-download only policy-approved,
-  high-confidence matches and queue uncertainty for review. Status: Planned.
+  high-confidence matches and queue uncertainty for review. Status: Implemented
+  in Stage 9; small-directory verification pending.
   Prerequisites: directory scanning, provider policy, cancellation and cache.
   Related: Roadmap Stage 9.
 

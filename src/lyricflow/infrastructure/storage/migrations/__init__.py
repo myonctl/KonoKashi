@@ -450,6 +450,81 @@ MIGRATIONS: tuple[Migration, ...] = (
             """,
         ),
     ),
+    Migration(
+        8,
+        "music-library settings, resumable scan index, and review queue",
+        (
+            """
+            CREATE TABLE library_settings (
+                settings_id INTEGER PRIMARY KEY CHECK (settings_id = 1),
+                automatic_downloads INTEGER NOT NULL CHECK (
+                    automatic_downloads IN (0, 1)
+                ),
+                worker_count INTEGER NOT NULL CHECK (worker_count BETWEEN 1 AND 8),
+                updated_at TEXT NOT NULL
+            )
+            """,
+            """
+            CREATE TABLE library_roots (
+                settings_id INTEGER NOT NULL
+                    REFERENCES library_settings(settings_id) ON DELETE CASCADE,
+                position INTEGER NOT NULL CHECK (position >= 0),
+                root_path TEXT NOT NULL CHECK (length(root_path) > 0),
+                PRIMARY KEY (settings_id, position),
+                UNIQUE (root_path)
+            )
+            """,
+            """
+            CREATE TABLE library_scan_runs (
+                scan_id INTEGER PRIMARY KEY,
+                status TEXT NOT NULL CHECK (
+                    status IN ('running', 'completed', 'cancelled', 'failed')
+                ),
+                started_at TEXT NOT NULL,
+                finished_at TEXT,
+                discovered INTEGER NOT NULL DEFAULT 0,
+                processed INTEGER NOT NULL DEFAULT 0,
+                unchanged INTEGER NOT NULL DEFAULT 0,
+                moved INTEGER NOT NULL DEFAULT 0,
+                missing INTEGER NOT NULL DEFAULT 0,
+                review INTEGER NOT NULL DEFAULT 0,
+                downloaded INTEGER NOT NULL DEFAULT 0,
+                download_misses INTEGER NOT NULL DEFAULT 0,
+                errors INTEGER NOT NULL DEFAULT 0
+            )
+            """,
+            """
+            CREATE TABLE library_tracks (
+                file_key TEXT PRIMARY KEY CHECK (length(file_key) > 0),
+                current_path TEXT NOT NULL CHECK (length(current_path) > 0),
+                root_path TEXT NOT NULL CHECK (length(root_path) > 0),
+                file_size INTEGER NOT NULL CHECK (file_size >= 0),
+                mtime_ns INTEGER NOT NULL CHECK (mtime_ns >= 0),
+                title TEXT,
+                artists_json TEXT NOT NULL,
+                album TEXT,
+                duration_us INTEGER,
+                metadata_source TEXT NOT NULL CHECK (
+                    metadata_source IN (
+                        'tags', 'filename', 'tags-and-filename', 'unreadable'
+                    )
+                ),
+                confidence TEXT NOT NULL CHECK (
+                    confidence IN ('Approved', 'High', 'Medium', 'Low')
+                ),
+                state TEXT NOT NULL CHECK (state IN ('ready', 'review', 'missing')),
+                lyrics_status TEXT NOT NULL,
+                review_reason TEXT,
+                first_seen_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            )
+            """,
+            """
+            CREATE INDEX library_tracks_root_state
+            ON library_tracks(root_path, state)
+            """,
+        ),
+    ),
 )
 
 CURRENT_SCHEMA_VERSION = MIGRATIONS[-1].version

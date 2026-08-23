@@ -34,6 +34,7 @@ REQUIRED_DOCUMENTS = (
     "docs/STAGE_6_COMPLETION.md",
     "docs/STAGE_7_COMPLETION.md",
     "docs/STAGE_8_COMPLETION.md",
+    "docs/STAGE_9_COMPLETION.md",
     "docs/PRODUCT_GAP_RESEARCH.md",
     "docs/adr/0011-offline-romanization-routing.md",
     "docs/adr/0010-stage4-lyrics-resolution.md",
@@ -165,19 +166,19 @@ def test_project_state_contains_the_continuation_contract() -> None:
     assert "/home/example/Documents/LyricFlow/" in content
 
 
-def test_agent_todo_proposes_stage_nine_without_authorizing_it() -> None:
+def test_agent_todo_authorizes_only_stage_nine() -> None:
     content = (REPOSITORY_ROOT / "AGENT_TODO.md").read_text(encoding="utf-8")
 
-    assert content.startswith("# Proposed next stage — not authorized\n")
-    assert "Stage 8 — Review and correction workflow is **Completed**" in content
-    assert "**Completed**" in content
-    assert (
-        "Stage 9 — Music-directory scanner and batch downloads is Proposed /" in content
+    assert content.startswith(
+        "# Active stage — Stage 9 Music-directory scanner and batch downloads\n"
     )
-    assert "unauthorized" in content
-    assert "There is no currently authorized implementation stage" in content
-    assert "Do not implement Stage 9" in content
-    assert "without separate explicit user authorization" in content
+    assert "Stage 8 — Review and correction\nworkflow remains **Completed**" in content
+    assert (
+        "Stage 9 — Music-directory scanner and batch downloads is **Active**" in content
+    )
+    assert "No Stage 10 or later implementation is\nauthorized" in content
+    assert "Do not implement Stage 10" in content
+    assert "Do not mark Stage 9 Completed or begin Stage 10" in content
 
 
 def test_manifest_is_inventory_not_authority() -> None:
@@ -186,11 +187,11 @@ def test_manifest_is_inventory_not_authority() -> None:
     )
 
     assert manifest["implementation_authority"] == "AGENT_TODO.md"
-    assert manifest["authorized_stage"] is None
     assert (
-        manifest["proposed_stage"]
+        manifest["authorized_stage"]
         == "Stage 9 — Music-directory scanner and batch downloads"
     )
+    assert manifest["proposed_stage"] is None
     assert all((REPOSITORY_ROOT / path).is_file() for path in manifest["files"])
 
 

@@ -4,17 +4,21 @@ from __future__ import annotations
 
 import os
 from collections.abc import Callable
+from pathlib import Path
+from threading import Event
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 import pytest
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QTimer
+from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication
 
 from lyricflow.application.frontend_session import FrontendLyricsBundle
 from lyricflow.application.playback_clock import PlaybackClock
 from lyricflow.application.settings import DesktopInteractionSettings
 from lyricflow.application.sync_session import PlaybackSyncSession
+from lyricflow.domain.library import LibraryScanSummary
 from lyricflow.domain.lyrics import LyricsResolutionResult, LyricsResolutionStatus
 from lyricflow.domain.models import (
     PlayerEvent,
@@ -233,6 +237,52 @@ def test_settings_update_applies_and_persists_opt_in_selection(
     )
     assert frontend.display_settings == display
     assert frontend.interaction_settings == interactions
+    coordinator.close()
+    window.close()
+
+
+def test_large_library_job_keeps_qt_event_loop_responsive(
+    qt_app: QApplication,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    started = Event()
+    release = Event()
+
+    def large_scan(self, **kwargs):  # type: ignore[no-untyped-def]
+        del self, kwargs
+        started.set()
+        release.wait(2)
+        return LibraryScanSummary(1, 10_000, 10_000, 0, 0, 0, 0, 0, 0, 0)
+
+    monkeypatch.setattr(
+        "lyricflow.application.library_scan.LibraryScanService.scan", large_scan
+    )
+    window = MainWindow()
+    coordinator = DesktopCoordinator(
+        qt_app,
+        window,
+        database_path=tmp_path / "desktop-library.sqlite3",
+        runtime=_Runtime(),  # type: ignore[arg-type]
+    )
+    event_loop_progress: list[str] = []
+    QTimer.singleShot(0, lambda: event_loop_progress.append("responsive"))
+
+    coordinator._start_library_scan()
+    for _ in range(400):
+        if started.is_set() and event_loop_progress:
+            break
+        QTest.qWait(5)
+
+    assert started.is_set()
+    assert event_loop_progress == ["responsive"]
+    assert window.library_button.text() == "Cancel scan"
+    release.set()
+    for _ in range(100):
+        if not window.library_button.property("scanRunning"):
+            break
+        QTest.qWait(5)
+    assert window.library_button.text() == "Scan library"
     coordinator.close()
     window.close()
 

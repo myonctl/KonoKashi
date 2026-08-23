@@ -19,6 +19,10 @@ class StorageCounts:
     representation_decisions: int = 0
     lyric_document_delays: int = 0
     audio_output_calibrations: int = 0
+    library_roots: int = 0
+    library_tracks: int = 0
+    library_review_items: int = 0
+    library_scan_runs: int = 0
 
 
 @dataclass(frozen=True, slots=True)
@@ -75,6 +79,10 @@ def render_storage_status(status: StorageStatus) -> str:
                 f"representation decisions: {status.counts.representation_decisions}",
                 f"lyric document delays: {status.counts.lyric_document_delays}",
                 f"audio output calibrations: {status.counts.audio_output_calibrations}",
+                f"library roots: {status.counts.library_roots}",
+                f"library tracks: {status.counts.library_tracks}",
+                f"library review items: {status.counts.library_review_items}",
+                f"library scan runs: {status.counts.library_scan_runs}",
             )
         )
     if status.error is not None:

@@ -13,8 +13,9 @@ under it, and an optional translation forms a third layer.
 Stages 1 through 8 are **Completed**. Stage 8 — Review and correction workflow
 passed its automated gate and accepted real Strawberry/desktop correction,
 restart, preservation, and cleanup matrix on 2026-08-23. Stage 9 —
-Music-directory scanner and batch downloads is Proposed / unauthorized; no
-implementation stage is currently authorized.
+Music-directory scanner and batch downloads has a complete implementation
+checkpoint and is verification pending. Stage 10 and later work remain
+unauthorized.
 Stage 7 — Desktop MVP passed its automated
 gate and accepted real KDE, playback, recovery, scaling, theme, state, and
 longer-run verification on 2026-08-23. Native Qt/Wayland interactive resizing
@@ -61,7 +62,11 @@ failure states, progress, shared display settings, and bounded details. Stage 8
 adds a shared correction/audit service and desktop Review dialog for alternative
 lyrics, artist/title overrides, approval/rejection, exact-document delay, and
 independent resets while preserving raw/provider evidence. The full-screen TUI
-remains future work. See
+remains future work. Stage 9 adds typed global library-root/download/worker
+settings, incremental read-only Mutagen scanning, conservative filename
+fallback, resumable schema-8 state, uncertain-item review, and opt-in
+High/Approved-only batch lyric resolution. The desktop scan action uses the
+existing bounded background pool and supports cooperative cancellation. See
 `PROJECT_STATE.md` for evidence and `AGENT_TODO.md` for the only implementation
 authority.
 
@@ -125,8 +130,10 @@ Supporting authorities:
   real-player/timed-lyrics, delay, publication, and CI evidence.
 - `docs/STAGE_7_COMPLETION.md` — completed Stage 7 implementation, automated,
   real KDE/player/state/resource evidence, and accepted limitations.
-- `docs/STAGE_8_COMPLETION.md` — Stage 8 implementation and automated evidence,
-  with real desktop verification tracked separately.
+- `docs/STAGE_8_COMPLETION.md` — completed Stage 8 implementation, automated,
+  real desktop, cleanup, publication, and CI evidence.
+- `docs/STAGE_9_COMPLETION.md` — Stage 9 implementation, automated, and pending
+  manual-verification evidence.
 - `docs/PRODUCT_GAP_RESEARCH.md` — bounded public product-feedback findings and
   Stage 7/future/rejected scope decisions.
 - `docs/adr/0010-stage4-lyrics-resolution.md` — accepted Stage 4 precedence,
@@ -137,6 +144,8 @@ Supporting authorities:
   selective native-module, retained desktop, future TUI, and no-daemon policy.
 - `docs/adr/0014-frontend-neutral-settings-and-themes.md` — accepted canonical
   settings, dotfile, safe semantic theme, and frontend adapter policy.
+- `docs/adr/0015-incremental-library-scanner.md` — accepted Stage 9 incremental,
+  read-only, resumable, bounded, and confidence-gated scanning policy.
 - `docs/adr/` — accepted and historical architecture/process decisions.
 
 `PLAN_MANIFEST.json` is a machine-readable document inventory, not an authority.
@@ -177,6 +186,11 @@ Rationale, licensing cautions, and usage boundaries are recorded in
 .venv/bin/lyricflow lyrics romanize current --language ja
 .venv/bin/lyricflow lyrics representations current --offline
 .venv/bin/lyricflow storage display show
+.venv/bin/lyricflow library settings
+.venv/bin/lyricflow library settings --root /absolute/test/music --workers 2
+.venv/bin/lyricflow library scan --offline
+.venv/bin/lyricflow library status
+.venv/bin/lyricflow library review
 .venv/bin/lyricflow sync current --offline
 .venv/bin/lyricflow sync probe --duration-seconds 30
 .venv/bin/lyricflow sync delay show --offline
@@ -220,6 +234,18 @@ The default database is
 `$XDG_DATA_HOME/lyricflow/lyricflow.sqlite3`, falling back to
 `$HOME/.local/share/lyricflow/lyricflow.sqlite3`. Tests inject isolated temporary
 paths and never depend on the current working directory.
+
+`library settings` is the noninteractive adapter over one typed global model.
+Roots default empty, automatic downloads default off, and metadata workers
+default to four with a validated 1–8 bound; all apply on the next scan. Repeat
+`--root` to atomically replace roots, use `--clear-roots` for explicit cleanup,
+and use `--automatic-downloads on` only after validating a small disposable
+test directory. `library scan` commits each processed file for resume, skips
+unchanged signatures, recognizes same-filesystem moves, reconciles deletions
+only after a complete walk, and never saves audio tags. `--offline` forbids new
+provider HTTP. Filename-only uncertainty and unresolved download outcomes are
+listed by `library review`. The desktop Scan library action consumes these same
+settings on its background pool; activating it again requests safe cancellation.
 
 `lyrics current` selects and resolves the current track, then applies approved,
 adjacent LRC, supported read-only embedded, durable High-confidence cache, and
@@ -291,6 +317,10 @@ tags or provider lyric text/timestamps. Append-only schema 7 keeps rejected
 document IDs/evidence separate from the current selection so another choice or
 restart cannot silently reattach a rejected result. Reset match choices clears
 the current decision and every rejected-result preference for that source.
+Scan library starts the configured Stage 9 service on the bounded worker pool,
+remains responsive during large fixtures, and becomes a cooperative Cancel scan
+action until completion. Root/download/worker configuration and uncertain-item
+review use the shared CLI model rather than Qt-owned settings.
 
 `players list` returns 0 whenever service enumeration itself succeeds, including
 when individual players or fields are unavailable; their diagnostics remain in

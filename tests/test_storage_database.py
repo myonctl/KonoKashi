@@ -54,7 +54,7 @@ def test_brand_new_unicode_database_migrates_in_order_and_reopens_noop(
 
     assert database.initialize() == CURRENT_SCHEMA_VERSION
     first_history = database.migration_history()
-    assert [item[0] for item in first_history] == [1, 2, 3, 4, 5, 6, 7]
+    assert [item[0] for item in first_history] == [1, 2, 3, 4, 5, 6, 7, 8]
 
     def unexpected_transaction() -> None:
         raise AssertionError("current-schema initialization opened a write transaction")
@@ -134,7 +134,7 @@ def test_published_stage_three_database_upgrades_without_losing_approved_match(
             """
         )
 
-    assert database.initialize() == 7
+    assert database.initialize() == 8
 
     with database.connection(readonly=True) as connection:
         row = connection.execute(
@@ -148,7 +148,16 @@ def test_published_stage_three_database_upgrades_without_losing_approved_match(
         ).fetchone()
     assert tuple(row) == ("approved-doc", "approved", "Approved")
     assert evidence_table[0] == "lyrics_match_evidence"
-    assert [item[0] for item in database.migration_history()] == [1, 2, 3, 4, 5, 6, 7]
+    assert [item[0] for item in database.migration_history()] == [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+    ]
 
 
 def test_published_stage_four_database_upgrades_without_losing_original_lines(
@@ -185,7 +194,7 @@ def test_published_stage_four_database_upgrades_without_losing_original_lines(
             """
         )
 
-    assert database.initialize() == 7
+    assert database.initialize() == 8
 
     with database.connection(readonly=True) as connection:
         original = connection.execute(
@@ -247,7 +256,7 @@ def test_stage_six_rejected_match_is_backfilled_into_durable_history(
             """
         )
 
-    assert database.initialize() == 7
+    assert database.initialize() == 8
 
     with database.connection(readonly=True) as connection:
         rejection = connection.execute(

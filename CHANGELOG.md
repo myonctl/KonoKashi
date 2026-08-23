@@ -7,6 +7,18 @@ unreleased.
 
 ### Added
 
+- Authorized the repository-defined Stage 9 Music-directory scanner and batch
+  downloads scope on 2026-08-23. Stage 10 and later work remain unauthorized.
+- Implemented Stage 9 typed global library settings; deterministic read-only
+  Mutagen/filename scanning; bounded workers; per-file resume; unchanged,
+  same-filesystem move, and completed-walk deletion handling; Stage 8 Approved
+  correction reuse; opt-in High/Approved resolver-gated downloads; durable
+  review/status; CLI automation; and background desktop scan/cancel controls.
+- Added append-only schema 8, safe aggregate library diagnostics, ADR 0015, and
+  deterministic cancellation, no-tag-edit, policy, resume, 200-file worker
+  bound, and simulated 10,000-item responsive-desktop regressions. Stage 9
+  remains verification pending until publication/CI and the accepted small-test-
+  directory matrix.
 - Authorized the repository-defined Stage 8 Review and correction workflow on
   2026-08-23 after confirming it remains exactly the roadmap's alternative
   lyric selection, source-identity correction, match approval/rejection,

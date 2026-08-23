@@ -110,6 +110,26 @@ def inspect_storage(path: Path) -> StorageStatus:
                             "SELECT COUNT(*) FROM audio_output_calibrations"
                         ).fetchone()[0]
                     ),
+                    library_roots=int(
+                        connection.execute(
+                            "SELECT COUNT(*) FROM library_roots"
+                        ).fetchone()[0]
+                    ),
+                    library_tracks=int(
+                        connection.execute(
+                            "SELECT COUNT(*) FROM library_tracks"
+                        ).fetchone()[0]
+                    ),
+                    library_review_items=int(
+                        connection.execute(
+                            "SELECT COUNT(*) FROM library_tracks WHERE state = 'review'"
+                        ).fetchone()[0]
+                    ),
+                    library_scan_runs=int(
+                        connection.execute(
+                            "SELECT COUNT(*) FROM library_scan_runs"
+                        ).fetchone()[0]
+                    ),
                 )
         if incompatible:
             return StorageStatus(

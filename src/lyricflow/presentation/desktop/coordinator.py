@@ -6,6 +6,7 @@ from collections.abc import Callable
 from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path
+from threading import Event
 from typing import Any
 
 from PySide6.QtCore import QObject, QRunnable, QThreadPool, QTimer, Signal, Slot
@@ -29,6 +30,7 @@ from lyricflow.application.sync_state import (
     SynchronizationSnapshot,
     build_sync_snapshot,
 )
+from lyricflow.domain.library import LibraryScanSummary
 from lyricflow.domain.lyrics import LyricDocumentKind, LyricsResolutionStatus
 from lyricflow.domain.models import PlayerEvent, PlayerEventKind
 from lyricflow.domain.representations import RepresentationDisplaySettings
@@ -123,6 +125,7 @@ class DesktopCoordinator(QObject):
         self._selection_serial = 0
         self._load_serial = 0
         self._review_serial = 0
+        self._library_cancellation: Event | None = None
 
         self._pool = QThreadPool(self)
         self._pool.setMaxThreadCount(2)
@@ -147,6 +150,8 @@ class DesktopCoordinator(QObject):
         self._window.settings_requested.connect(self._save_display_settings)
         self._window.review_requested.connect(self._load_review)
         self._window.correction_requested.connect(self._apply_correction)
+        self._window.library_scan_requested.connect(self._start_library_scan)
+        self._window.library_scan_cancel_requested.connect(self._cancel_library_scan)
         self._application.aboutToQuit.connect(self.close)
 
     @property
@@ -645,6 +650,68 @@ class DesktopCoordinator(QObject):
         self._clear_sync_only()
         self._track = None
 
+    def _start_library_scan(self) -> None:
+        """Run a configured library scan on the bounded desktop worker pool."""
+
+        if self._closed or self._library_cancellation is not None:
+            return
+        from lyricflow.application.library_scan import LibraryScanService
+        from lyricflow.infrastructure.lyrics.library_download import (
+            LibraryLyricsDownloader,
+        )
+        from lyricflow.infrastructure.metadata.library import (
+            MusicDirectoryFilesystem,
+            MutagenLibraryMetadataReader,
+        )
+
+        cancellation = Event()
+        self._library_cancellation = cancellation
+        self._window.set_library_scan_state(
+            True, "Scanning configured roots in background; activate to cancel."
+        )
+
+        def scan() -> LibraryScanSummary:
+            storage = open_storage(self._database_path)
+            settings = storage.library.get_settings()
+            downloader = (
+                LibraryLyricsDownloader(storage, LrclibLyricsProvider())
+                if settings.automatic_downloads
+                else None
+            )
+            return LibraryScanService(
+                MusicDirectoryFilesystem(),
+                MutagenLibraryMetadataReader(),
+                storage.library,
+                downloader=downloader,
+                overrides=storage.track_overrides,
+            ).scan(cancellation=cancellation)
+
+        def scanned(result: object | None, error: BaseException | None) -> None:
+            if self._closed or cancellation is not self._library_cancellation:
+                return
+            self._library_cancellation = None
+            if error is not None or not isinstance(result, LibraryScanSummary):
+                diagnostic = "unknown scan failure" if error is None else str(error)
+                self._window.set_library_scan_state(
+                    False, f"Library scan could not start: {diagnostic}"
+                )
+                return
+            state = "cancelled" if result.cancelled else "complete"
+            self._window.set_library_scan_state(
+                False,
+                f"Library scan {state}: {result.processed} processed, "
+                f"{result.unchanged} unchanged, {result.review} for review.",
+            )
+
+        self._start_job(scan, scanned)
+
+    def _cancel_library_scan(self) -> None:
+        """Cooperatively stop discovery without reconciling unseen deletions."""
+
+        if self._library_cancellation is not None:
+            self._library_cancellation.set()
+            self._window.set_library_scan_state(True, "Cancelling library scan safely…")
+
     def _start_job(
         self,
         function: Callable[[], object],
@@ -677,6 +744,9 @@ class DesktopCoordinator(QObject):
         self._closed = True
         if self._frontend is not None:
             self._frontend.cancel_inflight()
+        if self._library_cancellation is not None:
+            self._library_cancellation.set()
+            self._library_cancellation = None
         self._selection_timer.stop()
         self._idle_timer.stop()
         self._clear_source()

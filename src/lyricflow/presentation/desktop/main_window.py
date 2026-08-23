@@ -374,6 +374,8 @@ class MainWindow(QMainWindow):
     settings_requested = Signal(object)
     review_requested = Signal()
     correction_requested = Signal(object)
+    library_scan_requested = Signal()
+    library_scan_cancel_requested = Signal()
 
     def __init__(
         self,
@@ -423,9 +425,13 @@ class MainWindow(QMainWindow):
         self.details_button = QPushButton("Details")
         self.details_button.setAccessibleName("Synchronization and source details")
         self.details_button.clicked.connect(self._open_details)
+        self.library_button = QPushButton("Scan library")
+        self.library_button.setAccessibleName("Scan configured music library")
+        self.library_button.clicked.connect(self._toggle_library_scan)
         header.addWidget(self.settings_button)
         header.addWidget(self.review_button)
         header.addWidget(self.details_button)
+        header.addWidget(self.library_button)
         layout.addLayout(header)
 
         rule = QFrame()
@@ -531,7 +537,12 @@ class MainWindow(QMainWindow):
             font.setPointSizeF(max(8.0, body_size))
             label.setFont(font)
 
-        for button in (self.settings_button, self.review_button, self.details_button):
+        for button in (
+            self.settings_button,
+            self.review_button,
+            self.details_button,
+            self.library_button,
+        ):
             font = button.font()
             font.setPointSizeF(max(8.0, body_size))
             button.setFont(font)
@@ -683,6 +694,20 @@ class MainWindow(QMainWindow):
 
     def _open_details(self) -> None:
         DiagnosticsDialog(self._state, self).exec()
+
+    def _toggle_library_scan(self) -> None:
+        if self.library_button.property("scanRunning"):
+            self.library_scan_cancel_requested.emit()
+        else:
+            self.library_scan_requested.emit()
+
+    def set_library_scan_state(self, running: bool, message: str) -> None:
+        """Expose background scan/cancel state without replacing lyric content."""
+
+        self.library_button.setProperty("scanRunning", running)
+        self.library_button.setText("Cancel scan" if running else "Scan library")
+        self.library_button.setToolTip(escape(message))
+        self.library_button.setAccessibleDescription(message)
 
     def show_review(self, snapshot: ReviewCorrectionSnapshot) -> None:
         """Render one source-bound review model and emit at most one action."""
