@@ -15,7 +15,7 @@ def test_version_output(capsys: pytest.CaptureFixture[str]) -> None:
         cli.main(["--version"])
 
     assert exit_info.value.code == 0
-    assert capsys.readouterr().out == "lyricflow 0.1.0\n"
+    assert capsys.readouterr().out == "lyricflow 1.0.0\n"
 
 
 def test_desktop_command_dispatches_to_the_qt_entry_point(
@@ -31,6 +31,22 @@ def test_desktop_command_dispatches_to_the_qt_entry_point(
 
     assert cli.main(["desktop"], database_path=tmp_path / "desktop.sqlite3") == 23
     assert observed == [(["lyricflow"], tmp_path / "desktop.sqlite3")]
+
+
+def test_desktop_startup_failure_is_controlled(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    def fail(_argv: list[str], *, database_path: Path | None) -> int:
+        raise RuntimeError(f"controlled {database_path}")
+
+    monkeypatch.setattr(desktop_app, "run_desktop", fail)
+
+    assert cli.main(["desktop"]) == 1
+    captured = capsys.readouterr()
+    assert "Unable to start" in captured.err
+    assert "diagnostics export" in captured.err
+    assert "Traceback" not in captured.err
 
 
 def test_doctor_success_output_and_exit_code(

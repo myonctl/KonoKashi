@@ -1,0 +1,13 @@
+[Desktop Entry]
+Type=Application
+Version=1.5
+Name=LyricFlow
+GenericName=Synchronized Lyrics
+Comment=Show synchronized multilingual lyrics for MPRIS players
+Exec=@LYRICFLOW_EXECUTABLE@ desktop
+Icon=io.github.myonctl.LyricFlow
+Terminal=false
+Categories=AudioVideo;Audio;
+Keywords=lyrics;music;MPRIS;karaoke;
+DBusActivatable=false
+StartupNotify=false

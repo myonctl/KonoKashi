@@ -5,7 +5,30 @@ unreleased.
 
 ## Unreleased
 
+No changes yet.
+
+## 1.0.0 — 2026-08-23
+
 ### Added
+
+- Activated Stage 10 after the accepted multilingual repair closure commit
+  `e3efe5b` passed exact-SHA GitHub Actions run `32659026971`. Selected
+  standards-based source/wheel artifacts and explicit user-local XDG desktop
+  integration in ADR 0017; public publication remains blocked by the separate
+  license and visibility decisions.
+- Added packaged freedesktop desktop-entry and scalable SVG icon assets plus
+  atomic `desktop-integration install/status/remove` commands. Removal touches
+  only the exact launcher/icon and never deletes the database, cache,
+  configuration, backups, music, or virtual environment.
+- Added reproducible same-epoch source/wheel builds with pinned build backend,
+  byte comparison, SHA-256 reporting, required-content inspection, and a clean
+  Ubuntu venv artifact lifecycle in CI.
+- Added a non-overwriting, verified, mode-0600 SQLite online backup command; a
+  privacy-bounded versioned JSON diagnostic export; controlled top-level
+  desktop startup errors; and schema-8-to-9 release upgrade preservation.
+- Added Linux v1 build/install/upgrade/backup/diagnostic/uninstall instructions,
+  an end-to-end release matrix, and supported-player claims limited to actual
+  automated and accepted real evidence.
 
 - Activated the post-Stage-5 Chinese/Pinyin regression repair on 2026-08-23.
   Reproduced the defect at the document-language boundary: timed Han-only

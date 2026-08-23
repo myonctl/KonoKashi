@@ -6,14 +6,14 @@ provider lyrics, and displays synchronized lyrics. For non-Latin scripts, the
 original line remains first, a romanized/transliterated line appears directly
 under it, and an optional translation forms a third layer.
 
-`LyricFlow` is a working name. The current version is 0.1.0.
+`LyricFlow` is a working name. The current version is 1.0.0.
 
 ## Current status
 
-Stages 1 through 9 are **Completed**. A post-Stage-5 Chinese/Pinyin regression
-repair is Active: its automated implementation is being verified, and Stage 10
-is conditionally authorized only after the published repair passes the real
-Wowkie/Japanese/Latin gate. Stage 8 — Review and correction workflow
+Stages 1 through 9 and the post-Stage-5 Chinese/Pinyin repair are **Completed**.
+Stage 10 — Packaging and v1 release is **Active** after the repair's published
+real Chinese/Cyrillic/Japanese/Latin matrix and exact-SHA CI passed. Stage 8 —
+Review and correction workflow
 passed its automated gate and accepted real Strawberry/desktop correction,
 restart, preservation, and cleanup matrix on 2026-08-23. Stage 9 —
 Music-directory scanner and batch downloads passed its automated and real
@@ -115,6 +115,8 @@ Supporting authorities:
   matrix.
 - `docs/MANUAL_TEST_LOG.md` — append-only real-world verification evidence.
 - `docs/DEPENDENCIES.md` — dependency rationale and replacement paths.
+- `docs/RELEASE.md` — v1 build, installation, backup, upgrade, diagnostics,
+  uninstall, end-to-end matrix, and supported-player claims.
 - `docs/REFERENCES.md` — external primary technical references.
 - `docs/MULTILINGUAL_SUPPORT.md` — exact local language routes, terminology,
   evidence policy, and limitations.
@@ -141,6 +143,8 @@ Supporting authorities:
 - `docs/STAGE_9_COMPLETION.md` — completed Stage 9 implementation, automated,
   disposable-directory, preservation, desktop-worker, cleanup, and publication
   evidence.
+- `docs/STAGE_10_COMPLETION.md` — Stage 10 packaging, artifact, data-safety,
+  installed-desktop, publication, and CI evidence.
 - `docs/PRODUCT_GAP_RESEARCH.md` — bounded public product-feedback findings and
   Stage 7/future/rejected scope decisions.
 - `docs/adr/0010-stage4-lyrics-resolution.md` — accepted Stage 4 precedence,
@@ -155,6 +159,8 @@ Supporting authorities:
   read-only, resumable, bounded, and confidence-gated scanning policy.
 - `docs/adr/0016-chinese-pinyin-regression-repair.md` — accepted conservative
   Chinese evidence, phrase-aware Pinyin, and durable override policy.
+- `docs/adr/0017-linux-v1-packaging.md` — accepted Python distribution,
+  reproducible-build, and user-local XDG desktop-integration policy.
 - `docs/adr/` — accepted and historical architecture/process decisions.
 
 `PLAN_MANIFEST.json` is a machine-readable document inventory, not an authority.

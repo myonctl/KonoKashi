@@ -156,6 +156,35 @@ def _parser() -> argparse.ArgumentParser:
         "desktop",
         help="open the PySide6 synchronized-lyrics desktop application",
     )
+    desktop_integration = subparsers.add_parser(
+        "desktop-integration",
+        help="manage the user-local Linux application launcher and icon",
+    )
+    desktop_integration_commands = desktop_integration.add_subparsers(
+        dest="desktop_integration_command", required=True
+    )
+    desktop_integration_commands.add_parser(
+        "install", help="install or refresh the launcher and icon"
+    )
+    desktop_integration_commands.add_parser(
+        "status", help="inspect launcher and icon presence"
+    )
+    desktop_integration_commands.add_parser(
+        "remove", help="remove only the launcher and icon"
+    )
+    diagnostics = subparsers.add_parser(
+        "diagnostics", help="export privacy-bounded support diagnostics"
+    )
+    diagnostic_commands = diagnostics.add_subparsers(
+        dest="diagnostics_command", required=True
+    )
+    diagnostic_export = diagnostic_commands.add_parser(
+        "export", help="write versioned JSON to stdout or a new file"
+    )
+    diagnostic_export.add_argument("--output", type=Path)
+    diagnostic_export.add_argument(
+        "--force", action="store_true", help="replace an existing output file"
+    )
     players = subparsers.add_parser(
         "players",
         help="inspect MPRIS players on the session D-Bus",
@@ -223,6 +252,10 @@ def _parser() -> argparse.ArgumentParser:
     storage_commands.add_parser(
         "migrate", help="initialize or migrate storage without destructive reset"
     )
+    storage_backup = storage_commands.add_parser(
+        "backup", help="create a verified SQLite backup without changing storage"
+    )
+    storage_backup.add_argument("destination", type=Path)
     settings = storage_commands.add_parser(
         "settings", help="inspect or update durable player settings"
     )
@@ -639,7 +672,11 @@ def _run_players(
 
 def _run_storage(arguments: argparse.Namespace, database_path: Path | None) -> int:
     from lyricflow.application.storage_diagnostics import render_storage_status
-    from lyricflow.infrastructure.storage.bootstrap import open_storage
+    from lyricflow.infrastructure.storage.backup import backup_database
+    from lyricflow.infrastructure.storage.bootstrap import (
+        open_storage,
+        open_storage_readonly,
+    )
     from lyricflow.infrastructure.storage.diagnostics import inspect_storage
     from lyricflow.infrastructure.storage.errors import StorageError
     from lyricflow.infrastructure.storage.paths import default_database_path
@@ -650,6 +687,23 @@ def _run_storage(arguments: argparse.Namespace, database_path: Path | None) -> i
         print(render_storage_status(status))
         return status.exit_code
     try:
+        if arguments.storage_command == "backup":
+            status = inspect_storage(path)
+            if status.error is not None or status.migration_status != "current":
+                print(
+                    "Unable to back up LyricFlow storage: storage must be healthy "
+                    "and current; run `lyricflow storage status`.",
+                    file=sys.stderr,
+                )
+                return 1
+            storage = open_storage_readonly(path)
+            backup = backup_database(storage.database, arguments.destination)
+            print("Created verified LyricFlow storage backup.")
+            print(f"backup path: {backup.destination}")
+            print(f"schema version: {backup.schema_version}")
+            print(f"size: {backup.size_bytes} bytes")
+            print("live database modified: no")
+            return 0
         storage = open_storage(path)
         if arguments.storage_command == "migrate":
             print(
@@ -708,6 +762,81 @@ def _run_storage(arguments: argparse.Namespace, database_path: Path | None) -> i
         print(f"Unable to use LyricFlow storage: {error}", file=sys.stderr)
         return 1
     return 2
+
+
+def _run_desktop_integration(
+    arguments: argparse.Namespace, executable_path: Path
+) -> int:
+    from lyricflow.infrastructure.desktop_integration import (
+        DesktopIntegrationError,
+        current_executable,
+        install_desktop_integration,
+        integration_status,
+        remove_desktop_integration,
+        user_data_home,
+    )
+
+    data_home = user_data_home()
+    try:
+        if arguments.desktop_integration_command == "install":
+            executable = current_executable(str(executable_path))
+            status = install_desktop_integration(executable, data_home)
+            action = "Installed"
+        elif arguments.desktop_integration_command == "remove":
+            status = remove_desktop_integration(data_home)
+            action = "Removed"
+        else:
+            status = integration_status(data_home)
+            action = "LyricFlow"
+    except DesktopIntegrationError as error:
+        print(f"Unable to manage desktop integration: {error}", file=sys.stderr)
+        return 1
+    print(f"{action} user-local desktop integration.")
+    print(f"desktop file: {status.desktop_file}")
+    print(f"desktop installed: {'yes' if status.desktop_installed else 'no'}")
+    print(f"icon file: {status.icon_file}")
+    print(f"icon installed: {'yes' if status.icon_installed else 'no'}")
+    print("application data modified: no")
+    return int(
+        arguments.desktop_integration_command == "status" and not status.installed
+    )
+
+
+def _run_diagnostics(arguments: argparse.Namespace, database_path: Path | None) -> int:
+    from lyricflow.application.release_diagnostics import (
+        build_release_diagnostic_export,
+    )
+    from lyricflow.infrastructure.desktop_integration import (
+        integration_status,
+        user_data_home,
+    )
+    from lyricflow.infrastructure.release_diagnostics import (
+        runtime_dependency_versions,
+        write_diagnostic_export,
+    )
+    from lyricflow.infrastructure.storage.diagnostics import inspect_storage
+    from lyricflow.infrastructure.storage.paths import default_database_path
+
+    report = build_release_diagnostic_export(
+        lyricflow_version=__version__,
+        checks=collect_local_diagnostics(),
+        storage=inspect_storage(database_path or default_database_path()),
+        desktop_integration_installed=integration_status(user_data_home()).installed,
+        dependencies=runtime_dependency_versions(),
+    )
+    payload = report.render_json()
+    if arguments.output is None:
+        print(payload, end="")
+        return 0
+    try:
+        output = write_diagnostic_export(
+            arguments.output, payload, overwrite=arguments.force
+        )
+    except OSError as error:
+        print(f"Unable to write diagnostic export: {error}", file=sys.stderr)
+        return 1
+    print(f"Wrote privacy-bounded diagnostic export: {output}")
+    return 0
 
 
 def _run_library(
@@ -1783,6 +1912,7 @@ def main(
     lyrics_provider_factory: LyricsProviderFactory = _create_lyrics_provider,
     audio_latency_probe_factory: AudioLatencyProbeFactory = _create_audio_latency_probe,
     database_path: Path | None = None,
+    executable_path: Path | None = None,
 ) -> int:
     """Run the CLI and return a process exit code."""
 
@@ -1792,9 +1922,25 @@ def main(
         print(report.render())
         return report.exit_code
     if arguments.command == "desktop":
-        from lyricflow.presentation.desktop.app import run_desktop
+        try:
+            from lyricflow.presentation.desktop.app import run_desktop
 
-        return run_desktop(["lyricflow"], database_path=database_path)
+            return run_desktop(["lyricflow"], database_path=database_path)
+        except (ImportError, OSError, RuntimeError) as error:
+            print(
+                "Unable to start the LyricFlow desktop: "
+                f"{error.__class__.__name__}: {error}",
+                file=sys.stderr,
+            )
+            print(
+                "Run `lyricflow diagnostics export` for a privacy-bounded report.",
+                file=sys.stderr,
+            )
+            return 1
+    if arguments.command == "desktop-integration":
+        return _run_desktop_integration(arguments, executable_path or Path(sys.argv[0]))
+    if arguments.command == "diagnostics":
+        return _run_diagnostics(arguments, database_path)
     if arguments.command == "players":
         return _run_players(arguments, runtime_factory, database_path)
     if arguments.command == "storage":

@@ -64,7 +64,7 @@ def test_exact_request_uses_official_fields_duration_headers_and_injected_url() 
         "album_name": "Elevate & More",
         "duration": "183.771",
     }
-    assert request.headers["user-agent"].startswith("LyricFlow/0.1.0")
+    assert request.headers["user-agent"].startswith("LyricFlow/1.0.0")
     assert request.headers["accept"] == "application/json"
     assert "authorization" not in request.headers
     assert provider.timeout.connect == 1.25

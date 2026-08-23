@@ -22,6 +22,7 @@ REQUIRED_DOCUMENTS = (
     "docs/TESTING.md",
     "docs/MANUAL_TEST_LOG.md",
     "docs/DEPENDENCIES.md",
+    "docs/RELEASE.md",
     "docs/REFERENCES.md",
     "docs/MULTILINGUAL_SUPPORT.md",
     "docs/DOCUMENTATION_STYLE.md",
@@ -36,12 +37,14 @@ REQUIRED_DOCUMENTS = (
     "docs/STAGE_7_COMPLETION.md",
     "docs/STAGE_8_COMPLETION.md",
     "docs/STAGE_9_COMPLETION.md",
+    "docs/STAGE_10_COMPLETION.md",
     "docs/PRODUCT_GAP_RESEARCH.md",
     "docs/adr/0011-offline-romanization-routing.md",
     "docs/adr/0010-stage4-lyrics-resolution.md",
     "docs/adr/0013-python-first-hybrid-architecture.md",
     "docs/adr/0014-frontend-neutral-settings-and-themes.md",
     "docs/adr/0016-chinese-pinyin-regression-repair.md",
+    "docs/adr/0017-linux-v1-packaging.md",
 )
 
 REQUIRED_EVIDENCE_FIXTURES = (
@@ -130,6 +133,8 @@ def test_github_actions_runs_the_required_quality_gate() -> None:
         "python -m ruff check .",
         "python -m ruff format --check .",
         "python -m mypy src",
+        "python scripts/build_release.py",
+        "desktop-file-validate",
     )
 
     assert all(command in content for command in required_commands)
@@ -168,16 +173,13 @@ def test_project_state_contains_the_continuation_contract() -> None:
     assert "/home/example/Documents/LyricFlow/" in content
 
 
-def test_agent_todo_authorizes_only_multilingual_repair_before_stage_ten() -> None:
+def test_agent_todo_authorizes_only_stage_ten() -> None:
     content = (REPOSITORY_ROOT / "AGENT_TODO.md").read_text(encoding="utf-8")
 
-    assert content.startswith(
-        "# Active repair — multilingual Chinese/Pinyin regression\n"
-    )
-    assert "post-Stage-5 Chinese/Pinyin regression repair is **Active**" in content
-    assert "Stage 5 remains historically **Completed**" in content
-    assert "only after" in content
-    assert "Until then Stage 10 is not Active" in content
+    assert content.startswith("# Stage 10 — Packaging and v1 release\n")
+    assert "Stage 10 is **Active**" in content
+    assert "Stages 1 through 9 and the repair" in content
+    assert "No PyPI, public-repository, or public artifact publication" in content
     assert "Stage 11 and later work remain Proposed / unauthorized" in content
 
 
@@ -187,8 +189,8 @@ def test_manifest_is_inventory_not_authority() -> None:
     )
 
     assert manifest["implementation_authority"] == "AGENT_TODO.md"
-    assert manifest["authorized_stage"] is None
-    assert manifest["proposed_stage"] == "Stage 10 — Packaging and v1 release"
+    assert manifest["authorized_stage"] == "Stage 10 — Packaging and v1 release"
+    assert manifest["proposed_stage"] == "Stage 11+ — Post-v1 backlog"
     assert all((REPOSITORY_ROOT / path).is_file() for path in manifest["files"])
 
 

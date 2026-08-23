@@ -1,10 +1,10 @@
 [build-system]
-requires = ["setuptools>=77"]
+requires = ["setuptools==84.0.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "lyricflow"
-version = "0.1.0"
+version = "1.0.0"
 description = "Local-first synchronized lyrics for Linux MPRIS players"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -12,7 +12,7 @@ license = "LicenseRef-Proprietary"
 license-files = ["LICENSE"]
 authors = [{ name = "LyricFlow contributors" }]
 classifiers = [
-    "Development Status :: 2 - Pre-Alpha",
+    "Development Status :: 5 - Production/Stable",
     "Environment :: X11 Applications :: Qt",
     "Operating System :: POSIX :: Linux",
     "Private :: Do Not Upload",
@@ -36,6 +36,7 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = [
+    "build>=1.3,<2",
     "mypy>=1.15,<2",
     "pytest>=8.3,<10",
     "ruff>=0.11,<1",
@@ -46,6 +47,9 @@ lyricflow = "lyricflow.cli:main"
 
 [tool.setuptools]
 package-dir = { "" = "src" }
+
+[tool.setuptools.package-data]
+lyricflow = ["resources/*.desktop.in", "resources/*.svg"]
 
 [tool.setuptools.packages.find]
 where = ["src"]

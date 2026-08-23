@@ -107,3 +107,24 @@ def test_corrupt_storage_status_is_controlled_and_keeps_file(
     assert "error:" in captured.out
     assert "Traceback" not in captured.out + captured.err
     assert path.read_bytes() == payload
+
+
+def test_storage_backup_is_verified_read_only_and_refuses_overwrite(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    database = tmp_path / "live" / "lyricflow.sqlite3"
+    backup = tmp_path / "backups" / "lyricflow.sqlite3"
+    assert cli.main(["storage", "migrate"], database_path=database) == 0
+    capsys.readouterr()
+    before = database.read_bytes()
+
+    assert cli.main(["storage", "backup", str(backup)], database_path=database) == 0
+    output = capsys.readouterr().out
+    assert "schema version: 9" in output
+    assert "live database modified: no" in output
+    assert database.read_bytes() == before
+    assert backup.is_file()
+    assert backup.stat().st_mode & 0o777 == 0o600
+
+    assert cli.main(["storage", "backup", str(backup)], database_path=database) == 1
+    assert "already exists" in capsys.readouterr().err
