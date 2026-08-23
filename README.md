@@ -11,8 +11,8 @@ under it, and an optional translation forms a third layer.
 ## Current status
 
 Stages 1 through 7 are **Completed**. Stage 8 — Review and correction workflow
-is **implemented locally with automated verification; real desktop verification
-and publication remain pending**. Stage 9 and later work remain unauthorized.
+is **published with automated verification; real desktop verification remains
+pending**. Stage 9 and later work remain unauthorized.
 Stage 7 — Desktop MVP passed its automated
 gate and accepted real KDE, playback, recovery, scaling, theme, state, and
 longer-run verification on 2026-08-23. Native Qt/Wayland interactive resizing

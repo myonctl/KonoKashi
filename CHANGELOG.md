@@ -34,6 +34,10 @@ unreleased.
 - Added append-only schema 7 for durable per-recording rejected-document
   history and evidence. Existing schema-6 rejected decisions are backfilled;
   selecting another result or restarting no longer forgets a rejection.
+- Published Stage 8 implementation commit `44360cb` under `myonctl`; GitHub
+  Actions run `32640628463` passed the complete quality job on its exact SHA.
+  Stage 8 remains verification pending until the bounded real desktop matrix is
+  accepted.
 
 - Activated the repository-defined Stage 7 Desktop MVP after explicit user
   authorization on 2026-08-22 while preserving the future first-class
