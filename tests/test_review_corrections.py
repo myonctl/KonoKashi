@@ -260,6 +260,10 @@ def test_reject_and_choose_alternative_change_only_match_decision(
     assert tuple(item.document_id for item in rejections) == (current.document_id,)
     assert storage.lyrics.get(alternative.document_id) is not None  # type: ignore[attr-defined]
 
+    assert service.reset_match(track)
+    assert storage.lyrics_matches.get(track.source_identity) is None  # type: ignore[attr-defined]
+    assert storage.lyrics_matches.rejections(track.source_identity) == ()  # type: ignore[attr-defined]
+
 
 def test_session_only_and_stale_source_corrections_are_rejected(tmp_path: Path) -> None:
     service, _storage = _service(tmp_path / "guards.sqlite3")

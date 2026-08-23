@@ -93,7 +93,7 @@ class FrontendSessionPort(Protocol):
         """Approve one explicitly selected provider alternative."""
 
     def reset_match(self, track: ResolvedTrack) -> bool:
-        """Reset only the current lyric match decision."""
+        """Reset current and rejected lyric match preferences for one source."""
 
     def set_display_delay(self, bundle: FrontendLyricsBundle, delay_us: int) -> None:
         """Persist one exact-document lyric delay."""

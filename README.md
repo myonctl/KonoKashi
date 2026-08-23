@@ -287,7 +287,8 @@ track correction, match approval/rejection/selection/reset, and exact-document
 delay/reset actions through shared application services. It never edits audio
 tags or provider lyric text/timestamps. Append-only schema 7 keeps rejected
 document IDs/evidence separate from the current selection so another choice or
-restart cannot silently reattach a rejected result.
+restart cannot silently reattach a rejected result. Reset match choices clears
+the current decision and every rejected-result preference for that source.
 
 `players list` returns 0 whenever service enumeration itself succeeds, including
 when individual players or fields are unavailable; their diagnostics remain in

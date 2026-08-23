@@ -296,13 +296,12 @@ class ReviewCorrectionService:
         self._matches.delete_rejection(track.source_identity, document.document_id)
 
     def reset_match(self, track: ResolvedTrack) -> bool:
-        """Reset only the recording-to-document decision."""
+        """Reset current and rejected recording-to-document preferences."""
 
         self._require_durable(track)
-        current = self._matches.get(track.source_identity)
-        if current is not None and current.decision is LyricsMatchDecision.REJECTED:
-            self._matches.delete_rejection(track.source_identity, current.document_id)
-        return self._matches.delete(track.source_identity)
+        current_deleted = self._matches.delete(track.source_identity)
+        rejection_count = self._matches.clear_rejections(track.source_identity)
+        return current_deleted or rejection_count > 0
 
     def set_display_delay(
         self,

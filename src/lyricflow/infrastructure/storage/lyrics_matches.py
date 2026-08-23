@@ -215,6 +215,22 @@ class SQLiteLyricsMatchRepository:
             )
             return cursor.rowcount > 0
 
+    def clear_rejections(self, source_identity: SourceIdentity) -> int:
+        """Reset every rejected-document preference for one recording."""
+
+        with self._database.transaction() as connection:
+            source_id = identity_id(connection, source_identity, create=False)
+            if source_id is None:
+                return 0
+            cursor = connection.execute(
+                """
+                DELETE FROM lyrics_match_rejections
+                WHERE source_identity_id = ?
+                """,
+                (source_id,),
+            )
+            return cursor.rowcount
+
     @staticmethod
     def _validate(source_identity: SourceIdentity, match: LyricsMatch) -> None:
         if source_identity.persistence_scope is not PersistenceScope.PERMANENT:

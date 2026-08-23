@@ -154,7 +154,7 @@ class ReviewCorrectionDialog(QDialog):
         self.choose_button = QPushButton("Choose alternative")
         self.approve_button = QPushButton("Approve current")
         self.reject_button = QPushButton("Reject current")
-        self.reset_match_button = QPushButton("Reset match decision")
+        self.reset_match_button = QPushButton("Reset match choices")
         has_document = snapshot.current_document_id is not None
         self.choose_button.setEnabled(snapshot.durable and bool(snapshot.alternatives))
         self.approve_button.setEnabled(snapshot.durable and has_document)

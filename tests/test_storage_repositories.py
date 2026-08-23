@@ -365,6 +365,26 @@ def test_matches_and_provider_cache_remain_separate(tmp_path: Path) -> None:
     assert restarted.lyrics_matches.rejections(source) == ()
 
 
+def test_match_rejection_history_can_be_reset_for_one_source(tmp_path: Path) -> None:
+    storage = open_storage(tmp_path / "clear-rejections.sqlite3")
+    document = _multilingual_document()
+    first = YouTubeIdentity("xa4WrgqI7q0")
+    second = YouTubeIdentity("XIMLoLxmTDw")
+    rejection = LyricsMatch(
+        document.document_id,
+        LyricsMatchDecision.REJECTED,
+        ContentProvenance.USER,
+        NOW,
+    )
+    storage.lyrics.put(document)
+    storage.lyrics_matches.put_rejection(first, rejection)
+    storage.lyrics_matches.put_rejection(second, rejection)
+
+    assert storage.lyrics_matches.clear_rejections(first) == 1
+    assert storage.lyrics_matches.rejections(first) == ()
+    assert storage.lyrics_matches.rejections(second) == (rejection,)
+
+
 def test_stage_four_source_metadata_match_confidence_and_evidence_round_trip(
     tmp_path: Path,
 ) -> None:

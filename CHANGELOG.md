@@ -38,6 +38,9 @@ unreleased.
   Actions run `32640628463` passed the complete quality job on its exact SHA.
   Stage 8 remains verification pending until the bounded real desktop matrix is
   accepted.
+- Hardened Stage 8 cleanup so Reset match choices clears both the current match
+  and all source-scoped rejected-result preferences, including a rejection that
+  stopped being current after automatic fallback selected another result.
 
 - Activated the repository-defined Stage 7 Desktop MVP after explicit user
   authorization on 2026-08-22 while preserving the future first-class

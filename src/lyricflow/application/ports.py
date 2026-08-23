@@ -295,6 +295,9 @@ class LyricsMatchRepositoryPort(Protocol):
     ) -> bool:
         """Explicitly reverse one durable document rejection."""
 
+    def clear_rejections(self, source_identity: SourceIdentity) -> int:
+        """Reset every rejected-document preference for one recording."""
+
 
 class ProviderCacheRepositoryPort(Protocol):
     """Persist provider responses without granting them approval semantics."""
