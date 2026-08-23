@@ -19,6 +19,9 @@ unreleased.
   bound, and simulated 10,000-item responsive-desktop regressions. Stage 9
   remains verification pending until publication/CI and the accepted small-test-
   directory matrix.
+- Published Stage 9 implementation commit `936279c` under `myonctl`; exact-SHA
+  GitHub Actions run `32643929046` passed the complete quality job in 54 seconds.
+  Stage 9 remains verification pending at the required small-directory gate.
 - Authorized the repository-defined Stage 8 Review and correction workflow on
   2026-08-23 after confirming it remains exactly the roadmap's alternative
   lyric selection, source-identity correction, match approval/rejection,
