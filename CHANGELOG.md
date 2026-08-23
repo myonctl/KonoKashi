@@ -48,7 +48,9 @@ unreleased.
   their intended scopes, rejected results remained suppressed, source audio
   and provider values remained unchanged, and final schema-7 storage integrity
   passed with zero temporary corrections, rejections, delays, or calibrations.
-  Stage 8 is Completed; Stage 9 is Proposed / unauthorized.
+  Verified closure commit `cec9ac9` is published, and exact-SHA Actions run
+  `32641960138` passed its complete quality job in 51 seconds. Stage 8 is
+  Completed; Stage 9 is Proposed / unauthorized.
 
 - Activated the repository-defined Stage 7 Desktop MVP after explicit user
   authorization on 2026-08-22 while preserving the future first-class
