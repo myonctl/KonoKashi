@@ -7,6 +7,34 @@ unreleased.
 
 ### Added
 
+- Authorized the repository-defined Stage 8 Review and correction workflow on
+  2026-08-23 after confirming it remains exactly the roadmap's alternative
+  lyric selection, source-identity correction, match approval/rejection,
+  recording-scoped delay, reset, and audit-evidence scope. Stage 9 and later
+  work remain unauthorized.
+- Added ADR 0013: LyricFlow remains Python-first, retains PySide6, permits only
+  evidence-justified coherent native modules through a future PyO3/maturin
+  boundary, prefers Textual for future TUI investigation, and does not create a
+  daemon without demonstrated simultaneous-client need.
+- Added ADR 0014: future GUI/TUI/files/automation settings and safe declarative
+  themes share one typed frontend-neutral model with explicit scope,
+  validation, atomic last-known-good reload, dotfile-friendly workflows, and
+  adapter-owned Qt/Textual styling. Future overlay and machine-readable
+  integration directions remain planned rather than implemented.
+- Implemented the Stage 8 frontend-neutral review/correction service and
+  provider alternative catalog. Stable-source artist/title corrections,
+  current match approval/rejection, explicit alternative approval, match reset,
+  and exact-document delay/reset reuse existing typed repositories and remain
+  independent across restart.
+- Added the desktop Review dialog with separate raw, automatic, effective, and
+  provider evidence; bounded alternative lookup and every mutation stay on the
+  existing worker boundary. Provider/exact-local rejections are not
+  automatically reattached, and no audio tag, provider lyric text, or provider
+  timestamp mutation path was added.
+- Added append-only schema 7 for durable per-recording rejected-document
+  history and evidence. Existing schema-6 rejected decisions are backfilled;
+  selecting another result or restarting no longer forgets a rejection.
+
 - Activated the repository-defined Stage 7 Desktop MVP after explicit user
   authorization on 2026-08-22 while preserving the future first-class
   `lyricflow tui` and leaving Stage 8+ unauthorized.

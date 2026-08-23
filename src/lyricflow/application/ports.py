@@ -282,6 +282,19 @@ class LyricsMatchRepositoryPort(Protocol):
     def delete(self, source_identity: SourceIdentity) -> bool:
         """Explicitly reset one match decision."""
 
+    def rejections(self, source_identity: SourceIdentity) -> tuple[LyricsMatch, ...]:
+        """Return durable document rejections for one recording."""
+
+    def put_rejection(
+        self, source_identity: SourceIdentity, match: LyricsMatch
+    ) -> None:
+        """Persist one rejected document without replacing the current decision."""
+
+    def delete_rejection(
+        self, source_identity: SourceIdentity, document_id: str
+    ) -> bool:
+        """Explicitly reverse one durable document rejection."""
+
 
 class ProviderCacheRepositoryPort(Protocol):
     """Persist provider responses without granting them approval semantics."""

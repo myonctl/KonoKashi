@@ -10,7 +10,10 @@ under it, and an optional translation forms a third layer.
 
 ## Current status
 
-Stages 1 through 7 are **Completed**. Stage 7 — Desktop MVP passed its automated
+Stages 1 through 7 are **Completed**. Stage 8 — Review and correction workflow
+is **implemented locally with automated verification; real desktop verification
+and publication remain pending**. Stage 9 and later work remain unauthorized.
+Stage 7 — Desktop MVP passed its automated
 gate and accepted real KDE, playback, recovery, scaling, theme, state, and
 longer-run verification on 2026-08-23. Native Qt/Wayland interactive resizing
 showed the same pointer lag in an empty PySide6 control; XWayland is the accepted
@@ -52,8 +55,11 @@ frontend-neutral snapshot, and diagnostic `sync` commands. Its automated and
 real cooperative Strawberry/timed-lyrics closure gates pass. Stage 7 adds a
 real PySide6 Widgets main window driven by the same frontend-neutral
 application state, with synchronized multilingual lyrics, explicit normal and
-failure states, progress, shared display settings, and bounded details. The
-full-screen TUI remains future work. See
+failure states, progress, shared display settings, and bounded details. Stage 8
+adds a shared correction/audit service and desktop Review dialog for alternative
+lyrics, artist/title overrides, approval/rejection, exact-document delay, and
+independent resets while preserving raw/provider evidence. The full-screen TUI
+remains future work. See
 `PROJECT_STATE.md` for evidence and `AGENT_TODO.md` for the only implementation
 authority.
 
@@ -69,6 +75,10 @@ authority.
 - Keep provider, player, language, storage, and UI integrations replaceable.
 - Keep operation local-first and do no slow external work on the UI thread.
 - Continue safely from repository evidence without prior conversation context.
+- Keep LyricFlow Python-first. Native Rust is available only for a coherent
+  subsystem with measured benefit; there is no whole-project rewrite or daemon.
+- Evolve settings and safe declarative themes through one frontend-neutral
+  validated model shared by desktop, future TUI, files, and automation.
 
 The complete behavioral authority is `docs/PRODUCT_SPEC.md`.
 
@@ -113,12 +123,18 @@ Supporting authorities:
   real-player/timed-lyrics, delay, publication, and CI evidence.
 - `docs/STAGE_7_COMPLETION.md` — completed Stage 7 implementation, automated,
   real KDE/player/state/resource evidence, and accepted limitations.
+- `docs/STAGE_8_COMPLETION.md` — Stage 8 implementation and automated evidence,
+  with real desktop verification tracked separately.
 - `docs/PRODUCT_GAP_RESEARCH.md` — bounded public product-feedback findings and
   Stage 7/future/rejected scope decisions.
 - `docs/adr/0010-stage4-lyrics-resolution.md` — accepted Stage 4 precedence,
   matching, cache/offline/refresh, privacy, and schema policy.
 - `docs/adr/0011-offline-romanization-routing.md` — accepted Stage 5 script
   routing, offline engine, style, ambiguity, and replacement policy.
+- `docs/adr/0013-python-first-hybrid-architecture.md` — accepted Python-first,
+  selective native-module, retained desktop, future TUI, and no-daemon policy.
+- `docs/adr/0014-frontend-neutral-settings-and-themes.md` — accepted canonical
+  settings, dotfile, safe semantic theme, and frontend adapter policy.
 - `docs/adr/` — accepted and historical architecture/process decisions.
 
 `PLAN_MANIFEST.json` is a machine-readable document inventory, not an authority.
@@ -254,7 +270,7 @@ estimate predicts. Both are durable and independently resettable. PipeWire
 evidence is diagnostic-only whenever current stream routing is unproven; unknown
 latency is never printed or applied as zero.
 
-`desktop` opens the normal resizable Stage 7 application. It stays open in a
+`desktop` opens the normal resizable application. It stays open in a
 deliberate waiting state when no player is available, automatically follows
 player/source changes, invalidates old lyrics before resolving a new track,
 and displays timed, untimed, instrumental, ambiguous, no-result, offline, and
@@ -264,7 +280,14 @@ opt-in lyric-selection mechanic; lyrics are passive by default. Available
 offline romanization is generated at the shared frontend boundary. Provider,
 filesystem, and storage work runs outside the Qt UI thread; in-flight provider
 requests are cancelled on source changes and shutdown. Detailed limitations
-remain available from the Details button.
+remain available from the Details button. Review opens the Stage 8 source-bound
+workflow: it shows raw, automatic, effective, and provider metadata separately;
+loads bounded alternative results off the UI thread; and dispatches explicit
+track correction, match approval/rejection/selection/reset, and exact-document
+delay/reset actions through shared application services. It never edits audio
+tags or provider lyric text/timestamps. Append-only schema 7 keeps rejected
+document IDs/evidence separate from the current selection so another choice or
+restart cannot silently reattach a rejected result.
 
 `players list` returns 0 whenever service enumeration itself succeeds, including
 when individual players or fields are unavailable; their diagnostics remain in

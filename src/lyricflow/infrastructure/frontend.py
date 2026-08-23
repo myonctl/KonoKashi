@@ -7,6 +7,7 @@ from lyricflow.application.ports import LyricsProviderPort
 from lyricflow.application.representations import RepresentationService
 from lyricflow.application.resolve_lyrics import LyricsResolver
 from lyricflow.application.resolve_track import TrackResolver
+from lyricflow.application.review_corrections import ReviewCorrectionService
 from lyricflow.application.select_player import PlayerSelectionService
 from lyricflow.application.source_identity import SourceIdentityResolver
 from lyricflow.infrastructure.lyrics.embedded import EmbeddedLyricsProvider
@@ -28,6 +29,7 @@ def create_frontend_session(
     """Assemble shared application services for desktop and future frontends."""
 
     cancellation = getattr(provider, "cancel_inflight", None)
+    documents = ProviderLyricDocumentBuilder()
     return FrontendSessionService(
         PlayerSelectionService(
             TrackResolver(
@@ -41,7 +43,7 @@ def create_frontend_session(
                 EmbeddedLyricsProvider(),
             ),
             provider=provider,
-            provider_documents=ProviderLyricDocumentBuilder(),
+            provider_documents=documents,
             lyrics=storage.lyrics,
             matches=storage.lyrics_matches,
             provider_cache=storage.provider_cache,
@@ -49,5 +51,12 @@ def create_frontend_session(
         RepresentationService(OfflineRomanizationProvider(), storage.representations),
         storage.settings,
         storage.timing_calibrations,
+        ReviewCorrectionService(
+            track_overrides=storage.track_overrides,
+            lyrics=storage.lyrics,
+            matches=storage.lyrics_matches,
+            provider_documents=documents,
+            timing=storage.timing_calibrations,
+        ),
         cancellation if callable(cancellation) else None,
     )

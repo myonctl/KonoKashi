@@ -11,20 +11,35 @@ import pytest
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QColor, QFontMetrics, QPalette
 from PySide6.QtTest import QTest
-from PySide6.QtWidgets import QApplication, QLabel, QWidget
+from PySide6.QtWidgets import QApplication, QLabel, QPlainTextEdit, QWidget
 
 from lyricflow.application.desktop_state import (
     DesktopLyricGroup,
     DesktopLyricsState,
     DesktopViewState,
 )
+from lyricflow.application.review_corrections import (
+    ReviewCorrectionSnapshot,
+    TrackAuditEvidence,
+)
 from lyricflow.application.settings import DesktopInteractionSettings
+from lyricflow.domain.identity import YouTubeIdentity
+from lyricflow.domain.lyrics import (
+    LyricsAlternative,
+    LyricsMatchConfidence,
+    LyricsMatchDecision,
+    LyricsProviderCandidate,
+)
 from lyricflow.domain.synchronization import ClockHealth, PlaybackState
 from lyricflow.presentation.desktop.app import run_desktop
 from lyricflow.presentation.desktop.main_window import (
     DiagnosticsDialog,
     MainWindow,
     RepresentationSettingsDialog,
+)
+from lyricflow.presentation.desktop.review_dialog import (
+    CorrectionActionKind,
+    ReviewCorrectionDialog,
 )
 
 
@@ -303,6 +318,8 @@ def test_keyboard_focus_order_and_escape_dialog_behavior(
 
     assert qt_app.focusWidget() is window.settings_button
     QTest.keyClick(window.settings_button, Qt.Key.Key_Tab)
+    assert qt_app.focusWidget() is window.review_button
+    QTest.keyClick(window.review_button, Qt.Key.Key_Tab)
     assert qt_app.focusWidget() is window.details_button
 
     dialogs = (
@@ -317,6 +334,143 @@ def test_keyboard_focus_order_and_escape_dialog_behavior(
         qt_app.processEvents()
         assert not dialog.isVisible()
     window.close()
+
+
+def test_review_is_enabled_only_after_source_resolution(qt_app: QApplication) -> None:
+    window = MainWindow()
+    timed = _state()
+
+    window.render_state(replace(timed, state=DesktopLyricsState.RESOLVING))
+    assert not window.review_button.isEnabled()
+    window.render_state(timed)
+    assert window.review_button.isEnabled()
+    window.render_state(replace(timed, state=DesktopLyricsState.ERROR))
+    assert not window.review_button.isEnabled()
+    window.close()
+
+
+def _review_snapshot() -> ReviewCorrectionSnapshot:
+    candidate = LyricsProviderCandidate(
+        "LRCLIB",
+        "42",
+        "Provider <title>",
+        "Provider & artist",
+        "Provider album",
+        180_000,
+        False,
+        "short plain excerpt",
+        "[00:01.00]short synced excerpt",
+    )
+    return ReviewCorrectionSnapshot(
+        YouTubeIdentity("xa4WrgqI7q0"),
+        True,
+        TrackAuditEvidence(
+            'Raw <title> & "video"',
+            ("Raw uploader",),
+            "Raw album",
+            "https://example.invalid/?private=value",
+            180_000_000,
+            "Automatic title",
+            ("Automatic artist",),
+            "Automatic album",
+            "High",
+            "Effective title",
+            ("Effective artist",),
+            "Effective album",
+            "Approved",
+            ("removed suffix",),
+            ("preserved raw metadata",),
+            ("uncertain uploader",),
+        ),
+        True,
+        "document-1",
+        "LRCLIB",
+        "Provider current title",
+        "Provider current artist",
+        "Provider current album",
+        180_000,
+        LyricsMatchDecision.CANDIDATE,
+        LyricsMatchConfidence.HIGH,
+        ("normalized title matches",),
+        125_000,
+        (
+            LyricsAlternative(
+                "document-42",
+                candidate,
+                LyricsMatchConfidence.MEDIUM,
+                ("duration differs by 3000 ms",),
+            ),
+        ),
+        ("provider diagnostic <literal>",),
+    )
+
+
+def test_review_dialog_exposes_bounded_audit_and_explicit_actions(
+    qt_app: QApplication,
+) -> None:
+    dialog = ReviewCorrectionDialog(_review_snapshot())
+    dialog.show()
+    qt_app.processEvents()
+
+    audit = dialog.findChild(QPlainTextEdit)
+    assert audit is not None
+    assert 'Raw <title> & "video"' in audit.toPlainText()
+    assert "Automatic interpretation" in audit.toPlainText()
+    assert "Effective interpretation" in audit.toPlainText()
+    assert dialog.alternatives.count() == 1
+    assert "Provider <title>" in dialog.alternatives.itemText(0)
+    assert dialog.reset_delay_button.isEnabled()
+
+    QTest.mouseClick(dialog.choose_button, Qt.MouseButton.LeftButton)
+    action = dialog.action()
+    assert action is not None
+    assert action.kind is CorrectionActionKind.CHOOSE_ALTERNATIVE
+    assert action.alternative is not None
+    assert action.alternative.candidate.record_id == "42"
+
+
+def test_review_dialog_track_and_delay_requests_are_typed(
+    qt_app: QApplication,
+) -> None:
+    track_dialog = ReviewCorrectionDialog(_review_snapshot())
+    track_dialog.title_edit.setText(" Corrected title ")
+    track_dialog.artists_edit.setText("Artist A; Artist B")
+    QTest.mouseClick(track_dialog.save_track_button, Qt.MouseButton.LeftButton)
+    track_action = track_dialog.action()
+    assert track_action is not None
+    assert track_action.kind is CorrectionActionKind.PUT_TRACK_OVERRIDE
+    assert track_action.title == "Corrected title"
+    assert track_action.artists == ("Artist A", "Artist B")
+
+    delay_dialog = ReviewCorrectionDialog(_review_snapshot())
+    delay_dialog.delay_ms.setValue(-250)
+    QTest.mouseClick(delay_dialog.save_delay_button, Qt.MouseButton.LeftButton)
+    delay_action = delay_dialog.action()
+    assert delay_action is not None
+    assert delay_action.kind is CorrectionActionKind.SET_DELAY
+    assert delay_action.delay_us == -250_000
+
+
+def test_review_dialog_offers_only_match_reset_when_rejected_document_is_hidden(
+    qt_app: QApplication,
+) -> None:
+    snapshot = replace(
+        _review_snapshot(),
+        current_document_id=None,
+        current_match_decision=LyricsMatchDecision.REJECTED,
+    )
+    dialog = ReviewCorrectionDialog(snapshot)
+
+    assert not dialog.approve_button.isEnabled()
+    assert not dialog.reject_button.isEnabled()
+    assert dialog.reset_match_button.isEnabled()
+    assert not dialog.save_delay_button.isEnabled()
+    dialog.close()
+
+    session_only = ReviewCorrectionDialog(replace(_review_snapshot(), durable=False))
+    assert not session_only.save_delay_button.isEnabled()
+    assert not session_only.reset_delay_button.isEnabled()
+    session_only.close()
 
 
 def test_lyric_transitions_reuse_the_existing_widget_tree(

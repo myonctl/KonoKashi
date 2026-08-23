@@ -394,6 +394,62 @@ MIGRATIONS: tuple[Migration, ...] = (
             """,
         ),
     ),
+    Migration(
+        7,
+        "durable lyrics match rejection history",
+        (
+            """
+            CREATE TABLE lyrics_match_rejections (
+                source_identity_id INTEGER NOT NULL
+                    REFERENCES source_identities(id) ON DELETE CASCADE,
+                document_id TEXT NOT NULL
+                    REFERENCES lyrics_documents(document_id) ON DELETE CASCADE,
+                provenance TEXT NOT NULL CHECK (
+                    provenance IN ('provider', 'local', 'imported', 'generated', 'user')
+                ),
+                rejected_at TEXT NOT NULL,
+                match_confidence TEXT NOT NULL CHECK (
+                    match_confidence IN ('Approved', 'High', 'Medium', 'Low')
+                ),
+                PRIMARY KEY (source_identity_id, document_id)
+            )
+            """,
+            """
+            CREATE TABLE lyrics_match_rejection_evidence (
+                source_identity_id INTEGER NOT NULL,
+                document_id TEXT NOT NULL,
+                position INTEGER NOT NULL CHECK (position >= 0),
+                evidence TEXT NOT NULL CHECK (length(evidence) > 0),
+                PRIMARY KEY (source_identity_id, document_id, position),
+                FOREIGN KEY (source_identity_id, document_id)
+                    REFERENCES lyrics_match_rejections(
+                        source_identity_id, document_id
+                    ) ON DELETE CASCADE
+            )
+            """,
+            """
+            INSERT INTO lyrics_match_rejections(
+                source_identity_id, document_id, provenance, rejected_at,
+                match_confidence
+            )
+            SELECT source_identity_id, document_id, provenance, updated_at,
+                   match_confidence
+            FROM lyrics_matches
+            WHERE decision = 'rejected'
+            """,
+            """
+            INSERT INTO lyrics_match_rejection_evidence(
+                source_identity_id, document_id, position, evidence
+            )
+            SELECT matches.source_identity_id, matches.document_id,
+                   evidence.position, evidence.evidence
+            FROM lyrics_matches AS matches
+            JOIN lyrics_match_evidence AS evidence
+              ON evidence.source_identity_id = matches.source_identity_id
+            WHERE matches.decision = 'rejected'
+            """,
+        ),
+    ),
 )
 
 CURRENT_SCHEMA_VERSION = MIGRATIONS[-1].version

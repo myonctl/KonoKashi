@@ -353,11 +353,16 @@ def test_matches_and_provider_cache_remain_separate(tmp_path: Path) -> None:
         NOW,
     )
     restarted.lyrics_matches.put(source, rejected)
+    restarted.lyrics_matches.put_rejection(source, rejected)
     assert restarted.lyrics_matches.get(source) == rejected
+    assert restarted.lyrics_matches.rejections(source) == (rejected,)
     assert restarted.provider_cache.get("provider", "query-key") == cache
     assert restarted.provider_cache.delete("provider", "query-key") is True
     assert restarted.lyrics_matches.get(source) == rejected
     assert restarted.lyrics_matches.delete(source) is True
+    assert restarted.lyrics_matches.rejections(source) == (rejected,)
+    assert restarted.lyrics_matches.delete_rejection(source, document.document_id)
+    assert restarted.lyrics_matches.rejections(source) == ()
 
 
 def test_stage_four_source_metadata_match_confidence_and_evidence_round_trip(

@@ -1,4 +1,4 @@
-"""Qt lifecycle coordinator for the presentation-neutral Stage 1-6 services."""
+"""Qt lifecycle coordinator for presentation-neutral application services."""
 
 from __future__ import annotations
 
@@ -20,6 +20,7 @@ from lyricflow.application.frontend_session import (
 from lyricflow.application.lyrics_sync import synchronize
 from lyricflow.application.playback_clock import PlaybackClock
 from lyricflow.application.ports import MprisRuntimePort
+from lyricflow.application.review_corrections import ReviewCorrectionSnapshot
 from lyricflow.application.settings import DesktopInteractionSettings
 from lyricflow.application.sync_session import PlaybackSyncSession
 from lyricflow.application.sync_state import (
@@ -44,6 +45,10 @@ from lyricflow.infrastructure.mpris.backend import MprisBackendError
 from lyricflow.infrastructure.mpris.qt_dbus_client import create_qt_mpris_runtime
 from lyricflow.infrastructure.storage.bootstrap import open_storage
 from lyricflow.presentation.desktop.main_window import DesktopSettingsUpdate, MainWindow
+from lyricflow.presentation.desktop.review_dialog import (
+    CorrectionActionKind,
+    CorrectionActionRequest,
+)
 
 
 class _JobSignals(QObject):
@@ -117,6 +122,7 @@ class DesktopCoordinator(QObject):
         self._closed = False
         self._selection_serial = 0
         self._load_serial = 0
+        self._review_serial = 0
 
         self._pool = QThreadPool(self)
         self._pool.setMaxThreadCount(2)
@@ -139,6 +145,8 @@ class DesktopCoordinator(QObject):
         self._sync_timer.timeout.connect(self._sync_tick)
 
         self._window.settings_requested.connect(self._save_display_settings)
+        self._window.review_requested.connect(self._load_review)
+        self._window.correction_requested.connect(self._apply_correction)
         self._application.aboutToQuit.connect(self.close)
 
     @property
@@ -270,6 +278,7 @@ class DesktopCoordinator(QObject):
         self._start_job(select, selected)
 
     def _begin_track(self, track: ResolvedTrack) -> None:
+        self._review_serial += 1
         if self._frontend is not None:
             self._frontend.cancel_inflight()
         self._clear_sync_only()
@@ -513,6 +522,112 @@ class DesktopCoordinator(QObject):
                 )
             )
 
+    def _load_review(self) -> None:
+        """Load provider alternatives and audit evidence outside the UI thread."""
+
+        frontend = self._frontend
+        bundle = self._bundle
+        track = self._track
+        if frontend is None or bundle is None or track is None or self._closed:
+            return
+        self._review_serial += 1
+        serial = self._review_serial
+        source = track.source_identity
+
+        def load() -> ReviewCorrectionSnapshot:
+            return frontend.review_track(bundle)
+
+        def loaded(result: object | None, error: BaseException | None) -> None:
+            current = self._track
+            if (
+                serial != self._review_serial
+                or self._closed
+                or current is None
+                or current.source_identity != source
+            ):
+                return
+            if error is not None or not isinstance(result, ReviewCorrectionSnapshot):
+                diagnostic = "unknown review failure" if error is None else str(error)
+                self._window.render_state(
+                    self._controller.add_diagnostic(
+                        f"review information could not be loaded: {diagnostic}"
+                    )
+                )
+                return
+            self._window.show_review(result)
+
+        self._start_job(load, loaded)
+
+    def _apply_correction(self, value: Any) -> None:
+        """Dispatch one dialog request to the shared application service."""
+
+        if not isinstance(value, CorrectionActionRequest):
+            return
+        frontend = self._frontend
+        bundle = self._bundle
+        track = self._track
+        if frontend is None or bundle is None or track is None or self._closed:
+            return
+        source = track.source_identity
+        action = value
+
+        def apply() -> None:
+            if action.kind is CorrectionActionKind.PUT_TRACK_OVERRIDE:
+                frontend.put_track_override(
+                    track,
+                    title=action.title or "",
+                    artists=action.artists,
+                )
+            elif action.kind is CorrectionActionKind.RESET_TRACK_OVERRIDE:
+                frontend.reset_track_override(track)
+            elif action.kind is CorrectionActionKind.APPROVE_CURRENT:
+                frontend.approve_current(bundle)
+            elif action.kind is CorrectionActionKind.REJECT_CURRENT:
+                frontend.reject_current(bundle)
+            elif action.kind is CorrectionActionKind.CHOOSE_ALTERNATIVE:
+                if action.alternative is None:
+                    raise ValueError("no alternative lyric result was selected")
+                frontend.choose_alternative(track, action.alternative)
+            elif action.kind is CorrectionActionKind.RESET_MATCH:
+                frontend.reset_match(track)
+            elif action.kind is CorrectionActionKind.SET_DELAY:
+                document = bundle.resolution.document
+                if document is None or action.delay_us is None:
+                    raise ValueError("no lyric document delay can be changed")
+                frontend.set_display_delay(bundle, action.delay_us)
+            elif action.kind is CorrectionActionKind.RESET_DELAY:
+                document = bundle.resolution.document
+                if document is None:
+                    raise ValueError("no lyric document delay can be reset")
+                frontend.reset_display_delay(bundle)
+
+        def applied(result: object | None, error: BaseException | None) -> None:
+            del result
+            current = self._track
+            if self._closed or current is None or current.source_identity != source:
+                return
+            if error is not None:
+                self._window.render_state(
+                    self._controller.add_diagnostic(
+                        f"correction could not be applied: {error}"
+                    )
+                )
+                return
+            if action.kind in {
+                CorrectionActionKind.PUT_TRACK_OVERRIDE,
+                CorrectionActionKind.RESET_TRACK_OVERRIDE,
+            }:
+                self._load_serial += 1
+                self._review_serial += 1
+                self._clear_sync_only()
+                self._track = None
+                self._window.render_state(self._controller.source_changed())
+                self._refresh_selection()
+            else:
+                self._begin_track(current)
+
+        self._start_job(apply, applied)
+
     def _clear_sync_only(self) -> None:
         self._sync_timer.stop()
         if self._snapshot_subscription is not None:
@@ -526,6 +641,7 @@ class DesktopCoordinator(QObject):
 
     def _clear_source(self) -> None:
         self._load_serial += 1
+        self._review_serial += 1
         self._clear_sync_only()
         self._track = None
 

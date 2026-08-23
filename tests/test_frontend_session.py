@@ -120,6 +120,7 @@ def test_frontend_session_combines_existing_services_without_adapter_values() ->
         representations,  # type: ignore[arg-type]
         settings,  # type: ignore[arg-type]
         _Timing(),  # type: ignore[arg-type]
+        object(),  # type: ignore[arg-type]
         lambda: cancellations.append("cancelled"),
     )
 

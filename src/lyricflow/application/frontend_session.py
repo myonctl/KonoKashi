@@ -12,9 +12,17 @@ from lyricflow.application.ports import (
 )
 from lyricflow.application.representations import RepresentationService
 from lyricflow.application.resolve_lyrics import LyricsResolver
+from lyricflow.application.review_corrections import (
+    ReviewCorrectionService,
+    ReviewCorrectionSnapshot,
+)
 from lyricflow.application.select_player import PlayerSelectionService
 from lyricflow.application.settings import DesktopInteractionSettings
-from lyricflow.domain.lyrics import LyricsResolutionResult, RepresentationKind
+from lyricflow.domain.lyrics import (
+    LyricsAlternative,
+    LyricsResolutionResult,
+    RepresentationKind,
+)
 from lyricflow.domain.models import PlayerListResult
 from lyricflow.domain.representations import (
     EffectiveRepresentationLine,
@@ -56,12 +64,49 @@ class FrontendSessionPort(Protocol):
     def put_interaction_settings(self, settings: DesktopInteractionSettings) -> None:
         """Persist opt-in desktop interaction mechanics."""
 
+    def review_track(
+        self,
+        bundle: FrontendLyricsBundle,
+        *,
+        offline: bool = False,
+        refresh: bool = False,
+    ) -> ReviewCorrectionSnapshot:
+        """Load alternatives and audit evidence for one exact current source."""
+
+    def put_track_override(
+        self, track: ResolvedTrack, *, title: str, artists: tuple[str, ...]
+    ) -> None:
+        """Persist one source-identity artist/title correction."""
+
+    def reset_track_override(self, track: ResolvedTrack) -> bool:
+        """Reset only the source-identity correction."""
+
+    def approve_current(self, bundle: FrontendLyricsBundle) -> None:
+        """Approve the current lyric document."""
+
+    def reject_current(self, bundle: FrontendLyricsBundle) -> None:
+        """Reject the current lyric document."""
+
+    def choose_alternative(
+        self, track: ResolvedTrack, alternative: LyricsAlternative
+    ) -> None:
+        """Approve one explicitly selected provider alternative."""
+
+    def reset_match(self, track: ResolvedTrack) -> bool:
+        """Reset only the current lyric match decision."""
+
+    def set_display_delay(self, bundle: FrontendLyricsBundle, delay_us: int) -> None:
+        """Persist one exact-document lyric delay."""
+
+    def reset_display_delay(self, bundle: FrontendLyricsBundle) -> bool:
+        """Reset one exact-document lyric delay."""
+
     def cancel_inflight(self) -> None:
         """Request cancellation of the replaceable provider boundary."""
 
 
 class FrontendSessionService:
-    """Coordinate Stage 1-6 services without exposing adapters to a frontend."""
+    """Coordinate shared Stage 1-8 services without exposing adapter values."""
 
     def __init__(
         self,
@@ -70,6 +115,7 @@ class FrontendSessionService:
         representations: RepresentationService,
         settings: SettingsRepositoryPort,
         timing: TimingCalibrationRepositoryPort,
+        corrections: ReviewCorrectionService,
         cancel_inflight: Callable[[], None] | None = None,
     ) -> None:
         self._selection = selection
@@ -77,6 +123,7 @@ class FrontendSessionService:
         self._representations = representations
         self._settings = settings
         self._timing = timing
+        self._corrections = corrections
         self._cancel_inflight = cancel_inflight or (lambda: None)
 
     def select_track(self, players: PlayerListResult) -> PlayerSelectionResult:
@@ -125,6 +172,48 @@ class FrontendSessionService:
         """Persist desktop mechanics through the shared settings repository."""
 
         self._settings.put_desktop_interaction(settings)
+
+    def review_track(
+        self,
+        bundle: FrontendLyricsBundle,
+        *,
+        offline: bool = False,
+        refresh: bool = False,
+    ) -> ReviewCorrectionSnapshot:
+        """Return source-bound alternatives and raw/effective audit evidence."""
+
+        alternatives = self._lyrics.alternatives(
+            bundle.track, offline=offline, refresh=refresh
+        )
+        return self._corrections.snapshot(bundle.track, bundle.resolution, alternatives)
+
+    def put_track_override(
+        self, track: ResolvedTrack, *, title: str, artists: tuple[str, ...]
+    ) -> None:
+        self._corrections.put_track_override(track, title=title, artists=artists)
+
+    def reset_track_override(self, track: ResolvedTrack) -> bool:
+        return self._corrections.reset_track_override(track)
+
+    def approve_current(self, bundle: FrontendLyricsBundle) -> None:
+        self._corrections.approve_current(bundle.track, bundle.resolution)
+
+    def reject_current(self, bundle: FrontendLyricsBundle) -> None:
+        self._corrections.reject_current(bundle.track, bundle.resolution)
+
+    def choose_alternative(
+        self, track: ResolvedTrack, alternative: LyricsAlternative
+    ) -> None:
+        self._corrections.choose_alternative(track, alternative)
+
+    def reset_match(self, track: ResolvedTrack) -> bool:
+        return self._corrections.reset_match(track)
+
+    def set_display_delay(self, bundle: FrontendLyricsBundle, delay_us: int) -> None:
+        self._corrections.set_display_delay(bundle.track, bundle.resolution, delay_us)
+
+    def reset_display_delay(self, bundle: FrontendLyricsBundle) -> bool:
+        return self._corrections.reset_display_delay(bundle.track, bundle.resolution)
 
     def cancel_inflight(self) -> None:
         """Cancel a provider request after a source change or frontend shutdown."""

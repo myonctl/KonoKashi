@@ -1,4 +1,4 @@
-"""PySide6 Widgets main window for the Stage 7 Desktop MVP."""
+"""PySide6 Widgets main window for the LyricFlow desktop."""
 
 from __future__ import annotations
 
@@ -29,8 +29,13 @@ from lyricflow.application.desktop_state import (
     DesktopLyricsState,
     DesktopViewState,
 )
+from lyricflow.application.review_corrections import ReviewCorrectionSnapshot
 from lyricflow.application.settings import DesktopInteractionSettings
 from lyricflow.domain.representations import RepresentationDisplaySettings
+from lyricflow.presentation.desktop.review_dialog import (
+    CorrectionActionRequest,
+    ReviewCorrectionDialog,
+)
 
 
 def _plain_label(text: str = "") -> QLabel:
@@ -367,6 +372,8 @@ class MainWindow(QMainWindow):
     """Responsive, palette-aware main window driven only by application state."""
 
     settings_requested = Signal(object)
+    review_requested = Signal()
+    correction_requested = Signal(object)
 
     def __init__(
         self,
@@ -410,10 +417,14 @@ class MainWindow(QMainWindow):
         self.settings_button = QPushButton("Settings")
         self.settings_button.setAccessibleName("Lyric display settings")
         self.settings_button.clicked.connect(self._open_settings)
+        self.review_button = QPushButton("Review")
+        self.review_button.setAccessibleName("Review and correct this track and lyrics")
+        self.review_button.clicked.connect(self.review_requested)
         self.details_button = QPushButton("Details")
         self.details_button.setAccessibleName("Synchronization and source details")
         self.details_button.clicked.connect(self._open_details)
         header.addWidget(self.settings_button)
+        header.addWidget(self.review_button)
         header.addWidget(self.details_button)
         layout.addLayout(header)
 
@@ -520,7 +531,7 @@ class MainWindow(QMainWindow):
             font.setPointSizeF(max(8.0, body_size))
             label.setFont(font)
 
-        for button in (self.settings_button, self.details_button):
+        for button in (self.settings_button, self.review_button, self.details_button):
             font = button.font()
             font.setPointSizeF(max(8.0, body_size))
             button.setFont(font)
@@ -628,6 +639,15 @@ class MainWindow(QMainWindow):
         self.details_button.setEnabled(
             bool(source_parts or state.diagnostics or state.player)
         )
+        self.review_button.setEnabled(
+            bool(state.player and state.title)
+            and state.state
+            not in {
+                DesktopLyricsState.WAITING,
+                DesktopLyricsState.RESOLVING,
+                DesktopLyricsState.ERROR,
+            }
+        )
 
     def update_playback(self, state: DesktopViewState) -> None:
         """Refresh progress/status fields without rebuilding lyric layout."""
@@ -663,6 +683,15 @@ class MainWindow(QMainWindow):
 
     def _open_details(self) -> None:
         DiagnosticsDialog(self._state, self).exec()
+
+    def show_review(self, snapshot: ReviewCorrectionSnapshot) -> None:
+        """Render one source-bound review model and emit at most one action."""
+
+        dialog = ReviewCorrectionDialog(snapshot, self)
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            action = dialog.action()
+            if isinstance(action, CorrectionActionRequest):
+                self.correction_requested.emit(action)
 
 
 def _time_text(value_us: int | None) -> str:

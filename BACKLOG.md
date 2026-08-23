@@ -13,8 +13,11 @@ authorize implementation. Staged v1 ordering lives in `docs/ROADMAP.md`.
   Prerequisites: Stages 1–6. Related: Roadmap Stages 4, 6, and 7.
 - **User-approved corrections** — Let users correct track and lyrics matches,
   approve or reject results, and preserve those choices. Why: metadata and
-  provider matches are fallible. Status: Planned. Prerequisites: stable source
-  identity and persistence. Related: Roadmap Stages 2, 3, and 8.
+  provider matches are fallible. Status: Implemented in Stage 8 for stable
+  source artist/title, lyric alternative selection, match approval/rejection,
+  durable per-recording rejection history, exact-document delay, audit evidence,
+  and independent reset; real desktop verification is pending. Prerequisites:
+  stable source identity and persistence. Related: Roadmap Stages 2, 3, and 8.
 - **Independent lyric text and timing corrections** — Let users correct lyric
   text, individual line timestamps, and a whole-document/global offset while
   preserving provider-original text/timing and provenance. User-approved
@@ -23,10 +26,48 @@ authorize implementation. Staged v1 ordering lives in `docs/ROADMAP.md`.
   not guarantee perfect provider transcription or timing. Status: Planned;
   explicitly not implemented by Stage 4 closure. Prerequisites: correction
   model/UI, playback synchronization for timing review, and migrations that
-  preserve original plus approved layers. Related: Product specification match
+  preserve original plus approved layers. Stage 8 implements only the
+  whole-document delay and match/identity workflow; lyric-text and per-line
+  editing remain Deferred. Related: Product specification match
   confidence versus lyric quality; Roadmap Stages 6, 8, and 11+.
 
 ## UX improvements
+
+- **One canonical settings schema and service** — Unify GUI settings,
+  `lyricflow settings`, human-edited XDG configuration, and noninteractive CLI
+  automation over typed validated semantics with explicit scope and reload
+  class. Include actionable unknown-key/value diagnostics, atomic
+  last-known-good reload, and deliberate comment-preservation/migration policy.
+  Status: Planned future architecture; not Stage 8. Prerequisites: settings
+  schema/format design and migration from current typed SQLite settings.
+  Related: ADR 0014.
+- **First-class interactive settings TUI and GUI counterpart** — Provide a
+  polished keyboard-first Textual candidate with categories, search, validated
+  controls, reset, scope/origin, and preview, plus equivalent desktop
+  capability over the same schema. Status: Planned; Textual must receive a
+  current upstream/license/terminal/CJK/test/packaging/resource review before
+  adoption. Prerequisites: canonical settings service. Related: ADRs 0013 and
+  0014.
+- **Traditional dotfile/ricing configuration** — Support safe declarative,
+  XDG-compliant, version-control/symlink/Stow-friendly files, deterministic
+  config commands, documented layering, and hot reload where safe. Preserve
+  hand-written comments where practical and reject executable sourcing,
+  circular includes, and partial invalid application. Status: Planned future
+  work; exact format/layout deliberately undecided. Related: ADR 0014.
+- **Safe frontend-neutral themes and shareable rices** — Define portable
+  semantic theme/layout data with validation, named presets, import/export,
+  duplication, and a user directory. Qt QSS/QML and Textual TCSS remain adapter
+  technologies; themes never execute Python, shell, commands, or plugins. Plain
+  files and Git are sufficient; no cloud marketplace is planned. Status:
+  Planned future work. Prerequisites: canonical settings/theme schema.
+- **Normal, compact, and wallpaper/desktop overlay modes** — Evolve presentation
+  without assuming a toolbar, opaque background, permanent metadata, or fixed
+  geometry. Overlay behavior may include transparent/frameless layouts,
+  anchoring, optional controls/metadata, and independent multilingual layers;
+  click-through/layering/blur/taskbar behavior requires portable Wayland-first
+  capability research plus optional compositor adapters. Status: Planned
+  investigation; not Stage 8. Preserve the accepted native Wayland resize
+  limitation and do not make LyricFlow KDE-only.
 
 - **First-class full-screen TUI** — Provide an everyday-use terminal frontend,
   conceptually `lyricflow tui`, with current track, synchronized multilingual
@@ -196,6 +237,13 @@ authorize implementation. Staged v1 ordering lives in `docs/ROADMAP.md`.
 
 ## Performance
 
+- **Evidence-gated native module** — If a Python/native binding, packaging,
+  concurrency, reliability, or measured performance problem justifies it,
+  assess one coherent `lyricflow-native` Rust module via PyO3/maturin. Do not
+  rewrite functioning Python subsystems, including the Stage 6 clock, merely
+  for theoretical speed. Status: Architectural option only; no native code is
+  authorized. Related: ADR 0013.
+
 - **Large-library profiling** — Establish startup, scan, cache, and UI latency
   budgets with representative fixtures. Status: Investigation. Prerequisites:
   implemented scanner and desktop MVP.
@@ -268,3 +316,12 @@ separate explicit authorization.
 - **Genius or Musixmatch scraping for v1** — Rejected. Related: ADR 0003.
 - **Foobar2000/Wine-specific v1 integration** — Deferred because the observed
   setup exposed no MPRIS player.
+- **Whole-project Rust rewrite** — Rejected. LyricFlow remains Python-first;
+  only measured, coherent native extraction may be considered. Related: ADR
+  0013.
+- **Pre-emptive `lyricflowd` daemon** — Rejected until multiple simultaneous
+  clients demonstrate a shared live-state need that justifies lifecycle, IPC,
+  versioning, reconnect, supervision, and recovery costs. Related: ADR 0013.
+- **Executable themes/configuration** — Rejected. Themes/layouts/configuration
+  remain declarative data and never gain Python, shell, `eval`, command, or
+  hidden plugin execution. Related: ADR 0014.

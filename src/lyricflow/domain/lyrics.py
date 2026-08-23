@@ -233,6 +233,29 @@ class LyricsResolutionResult:
     retry_after_seconds: int | None = None
 
 
+@dataclass(frozen=True, slots=True)
+class LyricsAlternative:
+    """One reviewable provider result with retained matching evidence."""
+
+    document_id: str
+    candidate: LyricsProviderCandidate
+    confidence: LyricsMatchConfidence
+    evidence: tuple[str, ...] = field(default_factory=tuple)
+    current: bool = False
+    rejected: bool = False
+
+
+@dataclass(frozen=True, slots=True)
+class LyricsAlternativeResult:
+    """Bounded alternative search tied to the exact requested source."""
+
+    source_identity: SourceIdentity
+    alternatives: tuple[LyricsAlternative, ...] = field(default_factory=tuple)
+    diagnostics: tuple[str, ...] = field(default_factory=tuple)
+    cache_hit: bool = False
+    network_used: bool = False
+
+
 class LyricsTextParseStatus(Enum):
     """Whether lyric text safely produced synced, plain, or invalid content."""
 

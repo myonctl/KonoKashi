@@ -54,7 +54,7 @@ def test_brand_new_unicode_database_migrates_in_order_and_reopens_noop(
 
     assert database.initialize() == CURRENT_SCHEMA_VERSION
     first_history = database.migration_history()
-    assert [item[0] for item in first_history] == [1, 2, 3, 4, 5, 6]
+    assert [item[0] for item in first_history] == [1, 2, 3, 4, 5, 6, 7]
 
     def unexpected_transaction() -> None:
         raise AssertionError("current-schema initialization opened a write transaction")
@@ -134,7 +134,7 @@ def test_published_stage_three_database_upgrades_without_losing_approved_match(
             """
         )
 
-    assert database.initialize() == 6
+    assert database.initialize() == 7
 
     with database.connection(readonly=True) as connection:
         row = connection.execute(
@@ -148,7 +148,7 @@ def test_published_stage_three_database_upgrades_without_losing_approved_match(
         ).fetchone()
     assert tuple(row) == ("approved-doc", "approved", "Approved")
     assert evidence_table[0] == "lyrics_match_evidence"
-    assert [item[0] for item in database.migration_history()] == [1, 2, 3, 4, 5, 6]
+    assert [item[0] for item in database.migration_history()] == [1, 2, 3, 4, 5, 6, 7]
 
 
 def test_published_stage_four_database_upgrades_without_losing_original_lines(
@@ -185,7 +185,7 @@ def test_published_stage_four_database_upgrades_without_losing_original_lines(
             """
         )
 
-    assert database.initialize() == 6
+    assert database.initialize() == 7
 
     with database.connection(readonly=True) as connection:
         original = connection.execute(
@@ -203,6 +203,64 @@ def test_published_stage_four_database_upgrades_without_losing_original_lines(
     assert tuple(original) == ("line-0042", "君の声", 91_820)
     assert "lyric_representation_candidates" in stage5_tables
     assert "lyric_representation_decisions" in stage5_tables
+
+
+def test_stage_six_rejected_match_is_backfilled_into_durable_history(
+    tmp_path: Path,
+) -> None:
+    database = SQLiteDatabase(tmp_path / "stage-six-rejection.sqlite3")
+    database.initialize(MIGRATIONS[:6])
+    with database.transaction() as connection:
+        connection.execute(
+            """
+            INSERT INTO source_identities(
+                source_kind, persistence_scope, local_path, youtube_video_id,
+                generic_service_name, generic_track_id, generic_media_url,
+                created_at
+            ) VALUES ('youtube', 'permanent', NULL, 'xa4WrgqI7q0', NULL, NULL,
+                      NULL, '2026-08-23T00:00:00+00:00')
+            """
+        )
+        connection.execute(
+            """
+            INSERT INTO lyrics_documents(
+                document_id, document_kind, source_name, original_text,
+                approval_state, retrieved_at
+            ) VALUES ('wrong-doc', 'plain', 'LRCLIB', 'wrong lyrics',
+                      'unreviewed', '2026-08-23T00:00:00+00:00')
+            """
+        )
+        connection.execute(
+            """
+            INSERT INTO lyrics_matches(
+                source_identity_id, document_id, decision, provenance, updated_at,
+                match_confidence
+            ) VALUES (1, 'wrong-doc', 'rejected', 'user',
+                      '2026-08-23T00:01:00+00:00', 'High')
+            """
+        )
+        connection.execute(
+            """
+            INSERT INTO lyrics_match_evidence(
+                source_identity_id, position, evidence
+            ) VALUES (1, 0, 'explicitly rejected by the user')
+            """
+        )
+
+    assert database.initialize() == 7
+
+    with database.connection(readonly=True) as connection:
+        rejection = connection.execute(
+            """
+            SELECT document_id, provenance, match_confidence
+            FROM lyrics_match_rejections
+            """
+        ).fetchone()
+        evidence = connection.execute(
+            "SELECT evidence FROM lyrics_match_rejection_evidence"
+        ).fetchone()
+    assert tuple(rejection) == ("wrong-doc", "user", "High")
+    assert evidence[0] == "explicitly rejected by the user"
 
 
 def test_failed_migration_rolls_back_only_that_migration(tmp_path: Path) -> None:

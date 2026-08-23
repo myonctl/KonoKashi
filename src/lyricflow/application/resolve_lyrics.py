@@ -22,6 +22,8 @@ from lyricflow.domain.lyrics import (
     LocalLyricsStatus,
     LyricDocument,
     LyricDocumentKind,
+    LyricsAlternative,
+    LyricsAlternativeResult,
     LyricsMatch,
     LyricsMatchConfidence,
     LyricsMatchDecision,
@@ -77,6 +79,14 @@ class LyricsResolver:
         diagnostics: list[str] = []
         invalid_local_seen = False
         current_match = self._matches.get(source)
+        rejected_document_ids = {
+            match.document_id for match in self._matches.rejections(source)
+        }
+        if (
+            current_match is not None
+            and current_match.decision is LyricsMatchDecision.REJECTED
+        ):
+            rejected_document_ids.add(current_match.document_id)
         current_document = (
             None
             if current_match is None
@@ -105,6 +115,12 @@ class LyricsResolver:
             diagnostics.extend(local.diagnostics)
             invalid_local_seen |= local.status is LocalLyricsStatus.INVALID
             if local.status is LocalLyricsStatus.FOUND and local.document is not None:
+                if local.document.document_id in rejected_document_ids:
+                    diagnostics.append(
+                        f"skipped explicitly rejected local lyric result from "
+                        f"{local.source_label}"
+                    )
+                    continue
                 evidence = (
                     "lyrics came from an exact-path local recording source",
                     "local source outranks provider and automatic cache results",
@@ -162,12 +178,6 @@ class LyricsResolver:
                 network_used=False,
             )
 
-        rejected_document_id = (
-            current_match.document_id
-            if current_match is not None
-            and current_match.decision is LyricsMatchDecision.REJECTED
-            else None
-        )
         all_assessments: list[CandidateMatchAssessment] = []
         network_used = False
         cache_hit = False
@@ -196,7 +206,7 @@ class LyricsResolver:
                     assess_candidate(query, candidate)
                     for candidate in exact.candidates
                     if self._provider_documents.document_id(candidate)
-                    != rejected_document_id
+                    not in rejected_document_ids
                 )
                 accepted = self._unique_high(all_assessments)
                 if accepted is not None:
@@ -246,7 +256,7 @@ class LyricsResolver:
                 assess_candidate(query, candidate)
                 for candidate in search.candidates
                 if self._provider_documents.document_id(candidate)
-                != rejected_document_id
+                not in rejected_document_ids
             )
         assessments = _deduplicate_assessments(all_assessments)
         accepted = self._unique_high(assessments)
@@ -285,6 +295,99 @@ class LyricsResolver:
             tuple(diagnostics),
             network_used=network_used,
             cache_hit=cache_hit,
+        )
+
+    def alternatives(
+        self, track: ResolvedTrack, *, offline: bool = False, refresh: bool = False
+    ) -> LyricsAlternativeResult:
+        """Return reviewable provider candidates without changing match decisions."""
+
+        query = _query(track)
+        if query is None:
+            return LyricsAlternativeResult(
+                track.source_identity,
+                diagnostics=(
+                    "alternative lookup skipped because resolved title or musical "
+                    "artist is missing",
+                ),
+            )
+        diagnostics: list[str] = []
+        assessments: list[CandidateMatchAssessment] = []
+        cache_hit = False
+        network_used = False
+        if query.album is not None and query.duration_ms is not None:
+            exact, cached, network = self._provider_result(
+                query, search=False, offline=offline, refresh=refresh
+            )
+            cache_hit |= cached
+            network_used |= network
+            diagnostics.extend(exact.diagnostics)
+            if exact.status is LyricsProviderStatus.RESULTS:
+                assessments.extend(
+                    assess_candidate(query, candidate) for candidate in exact.candidates
+                )
+            elif exact.status is not LyricsProviderStatus.NO_RESULT:
+                diagnostics.append(f"exact lookup ended as {exact.status.value}")
+        else:
+            diagnostics.append(
+                "exact alternative lookup skipped because album or duration is missing"
+            )
+        if offline:
+            search, cached, _ = self._provider_result(
+                query, search=True, offline=True, refresh=False
+            )
+        else:
+            if network_used:
+                self._sleeper(0.2)
+            search, cached, network = self._provider_result(
+                query, search=True, offline=False, refresh=refresh
+            )
+            network_used |= network
+        cache_hit |= cached
+        diagnostics.extend(search.diagnostics)
+        if search.status is LyricsProviderStatus.RESULTS:
+            assessments.extend(
+                assess_candidate(query, candidate) for candidate in search.candidates
+            )
+        elif search.status is not LyricsProviderStatus.NO_RESULT:
+            diagnostics.append(f"search lookup ended as {search.status.value}")
+
+        current_match = self._matches.get(track.source_identity)
+        current_document_id = (
+            None if current_match is None else current_match.document_id
+        )
+        rejected_document_ids = {
+            match.document_id
+            for match in self._matches.rejections(track.source_identity)
+        }
+        if (
+            current_match is not None
+            and current_match.decision is LyricsMatchDecision.REJECTED
+        ):
+            rejected_document_ids.add(current_match.document_id)
+        alternatives = tuple(
+            LyricsAlternative(
+                self._provider_documents.document_id(assessment.candidate),
+                assessment.candidate,
+                assessment.confidence,
+                assessment.evidence,
+                current=(
+                    self._provider_documents.document_id(assessment.candidate)
+                    == current_document_id
+                ),
+                rejected=(
+                    self._provider_documents.document_id(assessment.candidate)
+                    in rejected_document_ids
+                ),
+            )
+            for assessment in _ordered(_deduplicate_assessments(assessments))
+        )
+        return LyricsAlternativeResult(
+            track.source_identity,
+            alternatives,
+            tuple(diagnostics),
+            cache_hit,
+            network_used,
         )
 
     def _provider_result(

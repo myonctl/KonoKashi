@@ -30,7 +30,12 @@ from lyricflow.domain.tracks import (
 )
 from lyricflow.presentation.desktop.coordinator import DesktopCoordinator
 from lyricflow.presentation.desktop.main_window import DesktopSettingsUpdate, MainWindow
+from lyricflow.presentation.desktop.review_dialog import (
+    CorrectionActionKind,
+    CorrectionActionRequest,
+)
 from tests.test_desktop_state import _snapshot, _track
+from tests.test_desktop_widgets import _review_snapshot
 
 
 @pytest.fixture(scope="module")
@@ -84,6 +89,8 @@ class _Frontend:
         self.cancellations = 0
         self.display_settings: RepresentationDisplaySettings | None = None
         self.interaction_settings: DesktopInteractionSettings | None = None
+        self.review_calls: list[FrontendLyricsBundle] = []
+        self.correction_calls: list[tuple[str, object]] = []
 
     def select_track(self, players: PlayerListResult) -> PlayerSelectionResult:
         del players
@@ -114,6 +121,39 @@ class _Frontend:
 
     def cancel_inflight(self) -> None:
         self.cancellations += 1
+
+    def review_track(self, bundle: FrontendLyricsBundle):  # type: ignore[no-untyped-def]
+        self.review_calls.append(bundle)
+        return _review_snapshot()
+
+    def put_track_override(
+        self, track: ResolvedTrack, *, title: str, artists: tuple[str, ...]
+    ) -> None:
+        self.correction_calls.append(("track", (track, title, artists)))
+
+    def reset_track_override(self, track: ResolvedTrack) -> bool:
+        self.correction_calls.append(("reset-track", track))
+        return True
+
+    def approve_current(self, bundle: FrontendLyricsBundle) -> None:
+        self.correction_calls.append(("approve", bundle))
+
+    def reject_current(self, bundle: FrontendLyricsBundle) -> None:
+        self.correction_calls.append(("reject", bundle))
+
+    def choose_alternative(self, track, alternative):  # type: ignore[no-untyped-def]
+        self.correction_calls.append(("alternative", (track, alternative)))
+
+    def reset_match(self, track: ResolvedTrack) -> bool:
+        self.correction_calls.append(("reset-match", track))
+        return True
+
+    def set_display_delay(self, bundle: FrontendLyricsBundle, delay_us: int) -> None:
+        self.correction_calls.append(("delay", (bundle, delay_us)))
+
+    def reset_display_delay(self, bundle: FrontendLyricsBundle) -> bool:
+        self.correction_calls.append(("reset-delay", bundle))
+        return True
 
 
 class _ImmediateCoordinator(DesktopCoordinator):
@@ -193,6 +233,47 @@ def test_settings_update_applies_and_persists_opt_in_selection(
     )
     assert frontend.display_settings == display
     assert frontend.interaction_settings == interactions
+    coordinator.close()
+    window.close()
+
+
+class _ReviewWindow(MainWindow):
+    def __init__(self) -> None:
+        super().__init__()
+        self.reviews = []
+
+    def show_review(self, snapshot):  # type: ignore[no-untyped-def]
+        self.reviews.append(snapshot)
+
+
+def test_review_load_and_track_correction_dispatch_through_application_boundary(
+    qt_app: QApplication,
+) -> None:
+    window = _ReviewWindow()
+    coordinator = _ImmediateCoordinator(qt_app, window)
+    track = _track("xa4WrgqI7q0", "Track A")
+    frontend = _Frontend(track)
+    coordinator._frontend = frontend
+    coordinator._begin_track(track)
+
+    coordinator._load_review()
+
+    assert len(frontend.review_calls) == 1
+    assert window.reviews == [_review_snapshot()]
+
+    coordinator._apply_correction(
+        CorrectionActionRequest(
+            CorrectionActionKind.PUT_TRACK_OVERRIDE,
+            title="Corrected",
+            artists=("Artist",),
+        )
+    )
+
+    assert frontend.correction_calls[0][0] == "track"
+    _track_value, title, artists = frontend.correction_calls[0][1]
+    assert title == "Corrected"
+    assert artists == ("Artist",)
+    assert frontend.load_calls == [track, track]
     coordinator.close()
     window.close()
 

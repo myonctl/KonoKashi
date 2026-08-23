@@ -13,6 +13,7 @@ class StorageCounts:
     track_overrides: int = 0
     lyric_documents: int = 0
     lyrics_matches: int = 0
+    lyric_match_rejections: int = 0
     provider_cache_entries: int = 0
     representation_candidates: int = 0
     representation_decisions: int = 0
@@ -68,6 +69,7 @@ def render_storage_status(status: StorageStatus) -> str:
                 f"approved track corrections: {status.counts.track_overrides}",
                 f"lyric documents: {status.counts.lyric_documents}",
                 f"lyrics matches: {status.counts.lyrics_matches}",
+                f"lyric match rejections: {status.counts.lyric_match_rejections}",
                 f"provider cache entries: {status.counts.provider_cache_entries}",
                 f"representation candidates: {status.counts.representation_candidates}",
                 f"representation decisions: {status.counts.representation_decisions}",

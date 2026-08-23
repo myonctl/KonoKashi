@@ -33,9 +33,12 @@ REQUIRED_DOCUMENTS = (
     "docs/STAGE_5_COMPLETION.md",
     "docs/STAGE_6_COMPLETION.md",
     "docs/STAGE_7_COMPLETION.md",
+    "docs/STAGE_8_COMPLETION.md",
     "docs/PRODUCT_GAP_RESEARCH.md",
     "docs/adr/0011-offline-romanization-routing.md",
     "docs/adr/0010-stage4-lyrics-resolution.md",
+    "docs/adr/0013-python-first-hybrid-architecture.md",
+    "docs/adr/0014-frontend-neutral-settings-and-themes.md",
 )
 
 REQUIRED_EVIDENCE_FIXTURES = (
@@ -162,16 +165,19 @@ def test_project_state_contains_the_continuation_contract() -> None:
     assert "/home/example/Documents/LyricFlow/" in content
 
 
-def test_agent_todo_proposes_stage_eight_without_authorizing_it() -> None:
+def test_agent_todo_authorizes_only_stage_eight() -> None:
     content = (REPOSITORY_ROOT / "AGENT_TODO.md").read_text(encoding="utf-8")
 
     assert content.startswith(
-        "# Proposed stage — Stage 8 Review and correction workflow\n"
+        "# Active stage — Stage 8 Review and correction workflow\n"
     )
-    assert "**No implementation stage is authorized.**" in content
+    assert (
+        "Stage 8 — Review and correction workflow is **Implementation complete;\n"
+        "verification pending**"
+    ) in content
     assert "Stage 7 — Desktop MVP" in content
     assert "**Completed**" in content
-    assert "Do not begin Stage\n8" in content
+    assert "No Stage 9 or later implementation is authorized" in content
     assert "Do not implement the full-screen `lyricflow tui`" in content
     assert "without separate explicit user authorization" in content
 
@@ -182,8 +188,8 @@ def test_manifest_is_inventory_not_authority() -> None:
     )
 
     assert manifest["implementation_authority"] == "AGENT_TODO.md"
-    assert manifest["authorized_stage"] is None
-    assert manifest["proposed_stage"] == "Stage 8 — Review and correction workflow"
+    assert manifest["authorized_stage"] == "Stage 8 — Review and correction workflow"
+    assert manifest["proposed_stage"] is None
     assert all((REPOSITORY_ROOT / path).is_file() for path in manifest["files"])
 
 
@@ -202,3 +208,51 @@ def test_runtime_source_does_not_embed_the_local_repository_path() -> None:
             offending.append(str(path.relative_to(REPOSITORY_ROOT)))
 
     assert offending == []
+
+
+def test_accepted_cross_cutting_architecture_is_durable() -> None:
+    native = (
+        REPOSITORY_ROOT / "docs/adr/0013-python-first-hybrid-architecture.md"
+    ).read_text(encoding="utf-8")
+    settings = (
+        REPOSITORY_ROOT / "docs/adr/0014-frontend-neutral-settings-and-themes.md"
+    ).read_text(encoding="utf-8")
+    product = (REPOSITORY_ROOT / "docs/PRODUCT_SPEC.md").read_text(encoding="utf-8")
+    native = " ".join(native.split())
+    settings = " ".join(settings.split())
+    product = " ".join(product.split())
+
+    assert all(
+        phrase in native
+        for phrase in (
+            "Python-first",
+            "PyO3",
+            "maturin",
+            "Retain PySide6",
+            "Qt Quick/QML",
+            "Textual",
+            "Do not create `lyricflowd` now",
+        )
+    )
+    assert all(
+        phrase in settings
+        for phrase in (
+            "one canonical typed, versioned, validated settings schema/service",
+            "`lyricflow settings`",
+            "human-edited XDG configuration files",
+            "last-known-good runtime state",
+            "hot reload",
+            "declarative data only",
+            "must never execute Python, shell, `eval`, plugins, or commands",
+            "Machine-readable snapshot/event output",
+        )
+    )
+    assert all(
+        phrase in product
+        for phrase in (
+            "`lyricflow tui`",
+            "`lyricflow settings`",
+            "`lyricflow follow --json`",
+            "wallpaper/desktop-overlay modes",
+        )
+    )

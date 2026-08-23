@@ -555,7 +555,7 @@ def test_rejected_document_is_not_automatically_reattached(tmp_path: Path) -> No
     storage.lyrics.put(rejected_document)
     storage.lyrics_matches.put(
         track.source_identity,
-        LyricsMatch(
+        rejected_match := LyricsMatch(
             rejected_document.document_id,
             LyricsMatchDecision.REJECTED,
             ContentProvenance.USER,
@@ -564,6 +564,7 @@ def test_rejected_document_is_not_automatically_reattached(tmp_path: Path) -> No
             ("known wrong result",),
         ),
     )
+    storage.lyrics_matches.put_rejection(track.source_identity, rejected_match)
     provider = _FakeProvider(
         exact=LyricsProviderResult(
             LyricsProviderStatus.RESULTS, (candidate,), raw_payload=b"rejected"
@@ -576,9 +577,152 @@ def test_rejected_document_is_not_automatically_reattached(tmp_path: Path) -> No
     result = _resolver(path, provider).resolve(track)
 
     assert result.status is LyricsResolutionStatus.NO_RESULT
+
+
+def test_alternative_catalog_deduplicates_and_marks_current_rejection(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "alternatives.sqlite3"
+    track = _track()
+    builder = ProviderLyricDocumentBuilder()
+    rejected_candidate = _candidate("rejected")
+    rejected_document, _ = builder.build(rejected_candidate, NOW)
+    assert rejected_document is not None
+    storage = open_storage(path)
+    storage.lyrics.put(rejected_document)
+    storage.lyrics_matches.put(
+        track.source_identity,
+        rejected_match := LyricsMatch(
+            rejected_document.document_id,
+            LyricsMatchDecision.REJECTED,
+            ContentProvenance.USER,
+            NOW,
+            LyricsMatchConfidence.HIGH,
+            ("explicitly rejected by the user",),
+        ),
+    )
+    storage.lyrics_matches.put_rejection(track.source_identity, rejected_match)
+    other = _candidate("other", title="Different Version")
+    provider = _FakeProvider(
+        exact=LyricsProviderResult(
+            LyricsProviderStatus.RESULTS,
+            (rejected_candidate,),
+            raw_payload=b"exact-alternatives",
+        ),
+        search=LyricsProviderResult(
+            LyricsProviderStatus.RESULTS,
+            (rejected_candidate, other),
+            raw_payload=b"search-alternatives",
+        ),
+    )
+
+    result = _resolver(path, provider).alternatives(track)
+
+    assert len(result.alternatives) == 2
+    rejected = next(item for item in result.alternatives if item.rejected)
+    assert rejected.current
+    assert rejected.document_id == rejected_document.document_id
+    assert {item.candidate.record_id for item in result.alternatives} == {
+        "rejected",
+        "other",
+    }
+    assert result.network_used
     match = open_storage(path).lyrics_matches.get(track.source_identity)
     assert match is not None
     assert match.decision is LyricsMatchDecision.REJECTED
+
+
+def test_rejection_survives_another_selection_restart_and_unavailable_result(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "durable-rejection.sqlite3"
+    track = _track()
+    builder = ProviderLyricDocumentBuilder()
+    rejected_candidate = _candidate("wrong")
+    rejected_document, _ = builder.build(rejected_candidate, NOW)
+    selected_document, _ = builder.build(_candidate("selected"), NOW)
+    assert rejected_document is not None
+    assert selected_document is not None
+    storage = open_storage(path)
+    storage.lyrics.put(rejected_document)
+    storage.lyrics.put(selected_document)
+    rejected_match = LyricsMatch(
+        rejected_document.document_id,
+        LyricsMatchDecision.REJECTED,
+        ContentProvenance.USER,
+        NOW,
+        LyricsMatchConfidence.HIGH,
+        ("explicitly rejected by the user",),
+    )
+    storage.lyrics_matches.put_rejection(track.source_identity, rejected_match)
+    storage.lyrics_matches.put(
+        track.source_identity,
+        LyricsMatch(
+            selected_document.document_id,
+            LyricsMatchDecision.APPROVED,
+            ContentProvenance.USER,
+            NOW,
+            LyricsMatchConfidence.APPROVED,
+            ("explicitly selected by the user",),
+        ),
+    )
+
+    restarted = open_storage(path)
+    assert restarted.lyrics_matches.rejections(track.source_identity) == (
+        rejected_match,
+    )
+    assert restarted.lyrics_matches.delete(track.source_identity)
+    assert restarted.lyrics.delete(selected_document.document_id)
+    provider = _FakeProvider(
+        exact=LyricsProviderResult(
+            LyricsProviderStatus.RESULTS,
+            (rejected_candidate,),
+            raw_payload=b"wrong-exact",
+        ),
+        search=LyricsProviderResult(
+            LyricsProviderStatus.RESULTS,
+            (rejected_candidate,),
+            raw_payload=b"wrong-search",
+        ),
+    )
+
+    result = _resolver(path, provider).resolve(track)
+
+    assert result.status is LyricsResolutionStatus.NO_RESULT
+    assert result.document is None
+
+
+def test_rejected_local_document_is_not_automatically_reattached(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "rejected-local.sqlite3"
+    track = _track(source=LocalFileIdentity("/music/song.flac"))
+    document = _document(
+        "rejected-local", source="local-sidecar", kind=LyricDocumentKind.SYNCED
+    )
+    storage = open_storage(path)
+    storage.lyrics.put(document)
+    storage.lyrics_matches.put(
+        track.source_identity,
+        rejected_match := LyricsMatch(
+            document.document_id,
+            LyricsMatchDecision.REJECTED,
+            ContentProvenance.USER,
+            NOW,
+            LyricsMatchConfidence.HIGH,
+            ("explicitly rejected by the user",),
+        ),
+    )
+    storage.lyrics_matches.put_rejection(track.source_identity, rejected_match)
+    local = _LocalSource(
+        LocalLyricsResult(LocalLyricsStatus.FOUND, "Local sidecar LRC", document)
+    )
+
+    result = _resolver(path, _FakeProvider(), local_sources=(local,)).resolve(track)
+
+    assert result.status is LyricsResolutionStatus.NO_RESULT
+    assert result.document is None
+    assert any("rejected local lyric" in item for item in result.diagnostics)
 
 
 def test_plain_only_and_synced_invalid_plain_fallback_are_untimed(

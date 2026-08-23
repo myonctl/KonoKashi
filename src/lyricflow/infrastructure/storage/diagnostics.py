@@ -80,6 +80,11 @@ def inspect_storage(path: Path) -> StorageStatus:
                             "SELECT COUNT(*) FROM lyrics_matches"
                         ).fetchone()[0]
                     ),
+                    lyric_match_rejections=int(
+                        connection.execute(
+                            "SELECT COUNT(*) FROM lyrics_match_rejections"
+                        ).fetchone()[0]
+                    ),
                     provider_cache_entries=int(
                         connection.execute(
                             "SELECT COUNT(*) FROM provider_cache"
