@@ -18,7 +18,10 @@ from lyricflow.infrastructure.lyrics.provider_documents import (
 from lyricflow.infrastructure.metadata.local_paths import (
     FilesystemLocalPathCanonicalizer,
 )
-from lyricflow.infrastructure.romanization.offline import OfflineRomanizationProvider
+from lyricflow.infrastructure.romanization.offline import (
+    IcuHanLanguageEvidenceAdapter,
+    OfflineRomanizationProvider,
+)
 from lyricflow.infrastructure.storage.bootstrap import StorageRepositories
 
 
@@ -48,7 +51,11 @@ def create_frontend_session(
             matches=storage.lyrics_matches,
             provider_cache=storage.provider_cache,
         ),
-        RepresentationService(OfflineRomanizationProvider(), storage.representations),
+        RepresentationService(
+            OfflineRomanizationProvider(),
+            storage.representations,
+            language_evidence=IcuHanLanguageEvidenceAdapter(),
+        ),
         storage.settings,
         storage.timing_calibrations,
         ReviewCorrectionService(

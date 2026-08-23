@@ -196,6 +196,14 @@ def build_sync_snapshot(
         None if deadline_ns is None else (deadline_ns - estimate.monotonic_ns) // 1_000
     )
     snapshot = track.raw_snapshot
+    representation_diagnostics = tuple(
+        dict.fromkeys(
+            diagnostic
+            for item in representations
+            if item.text is None
+            for diagnostic in item.diagnostics
+        )
+    )
     return SynchronizationSnapshot(
         generation=generation,
         source_identity=track.source_identity,
@@ -225,7 +233,7 @@ def build_sync_snapshot(
         next=bundle(frame.lyrics.next),
         next_transition_monotonic_ns=deadline_ns,
         time_until_next_transition_us=until_us,
-        diagnostics=frame.error_budget.unknown_sources,
+        diagnostics=(*frame.error_budget.unknown_sources, *representation_diagnostics),
     )
 
 

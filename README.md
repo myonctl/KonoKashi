@@ -10,14 +10,16 @@ under it, and an optional translation forms a third layer.
 
 ## Current status
 
-Stages 1 through 9 are **Completed**. Stage 8 — Review and correction workflow
+Stages 1 through 9 are **Completed**. A post-Stage-5 Chinese/Pinyin regression
+repair is Active: its automated implementation is being verified, and Stage 10
+is conditionally authorized only after the published repair passes the real
+Wowkie/Japanese/Latin gate. Stage 8 — Review and correction workflow
 passed its automated gate and accepted real Strawberry/desktop correction,
 restart, preservation, and cleanup matrix on 2026-08-23. Stage 9 —
 Music-directory scanner and batch downloads passed its automated and real
 disposable-directory migration, incremental, move/delete, filename-fallback,
 batch-download/review, preservation, desktop-worker, and cleanup gates later
-that day. Stage 10 is Proposed / unauthorized, and there is no active
-implementation stage.
+that day.
 Stage 7 — Desktop MVP passed its automated
 gate and accepted real KDE, playback, recovery, scaling, theme, state, and
 longer-run verification on 2026-08-23. Native Qt/Wayland interactive resizing
@@ -114,6 +116,8 @@ Supporting authorities:
 - `docs/MANUAL_TEST_LOG.md` — append-only real-world verification evidence.
 - `docs/DEPENDENCIES.md` — dependency rationale and replacement paths.
 - `docs/REFERENCES.md` — external primary technical references.
+- `docs/MULTILINGUAL_SUPPORT.md` — exact local language routes, terminology,
+  evidence policy, and limitations.
 - `docs/DOCUMENTATION_STYLE.md` — evidence, status, path, TODO, and ADR rules.
 - `docs/DEVELOPMENT_WORKFLOW.md` — exact start, implementation, Git, bug, and
   handoff workflow.
@@ -149,6 +153,8 @@ Supporting authorities:
   settings, dotfile, safe semantic theme, and frontend adapter policy.
 - `docs/adr/0015-incremental-library-scanner.md` — accepted Stage 9 incremental,
   read-only, resumable, bounded, and confidence-gated scanning policy.
+- `docs/adr/0016-chinese-pinyin-regression-repair.md` — accepted conservative
+  Chinese evidence, phrase-aware Pinyin, and durable override policy.
 - `docs/adr/` — accepted and historical architecture/process decisions.
 
 `PLAN_MANIFEST.json` is a machine-readable document inventory, not an authority.
@@ -164,7 +170,7 @@ python -m venv .venv
 .venv/bin/python -m pip install ".[dev]"
 ```
 
-PySide6, HTTPX, Mutagen, Cutlet/Fugashi/UniDic-lite, and PyICU are runtime
+PySide6, HTTPX, Mutagen, Cutlet/Fugashi/UniDic-lite, pypinyin, and PyICU are runtime
 dependencies. PyICU requires system ICU development headers when installed
 from PyPI source. pytest, Ruff, and mypy are development dependencies.
 Rationale, licensing cautions, and usage boundaries are recorded in
@@ -262,7 +268,9 @@ prior usable result on failure. The two flags cannot be combined.
 `lyrics romanize current` transforms each canonical original line locally and
 persists generated candidates by stable line ID. Use `--language ja`, `ko`, or
 `zh` when explicit metadata is needed to disambiguate short or Han-only text;
-Han-only input is not guessed as Japanese or Chinese. `--regenerate` replaces
+Han-only input is not guessed from script alone. Document/provider evidence may
+route it automatically; `lyrics language set zh|ja` supplies a durable,
+resettable user-approved decision when it remains ambiguous. `--regenerate` replaces
 only generated cache for the selected `--line-id` values and never overwrites a
 user approval. `lyrics representations current` shows bounded stacked previews,
 candidate/decision counts, provenance, generator/version, uncertainty, missing

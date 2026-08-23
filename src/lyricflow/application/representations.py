@@ -7,6 +7,7 @@ from datetime import UTC, datetime
 from hashlib import sha256
 
 from lyricflow.application.ports import (
+    LanguageEvidenceProviderPort,
     RepresentationRepositoryPort,
     RomanizationProviderPort,
 )
@@ -18,9 +19,11 @@ from lyricflow.domain.lyrics import (
     RepresentationKind,
 )
 from lyricflow.domain.representations import (
+    DocumentLanguageOverride,
     EffectiveRepresentationLine,
     GenerationStatus,
     ImportedRepresentationLine,
+    LanguageRoutingEvidence,
     RepresentationCandidate,
     RepresentationDecision,
     RepresentationGenerationReport,
@@ -59,6 +62,64 @@ def _hint_tokens(*hints: str | None) -> set[str]:
         tokens.add(lowered)
         tokens.add(lowered.split("-", 1)[0])
     return tokens
+
+
+def normalize_language_override(language: str) -> str:
+    """Validate a user-approved language for genuinely ambiguous Han text."""
+
+    hints = _hint_tokens(language)
+    if hints & _CHINESE_HINTS:
+        return "zh"
+    if hints & _JAPANESE_HINTS:
+        return "ja"
+    raise ValueError("language override must identify Chinese (zh) or Japanese (ja)")
+
+
+def document_language_evidence(
+    document: LyricDocument,
+    classifier: LanguageEvidenceProviderPort | None,
+) -> LanguageRoutingEvidence:
+    """Resolve bounded aggregate evidence without pretending Han is a language."""
+
+    originals = original_lines(document)
+    text = "\n".join(line.text for line in originals)
+    analysis = analyze_scripts(text)
+    scripts = set(analysis.scripts)
+    japanese = {
+        UnicodeScript.HAN,
+        UnicodeScript.HIRAGANA,
+        UnicodeScript.KATAKANA,
+        UnicodeScript.LATIN,
+    }
+    if (
+        scripts & {UnicodeScript.HIRAGANA, UnicodeScript.KATAKANA}
+        and scripts <= japanese
+    ):
+        return LanguageRoutingEvidence(
+            "ja",
+            RepresentationUncertainty.AMBIGUOUS,
+            "document-level kana composition supports Japanese routing",
+        )
+    if UnicodeScript.HAN not in scripts:
+        return LanguageRoutingEvidence(
+            None,
+            RepresentationUncertainty.NONE,
+            "document has no ambiguous Han-only lines requiring language evidence",
+        )
+    disallowed = scripts - {UnicodeScript.HAN, UnicodeScript.LATIN}
+    if disallowed:
+        return LanguageRoutingEvidence(
+            None,
+            RepresentationUncertainty.AMBIGUOUS,
+            f"mixed document scripts prevent Han language inference ({analysis.label})",
+        )
+    if classifier is None:
+        return LanguageRoutingEvidence(
+            None,
+            RepresentationUncertainty.AMBIGUOUS,
+            "no document-level Chinese language-evidence adapter is configured",
+        )
+    return classifier.classify_han(text)
 
 
 def route_romanization(
@@ -144,7 +205,7 @@ def route_romanization(
         return ScriptRoutingDecision(
             analysis,
             None,
-            None,
+            RepresentationKind.ROMANIZED,
             None,
             RepresentationUncertainty.AMBIGUOUS,
             "Han-only text is ambiguous without a Japanese or Chinese language hint",
@@ -218,10 +279,12 @@ class RepresentationService:
         provider: RomanizationProviderPort,
         repository: RepresentationRepositoryPort,
         *,
+        language_evidence: LanguageEvidenceProviderPort | None = None,
         now: Callable[[], datetime] | None = None,
     ) -> None:
         self._provider = provider
         self._repository = repository
+        self._language_evidence = language_evidence
         self._now = now or (lambda: datetime.now(UTC))
 
     def candidates(self, document_id: str) -> tuple[RepresentationCandidate, ...]:
@@ -234,6 +297,66 @@ class RepresentationService:
 
         return self._repository.decisions(document_id)
 
+    def language_override(self, document_id: str) -> DocumentLanguageOverride | None:
+        """Expose the exact-document approved routing hint for diagnostics."""
+
+        return self._repository.language_override(document_id)
+
+    def set_language_override(
+        self, document: LyricDocument, language: str
+    ) -> DocumentLanguageOverride:
+        """Approve one document language and invalidate only generated fallback."""
+
+        normalized = normalize_language_override(language)
+        existing = self._repository.language_override(document.document_id)
+        timestamp = self._now()
+        override = DocumentLanguageOverride(
+            document.document_id,
+            normalized,
+            existing.created_at if existing is not None else timestamp,
+            timestamp,
+        )
+        self._repository.put_language_override(override)
+        self._repository.delete_generated(document.document_id)
+        return override
+
+    def reset_language_override(self, document: LyricDocument) -> bool:
+        """Remove one language approval and derived fallback, preserving evidence."""
+
+        removed = self._repository.delete_language_override(document.document_id)
+        if removed:
+            self._repository.delete_generated(document.document_id)
+        return removed
+
+    def _routing_language(
+        self, document: LyricDocument, explicit: str | None
+    ) -> LanguageRoutingEvidence:
+        if explicit:
+            return LanguageRoutingEvidence(
+                explicit,
+                RepresentationUncertainty.AMBIGUOUS,
+                "explicit command language hint selected",
+            )
+        override = self._repository.language_override(document.document_id)
+        if override is not None:
+            return LanguageRoutingEvidence(
+                override.language,
+                RepresentationUncertainty.NONE,
+                "user-approved document language override selected",
+            )
+        if document.language:
+            return LanguageRoutingEvidence(
+                document.language,
+                RepresentationUncertainty.AMBIGUOUS,
+                "provider/document language metadata selected",
+            )
+        return document_language_evidence(document, self._language_evidence)
+
+    def routing_language(self, document: LyricDocument) -> LanguageRoutingEvidence:
+        """Explain the effective durable/automatic document routing evidence."""
+
+        return self._routing_language(document, None)
+
     def generate(
         self,
         document: LyricDocument,
@@ -245,6 +368,7 @@ class RepresentationService:
         """Generate independently per original line, preserving every user approval."""
 
         originals = original_lines(document)
+        language_evidence = self._routing_language(document, language_hint)
         by_id = {line.line_id: line for line in originals}
         selected_ids = tuple(by_id) if line_ids is None else tuple(line_ids)
         unknown = [line_id for line_id in selected_ids if line_id not in by_id]
@@ -256,16 +380,18 @@ class RepresentationService:
         }
         existing = self._repository.candidates(document.document_id)
         generated = reused = unavailable = failed = 0
-        diagnostics: list[str] = []
+        diagnostics: list[str] = [
+            f"document language routing: {language_evidence.diagnostic}"
+        ]
         for line_id in selected_ids:
             line = by_id[line_id]
             routing = route_romanization(
                 line.text,
-                language_hint=language_hint or document.language,
+                language_hint=language_evidence.language,
                 script_hint=document.script,
             )
             diagnostics.append(f"{line_id}: {routing.diagnostic}")
-            if routing.route is None or routing.kind is None:
+            if routing.kind is None:
                 unavailable += 1
                 continue
             decision = decisions.get((line_id, routing.kind))
@@ -287,25 +413,35 @@ class RepresentationService:
                 self._repository.delete_decision(
                     document.document_id, line_id, routing.kind
                 )
-            try:
-                result = self._provider.generate(
-                    RomanizationRequest(
-                        line_id,
-                        line.text,
-                        routing.route,
-                        routing.language,
-                    )
-                )
-            except Exception as error:
+            if routing.route is None:
                 result = RomanizationProviderResult(
-                    GenerationStatus.FAILED,
-                    self._provider.name,
-                    "unavailable",
+                    GenerationStatus.UNAVAILABLE,
+                    "LyricFlow language routing",
+                    "1",
                     routing.kind,
-                    diagnostics=(
-                        f"romanization adapter failed: {type(error).__name__}",
-                    ),
+                    uncertainty=routing.uncertainty,
+                    diagnostics=(language_evidence.diagnostic, routing.diagnostic),
                 )
+            else:
+                try:
+                    result = self._provider.generate(
+                        RomanizationRequest(
+                            line_id,
+                            line.text,
+                            routing.route,
+                            routing.language,
+                        )
+                    )
+                except Exception as error:
+                    result = RomanizationProviderResult(
+                        GenerationStatus.FAILED,
+                        self._provider.name,
+                        "unavailable",
+                        routing.kind,
+                        diagnostics=(
+                            f"romanization adapter failed: {type(error).__name__}",
+                        ),
+                    )
             if (
                 result.kind is not routing.kind
                 or (

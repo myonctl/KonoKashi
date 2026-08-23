@@ -82,6 +82,46 @@ def test_snapshot_exposes_all_frontend_timing_and_aligned_text_layers() -> None:
     assert snapshot.time_until_next_transition_us is not None
 
 
+def test_snapshot_retains_explained_missing_representation_diagnostics() -> None:
+    lyric_document = document()
+    original = lyric_document.representations[0].lines[1]
+    missing = EffectiveRepresentationLine(
+        original,
+        RepresentationKind.ROMANIZED,
+        None,
+        ContentProvenance.GENERATED,
+        ApprovalState.UNREVIEWED,
+        "LyricFlow language routing",
+        "1",
+        RepresentationUncertainty.AMBIGUOUS,
+        ("Han-only document lacks sufficient language evidence",),
+        inherited_start_ms=original.start_ms,
+    )
+    raw = replace(fixture_snapshot("stage2/youtube_jesskah.json"), rate=1.0)
+    track = ResolvedTrack(
+        raw,
+        YouTubeIdentity("xa4WrgqI7q0"),
+        TrackCandidate("Track", ("Artist",), None, 5_000_000),
+        Confidence.HIGH,
+    )
+    calibration = SynchronizationCalibration(AudioOutputLatency(0, 0, "test"))
+    current_estimate = estimate()
+
+    snapshot = build_sync_snapshot(
+        generation=1,
+        track=track,
+        document=lyric_document,
+        estimate=current_estimate,
+        frame=synchronize(lyric_document, current_estimate, calibration),
+        calibration=calibration,
+        representations=(missing,),
+    )
+
+    assert (
+        "Han-only document lacks sufficient language evidence" in snapshot.diagnostics
+    )
+
+
 def test_publisher_suppresses_identical_state_and_unsubscribes_cleanly() -> None:
     lyric_document = document()
     raw = replace(fixture_snapshot("stage2/youtube_jesskah.json"), rate=1.0)

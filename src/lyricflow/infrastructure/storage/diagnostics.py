@@ -100,6 +100,11 @@ def inspect_storage(path: Path) -> StorageStatus:
                             "SELECT COUNT(*) FROM lyric_representation_decisions"
                         ).fetchone()[0]
                     ),
+                    language_overrides=int(
+                        connection.execute(
+                            "SELECT COUNT(*) FROM lyric_document_language_overrides"
+                        ).fetchone()[0]
+                    ),
                     lyric_document_delays=int(
                         connection.execute(
                             "SELECT COUNT(*) FROM lyric_document_timing"

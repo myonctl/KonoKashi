@@ -12,11 +12,17 @@ from lyricflow.application.lyrics_sync import synchronize
 from lyricflow.application.sync_state import build_sync_snapshot
 from lyricflow.domain.identity import YouTubeIdentity
 from lyricflow.domain.lyrics import (
+    ContentProvenance,
     LyricDocumentKind,
+    LyricRepresentation,
     LyricsResolutionResult,
     LyricsResolutionStatus,
+    RepresentationKind,
 )
-from lyricflow.domain.representations import RepresentationDisplaySettings
+from lyricflow.domain.representations import (
+    EffectiveRepresentationLine,
+    RepresentationDisplaySettings,
+)
 from lyricflow.domain.synchronization import (
     AudioOutputLatency,
     LyricTimingCalibration,
@@ -198,6 +204,100 @@ def test_live_snapshots_follow_pause_resume_seek_and_rapid_seek() -> None:
             replace(backward, disciplined_player_position_us=position)
         )
     assert controller.state.generation == token.generation
+
+
+def test_chinese_active_transition_moves_original_and_pinyin_as_one_group() -> None:
+    controller = DesktopStateController()
+    track = _track("chinese-web-source", "Sunshine, Rainbow, White Pony")
+    base_document = document()
+    texts = (
+        "阳光彩虹小白马",
+        "我听见你的声音",
+        "我聽見你的聲音",
+        "下一行",
+    )
+    originals = tuple(
+        replace(line, text=text)
+        for line, text in zip(
+            base_document.representations[0].lines, texts, strict=True
+        )
+    )
+    chinese_document = replace(
+        base_document,
+        representations=(
+            LyricRepresentation(
+                "original",
+                RepresentationKind.ORIGINAL,
+                ContentProvenance.PROVIDER,
+                base_document.representations[0].approval_state,
+                originals,
+            ),
+        ),
+    )
+    pinyin = (
+        "Yáng guāng cǎi hóng xiǎo bái mǎ",
+        "Wǒ tīng jiàn nǐ de shēng yīn",
+        "Wǒ tīng jiàn nǐ de shēng yīn",
+        "Xià yī háng",
+    )
+    representations = tuple(
+        EffectiveRepresentationLine(
+            original,
+            RepresentationKind.ROMANIZED,
+            text,
+            ContentProvenance.GENERATED,
+            None,
+            "pypinyin Hanyu Pinyin",
+            "pypinyin-0.55.0",
+            None,
+            inherited_start_ms=original.start_ms,
+        )
+        for original, text in zip(originals, pinyin, strict=True)
+    )
+    calibration = SynchronizationCalibration(
+        AudioOutputLatency(0, 0, "test"), LyricTimingCalibration(0)
+    )
+    token = controller.begin_resolution(track)
+    assert controller.accept_resolution(
+        token,
+        LyricsResolutionResult(
+            track.source_identity,
+            LyricsResolutionStatus.FOUND_TIMED,
+            document=chinese_document,
+        ),
+    )
+
+    first_estimate = estimate(2_150_000)
+    first = build_sync_snapshot(
+        generation=token.generation,
+        track=track,
+        document=chinese_document,
+        estimate=first_estimate,
+        frame=synchronize(chinese_document, first_estimate, calibration),
+        calibration=calibration,
+        representations=representations,
+        lyrics_match_confidence="High",
+    )
+    assert controller.accept_snapshot(first)
+    assert [group.original for group in controller.state.active] == list(texts[1:3])
+    assert [
+        group.romanized_or_transliterated for group in controller.state.active
+    ] == list(pinyin[1:3])
+
+    next_estimate = estimate(3_100_000)
+    following = build_sync_snapshot(
+        generation=token.generation,
+        track=track,
+        document=chinese_document,
+        estimate=next_estimate,
+        frame=synchronize(chinese_document, next_estimate, calibration),
+        calibration=calibration,
+        representations=representations,
+        lyrics_match_confidence="High",
+    )
+    assert controller.accept_snapshot(following)
+    assert controller.state.active[0].original == texts[3]
+    assert controller.state.active[0].romanized_or_transliterated == pinyin[3]
 
 
 def test_representation_toggles_never_invent_or_duplicate_layers() -> None:

@@ -43,6 +43,25 @@ class RepresentationUncertainty(Enum):
 
 
 @dataclass(frozen=True, slots=True)
+class LanguageRoutingEvidence:
+    """Provider-neutral document-level language evidence for script routing."""
+
+    language: str | None
+    uncertainty: RepresentationUncertainty
+    diagnostic: str
+
+
+@dataclass(frozen=True, slots=True)
+class DocumentLanguageOverride:
+    """One user-approved language hint scoped to a stable lyric document."""
+
+    document_id: str
+    language: str
+    created_at: datetime
+    updated_at: datetime
+
+
+@dataclass(frozen=True, slots=True)
 class RomanizationRequest:
     """One stable-line request passed through the replaceable provider port."""
 

@@ -50,7 +50,11 @@ def qt_app() -> QApplication:
     return application
 
 
-def _state(*, original: str = "君の声が聞こえる") -> DesktopViewState:
+def _state(
+    *,
+    original: str = "君の声が聞こえる",
+    romanized: str | None = "Kimi no koe ga kikoeru",
+) -> DesktopViewState:
     return DesktopViewState(
         DesktopLyricsState.TIMED,
         "Synchronized lyrics",
@@ -67,7 +71,7 @@ def _state(*, original: str = "君の声が聞こえる") -> DesktopViewState:
             DesktopLyricGroup(
                 "active",
                 original,
-                "Kimi no koe ga kikoeru",
+                romanized,
                 "I can hear your voice",
                 ("generated", "user"),
             ),
@@ -101,6 +105,30 @@ def test_main_window_launches_and_renders_plain_multilingual_text(
     assert window.active_band.accessibleName() == "Current lyric"
     assert window.progress.value() == 420
     assert window.title_label.toolTip() == state.title
+    window.close()
+
+
+def test_chinese_original_and_pinyin_share_one_group_without_blank_row(
+    qt_app: QApplication,
+) -> None:
+    window = MainWindow()
+    state = _state(
+        original="阳光彩虹小白马",
+        romanized="Yáng guāng cǎi hóng xiǎo bái mǎ",
+    )
+    window.render_state(state)
+    window.show()
+    qt_app.processEvents()
+
+    group = window.active_band._group_widgets[0]
+    assert group.original.text() == "阳光彩虹小白马"
+    assert group.romanized.text() == "Yáng guāng cǎi hóng xiǎo bái mǎ"
+    assert group.original.isVisible()
+    assert group.romanized.isVisible()
+
+    window.render_state(_state(original="Latin only", romanized=None))
+    qt_app.processEvents()
+    assert not window.active_band._group_widgets[0].romanized.isVisible()
     window.close()
 
 

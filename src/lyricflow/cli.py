@@ -340,6 +340,23 @@ def _parser() -> argparse.ArgumentParser:
         help="replace generated cache and clear a draft/rejection, never an approval",
     )
     romanize.add_argument("--full", action="store_true")
+    language = lyrics_commands.add_parser(
+        "language", help="inspect or set exact-document Han language routing"
+    )
+    language_commands = language.add_subparsers(dest="language_command", required=True)
+    language_current = language_commands.add_parser(
+        "current", help="show effective language-routing evidence"
+    )
+    language_current.add_argument("--offline", action="store_true")
+    language_set = language_commands.add_parser(
+        "set", help="approve Chinese or Japanese routing for the current document"
+    )
+    language_set.add_argument("language", help="zh or ja")
+    language_set.add_argument("--offline", action="store_true")
+    language_reset = language_commands.add_parser(
+        "reset", help="remove the current document language approval"
+    )
+    language_reset.add_argument("--offline", action="store_true")
     representations = lyrics_commands.add_parser(
         "representations", help="inspect or correct aligned lyric representations"
     )
@@ -890,11 +907,14 @@ def _run_lyrics(
         from lyricflow.application.representations import RepresentationService
         from lyricflow.domain.lyrics import RepresentationKind
         from lyricflow.infrastructure.romanization.offline import (
+            IcuHanLanguageEvidenceAdapter,
             OfflineRomanizationProvider,
         )
 
         service = RepresentationService(
-            OfflineRomanizationProvider(), storage.representations
+            OfflineRomanizationProvider(),
+            storage.representations,
+            language_evidence=IcuHanLanguageEvidenceAdapter(),
         )
         document = result.document
         settings = storage.settings.get_representation_display()
@@ -903,6 +923,50 @@ def _run_lyrics(
             f"track: {track.title or '<unknown>'}\n"
             f"artist: {', '.join(track.artists) or '<unknown>'}"
         )
+        if arguments.lyrics_command == "language":
+            action = arguments.language_command
+            if action == "current":
+                override = service.language_override(document.document_id)
+                evidence = service.routing_language(document)
+                print(heading)
+                print(f"lyric document: {document.document_id}")
+                print(
+                    "user-approved language: "
+                    + ("none" if override is None else override.language)
+                )
+                print(
+                    "effective routing language: "
+                    + ("ambiguous" if evidence.language is None else evidence.language)
+                )
+                print(f"routing evidence: {evidence.diagnostic}")
+                print("original lyrics: unchanged")
+                return 0
+            if action == "set":
+                try:
+                    override = service.set_language_override(
+                        document, arguments.language
+                    )
+                    report = service.generate(document)
+                except ValueError as error:
+                    print(f"Unable to set lyric language: {error}", file=sys.stderr)
+                    return 2
+                print("Saved user-approved lyric language.")
+                print(f"lyric document: {override.document_id}")
+                print(f"language: {override.language}")
+                print(f"representations generated: {report.generated}")
+                print("original lyrics: unchanged")
+                return int(report.failed > 0)
+            removed = service.reset_language_override(document)
+            report = service.generate(document)
+            print(
+                "Removed user-approved lyric language."
+                if removed
+                else "No user-approved lyric language existed."
+            )
+            print(f"lyric document: {document.document_id}")
+            print(f"representations generated automatically: {report.generated}")
+            print("original lyrics: unchanged")
+            return int(report.failed > 0)
         if arguments.lyrics_command == "romanize":
             try:
                 report = service.generate(
@@ -1429,6 +1493,7 @@ def _run_sync(
     )
     from lyricflow.infrastructure.mpris.backend import MprisBackendError
     from lyricflow.infrastructure.romanization.offline import (
+        IcuHanLanguageEvidenceAdapter,
         OfflineRomanizationProvider,
     )
     from lyricflow.infrastructure.storage.bootstrap import open_storage
@@ -1469,7 +1534,9 @@ def _run_sync(
         return 1
     track, document = loaded
     representation_service = RepresentationService(
-        OfflineRomanizationProvider(), storage.representations
+        OfflineRomanizationProvider(),
+        storage.representations,
+        language_evidence=IcuHanLanguageEvidenceAdapter(),
     )
 
     def selected_representations() -> tuple[EffectiveRepresentationLine, ...]:

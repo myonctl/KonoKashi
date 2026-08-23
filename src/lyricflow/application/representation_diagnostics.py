@@ -64,6 +64,8 @@ def render_representations(
     translated = service.effective_lines(document, RepresentationKind.TRANSLATED)
     candidates = service.candidates(document.document_id)
     decisions = service.decisions(document.document_id)
+    language_override = service.language_override(document.document_id)
+    routing = service.routing_language(document)
     scripts = sorted({analyze_scripts(line.text).label for line in originals})
     effective_pronunciation = tuple(
         line
@@ -85,6 +87,11 @@ def render_representations(
         f"line count: original {len(originals)}",
         f"representation candidates: {len(candidates)}",
         f"user decisions: {len(decisions)}",
+        "user-approved language: "
+        + ("none" if language_override is None else language_override.language),
+        "effective routing language: "
+        + ("ambiguous" if routing.language is None else routing.language),
+        f"routing evidence: {routing.diagnostic}",
         f"romanized/transliterated aligned: {pronunciation_aligned}",
         f"romanized/transliterated missing: {pronunciation_missing}",
         f"translated aligned: {sum(line.text is not None for line in translated)}",

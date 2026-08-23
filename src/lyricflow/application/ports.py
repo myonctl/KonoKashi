@@ -28,6 +28,8 @@ from lyricflow.domain.models import (
     RawTrackMetadata,
 )
 from lyricflow.domain.representations import (
+    DocumentLanguageOverride,
+    LanguageRoutingEvidence,
     RepresentationCandidate,
     RepresentationDecision,
     RepresentationDisplaySettings,
@@ -359,6 +361,13 @@ class RomanizationProviderPort(Protocol):
         """Generate or return a controlled unavailable/failure result."""
 
 
+class LanguageEvidenceProviderPort(Protocol):
+    """Classify bounded document text without changing or retaining it."""
+
+    def classify_han(self, text: str) -> LanguageRoutingEvidence:
+        """Return conservative Chinese evidence or an explained ambiguity."""
+
+
 class RepresentationRepositoryPort(Protocol):
     """Persist alternate candidates and user decisions independently of originals."""
 
@@ -367,6 +376,18 @@ class RepresentationRepositoryPort(Protocol):
 
     def decisions(self, document_id: str) -> tuple[RepresentationDecision, ...]:
         """Return line-level user decisions in deterministic order."""
+
+    def language_override(self, document_id: str) -> DocumentLanguageOverride | None:
+        """Return one user-approved document language hint, if present."""
+
+    def put_language_override(self, override: DocumentLanguageOverride) -> None:
+        """Persist one exact-document user-approved language hint."""
+
+    def delete_language_override(self, document_id: str) -> bool:
+        """Reset only one exact-document language hint."""
+
+    def delete_generated(self, document_id: str) -> int:
+        """Invalidate generated fallback without touching imported/user evidence."""
 
     def put_candidates(self, candidates: tuple[RepresentationCandidate, ...]) -> None:
         """Atomically insert or update explicitly aligned candidates."""

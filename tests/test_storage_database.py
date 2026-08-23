@@ -54,7 +54,7 @@ def test_brand_new_unicode_database_migrates_in_order_and_reopens_noop(
 
     assert database.initialize() == CURRENT_SCHEMA_VERSION
     first_history = database.migration_history()
-    assert [item[0] for item in first_history] == [1, 2, 3, 4, 5, 6, 7, 8]
+    assert [item[0] for item in first_history] == [1, 2, 3, 4, 5, 6, 7, 8, 9]
 
     def unexpected_transaction() -> None:
         raise AssertionError("current-schema initialization opened a write transaction")
@@ -134,7 +134,7 @@ def test_published_stage_three_database_upgrades_without_losing_approved_match(
             """
         )
 
-    assert database.initialize() == 8
+    assert database.initialize() == 9
 
     with database.connection(readonly=True) as connection:
         row = connection.execute(
@@ -157,6 +157,7 @@ def test_published_stage_three_database_upgrades_without_losing_approved_match(
         6,
         7,
         8,
+        9,
     ]
 
 
@@ -194,7 +195,7 @@ def test_published_stage_four_database_upgrades_without_losing_original_lines(
             """
         )
 
-    assert database.initialize() == 8
+    assert database.initialize() == 9
 
     with database.connection(readonly=True) as connection:
         original = connection.execute(
@@ -256,7 +257,7 @@ def test_stage_six_rejected_match_is_backfilled_into_durable_history(
             """
         )
 
-    assert database.initialize() == 8
+    assert database.initialize() == 9
 
     with database.connection(readonly=True) as connection:
         rejection = connection.execute(
@@ -270,6 +271,38 @@ def test_stage_six_rejected_match_is_backfilled_into_durable_history(
         ).fetchone()
     assert tuple(rejection) == ("wrong-doc", "user", "High")
     assert evidence[0] == "explicitly rejected by the user"
+
+
+def test_stage_nine_database_adds_language_overrides_without_changing_lyrics(
+    tmp_path: Path,
+) -> None:
+    database = SQLiteDatabase(tmp_path / "stage-nine.sqlite3")
+    database.initialize(MIGRATIONS[:8])
+    with database.transaction() as connection:
+        connection.execute(
+            """
+            INSERT INTO lyrics_documents(
+                document_id, document_kind, source_name, original_text,
+                approval_state, retrieved_at
+            ) VALUES ('chinese-doc', 'plain', 'fixture', '阳光彩虹小白马',
+                      'unreviewed', '2026-08-23T00:00:00+00:00')
+            """
+        )
+
+    assert database.initialize() == 9
+
+    with database.connection(readonly=True) as connection:
+        original = connection.execute(
+            """
+            SELECT original_text FROM lyrics_documents
+            WHERE document_id = 'chinese-doc'
+            """
+        ).fetchone()[0]
+        override_count = connection.execute(
+            "SELECT COUNT(*) FROM lyric_document_language_overrides"
+        ).fetchone()[0]
+    assert original == "阳光彩虹小白马"
+    assert override_count == 0
 
 
 def test_failed_migration_rolls_back_only_that_migration(tmp_path: Path) -> None:

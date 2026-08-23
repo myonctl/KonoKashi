@@ -29,6 +29,7 @@ def test_storage_status_missing_then_migrate_then_current(
     assert "approved track corrections: 0" in current
     assert "representation candidates: 0" in current
     assert "representation decisions: 0" in current
+    assert "lyric language overrides: 0" in current
     assert "lyric match rejections: 0" in current
 
 

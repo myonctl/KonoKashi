@@ -28,6 +28,10 @@ from lyricflow.domain.representations import (
     RomanizationProviderResult,
     RomanizationRequest,
 )
+from lyricflow.infrastructure.romanization.offline import (
+    IcuHanLanguageEvidenceAdapter,
+    OfflineRomanizationProvider,
+)
 from lyricflow.infrastructure.storage.bootstrap import open_storage
 
 NOW = datetime(2026, 8, 13, 12, tzinfo=UTC)
@@ -410,3 +414,172 @@ def test_original_refresh_does_not_delete_stage_five_evidence(tmp_path: Path) ->
         restarted.decisions(document.document_id)[0].approval_state
         is ApprovalState.APPROVED
     )
+
+
+def test_chinese_document_evidence_generates_pinyin_and_reuses_it_after_restart(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "chinese-auto.sqlite3"
+    document = _document(
+        language=None,
+        texts=("阳光彩虹小白马", "阳光彩虹小白马"),
+    )
+    storage = open_storage(path)
+    storage.lyrics.put(document)
+    service = RepresentationService(
+        OfflineRomanizationProvider(),
+        storage.representations,
+        language_evidence=IcuHanLanguageEvidenceAdapter(),
+        now=lambda: NOW,
+    )
+
+    report = service.generate(document)
+    effective = service.effective_lines(document, RepresentationKind.ROMANIZED)
+    restarted = RepresentationService(
+        OfflineRomanizationProvider(),
+        open_storage(path).representations,
+        language_evidence=IcuHanLanguageEvidenceAdapter(),
+        now=lambda: NOW,
+    )
+
+    assert report.generated == 2
+    assert [item.text for item in effective] == [
+        "Yáng guāng cǎi hóng xiǎo bái mǎ",
+        "Yáng guāng cǎi hóng xiǎo bái mǎ",
+    ]
+    assert [item.original_line.line_id for item in effective] == [
+        "line-0001",
+        "line-0002",
+    ]
+    assert [item.inherited_start_ms for item in effective] == [0, 5_000]
+    assert all(item.provenance is ContentProvenance.GENERATED for item in effective)
+    assert all(item.source_name == "pypinyin Hanyu Pinyin" for item in effective)
+    assert restarted.generate(document).reused == 2
+    assert (
+        restarted.effective_lines(document, RepresentationKind.ROMANIZED) == effective
+    )
+    assert [line.text for line in document.representations[0].lines] == [
+        "阳光彩虹小白马",
+        "阳光彩虹小白马",
+    ]
+
+
+def test_provider_chinese_language_metadata_routes_without_classifier(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "provider-language.sqlite3"
+    document = _document(language="zh-Hant", texts=("我聽見你的聲音",))
+    storage = open_storage(path)
+    storage.lyrics.put(document)
+    service = RepresentationService(
+        OfflineRomanizationProvider(), storage.representations, now=lambda: NOW
+    )
+
+    report = service.generate(document)
+    effective = service.effective_lines(document, RepresentationKind.ROMANIZED)[0]
+
+    assert report.generated == 1
+    assert effective.text == "Wǒ tīng jiàn nǐ de shēng yīn"
+    assert "provider/document language metadata" in report.diagnostics[0]
+
+
+def test_ambiguous_han_override_persists_and_reset_restores_unavailable(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "language-override.sqlite3"
+    document = _document(language=None, texts=("東京",))
+    storage = open_storage(path)
+    storage.lyrics.put(document)
+    service = RepresentationService(
+        OfflineRomanizationProvider(),
+        storage.representations,
+        language_evidence=IcuHanLanguageEvidenceAdapter(),
+        now=lambda: NOW,
+    )
+
+    ambiguous = service.generate(document)
+    missing = service.effective_lines(document, RepresentationKind.ROMANIZED)[0]
+    override = service.set_language_override(document, "zh-Hant")
+    generated = service.generate(document)
+    restarted = RepresentationService(
+        OfflineRomanizationProvider(),
+        open_storage(path).representations,
+        language_evidence=IcuHanLanguageEvidenceAdapter(),
+        now=lambda: NOW,
+    )
+
+    assert ambiguous.unavailable == 1
+    assert missing.text is None
+    assert "too short" in missing.diagnostics[0]
+    assert override.language == "zh"
+    assert generated.generated == 1
+    assert restarted.language_override(document.document_id) == override
+    assert restarted.effective_lines(document, RepresentationKind.ROMANIZED)[0].text
+    assert restarted.reset_language_override(document)
+    after_reset = restarted.generate(document)
+    reset_line = restarted.effective_lines(document, RepresentationKind.ROMANIZED)[0]
+    assert after_reset.unavailable == 1
+    assert reset_line.text is None
+    assert "too short" in reset_line.diagnostics[0]
+    assert restarted.language_override(document.document_id) is None
+
+
+def test_document_kana_routes_han_only_neighbor_to_japanese_not_chinese(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "document-japanese.sqlite3"
+    document = _document(language=None, texts=("東京", "君の声が聞こえる"))
+    storage = open_storage(path)
+    storage.lyrics.put(document)
+    service = RepresentationService(
+        OfflineRomanizationProvider(),
+        storage.representations,
+        language_evidence=IcuHanLanguageEvidenceAdapter(),
+        now=lambda: NOW,
+    )
+
+    report = service.generate(document)
+    effective = service.effective_lines(document, RepresentationKind.ROMANIZED)
+
+    assert report.generated == 2
+    assert "document-level kana" in report.diagnostics[0]
+    assert all(item.source_name == "Cutlet Modified Hepburn" for item in effective)
+    assert all(item.text for item in effective)
+
+
+@pytest.mark.parametrize(
+    ("text", "kind", "expected_fragment"),
+    (
+        ("너의 목소리가 들려 English", RepresentationKind.ROMANIZED, "English"),
+        ("Я слышу твой voice", RepresentationKind.TRANSLITERATED, "voice"),
+        ("Ακούω τη φωνή σου", RepresentationKind.TRANSLITERATED, "Akoúō"),  # noqa: RUF001
+        ("أسمع صوتك", RepresentationKind.TRANSLITERATED, "ṣwtk"),
+        ("ฉันได้ยินเสียง", RepresentationKind.TRANSLITERATED, "dị̂yin"),
+    ),
+)
+def test_claimed_non_latin_targets_preserve_original_and_generated_provenance(
+    tmp_path: Path,
+    text: str,
+    kind: RepresentationKind,
+    expected_fragment: str,
+) -> None:
+    path = tmp_path / f"{kind.value}.sqlite3"
+    document = _document(language=None, texts=(text,))
+    storage = open_storage(path)
+    storage.lyrics.put(document)
+    service = RepresentationService(
+        OfflineRomanizationProvider(),
+        storage.representations,
+        language_evidence=IcuHanLanguageEvidenceAdapter(),
+        now=lambda: NOW,
+    )
+
+    report = service.generate(document)
+    effective = service.effective_lines(document, kind)[0]
+
+    assert report.generated == 1
+    assert effective.text is not None
+    assert expected_fragment in effective.text
+    assert effective.provenance is ContentProvenance.GENERATED
+    assert effective.original_line.text == text
+    assert document.representations[0].lines[0].text == text

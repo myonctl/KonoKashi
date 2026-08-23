@@ -29,6 +29,7 @@ dependencies = [
     "fugashi>=1.5.2,<2",
     "httpx>=0.28.1,<1",
     "mutagen>=1.47,<2",
+    "pypinyin>=0.55,<0.56",
     "PyICU>=2.16.2,<3",
     "unidic-lite>=1.0.8,<2",
 ]

@@ -12,7 +12,11 @@ from lyricflow.domain.representations import (
     RomanizationRequest,
     RomanizationRoute,
 )
-from lyricflow.infrastructure.romanization.offline import OfflineRomanizationProvider
+from lyricflow.infrastructure.romanization import offline
+from lyricflow.infrastructure.romanization.offline import (
+    IcuHanLanguageEvidenceAdapter,
+    OfflineRomanizationProvider,
+)
 
 
 @pytest.mark.parametrize(
@@ -42,7 +46,7 @@ def test_korean_chinese_and_generic_icu_fixtures() -> None:
     provider = OfflineRomanizationProvider()
     fixtures = (
         (RomanizationRoute.KOREAN, "너의 목소리가 들려", "neoui mogsoliga deullyeo"),
-        (RomanizationRoute.CHINESE, "我听见你的声音", "wǒ tīng jiàn nǐ de shēng yīn"),
+        (RomanizationRoute.CHINESE, "我听见你的声音", "Wǒ tīng jiàn nǐ de shēng yīn"),
         (RomanizationRoute.CYRILLIC, "Я слышу твой голос", "Â slyšu tvoj golos"),
         (
             RomanizationRoute.GREEK,
@@ -57,7 +61,10 @@ def test_korean_chinese_and_generic_icu_fixtures() -> None:
         result = provider.generate(RomanizationRequest("line", text, route))
         assert result.status is GenerationStatus.AVAILABLE
         assert result.text == expected
-        assert f"ICU-{icu.ICU_VERSION}" in result.provider_version
+        if route is RomanizationRoute.CHINESE:
+            assert result.provider_version == "pypinyin-0.55.0"
+        else:
+            assert f"ICU-{icu.ICU_VERSION}" in result.provider_version
 
 
 @pytest.mark.parametrize(
@@ -73,11 +80,12 @@ def test_korean_chinese_and_generic_icu_fixtures() -> None:
         (
             RomanizationRoute.CHINESE,
             "我听见你的声音，真的？",  # noqa: RUF001
-            "wǒ tīng jiàn nǐ de shēng yīn， zhēn de？",  # noqa: RUF001
+            "Wǒ tīng jiàn nǐ de shēng yīn， zhēn de？",  # noqa: RUF001
         ),
-        (RomanizationRoute.CHINESE, "我爱 music 123", "wǒ ài music 123"),
-        (RomanizationRoute.CHINESE, "重庆音乐", "chóng qìng yīn lè"),
-        (RomanizationRoute.CHINESE, "長樂", "zhǎng lè"),
+        (RomanizationRoute.CHINESE, "我爱 music 123", "Wǒ ài music 123"),
+        (RomanizationRoute.CHINESE, "music 我爱", "music Wǒ ài"),
+        (RomanizationRoute.CHINESE, "重庆音乐", "Chóng qìng yīn yuè"),
+        (RomanizationRoute.CHINESE, "長樂", "Zhǎng lè"),
     ),
 )
 def test_korean_and_chinese_spacing_names_mixed_text_and_polyphony(
@@ -130,9 +138,58 @@ def test_generation_is_offline_and_preserves_input(
     assert original == "我聽見你的聲音 mixed 123"
 
 
+def test_wowkie_shape_uses_tone_marks_phrase_context_and_explicit_provenance() -> None:
+    result = OfflineRomanizationProvider().generate(
+        RomanizationRequest(
+            "line-0042", "阳光彩虹小白马", RomanizationRoute.CHINESE, "zh"
+        )
+    )
+
+    assert result.status is GenerationStatus.AVAILABLE
+    assert result.text == "Yáng guāng cǎi hóng xiǎo bái mǎ"
+    assert result.language == "zh-Latn-pinyin"
+    assert result.provider_name == "pypinyin Hanyu Pinyin"
+    assert result.provider_version == "pypinyin-0.55.0"
+    assert "polyphonic" in result.diagnostics[0]
+
+
+@pytest.mark.parametrize(
+    ("text", "language"),
+    (
+        ("阳光彩虹小白马", "zh"),
+        ("我聽見你的聲音", "zh"),
+        ("東京", None),
+        ("日本国", None),
+    ),
+)
+def test_icu_han_language_evidence_is_bounded_and_conservative(
+    text: str, language: str | None
+) -> None:
+    evidence = IcuHanLanguageEvidenceAdapter().classify_han(text)
+
+    assert evidence.language == language
+    assert evidence.diagnostic
+
+
 def test_blank_adapter_input_is_controlled() -> None:
     result = OfflineRomanizationProvider().generate(
         RomanizationRequest("blank", "", RomanizationRoute.JAPANESE, "ja")
     )
 
     assert result.status is GenerationStatus.UNAVAILABLE
+
+
+def test_missing_chinese_adapter_dependency_is_an_explained_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def unavailable(_text: str) -> str:
+        raise ImportError("pypinyin unavailable")
+
+    monkeypatch.setattr(offline, "_pinyin_text", unavailable)
+    result = OfflineRomanizationProvider().generate(
+        RomanizationRequest("line", "阳光彩虹小白马", RomanizationRoute.CHINESE)
+    )
+
+    assert result.status is GenerationStatus.FAILED
+    assert result.text is None
+    assert result.diagnostics == ("Chinese Pinyin adapter failed: ImportError",)

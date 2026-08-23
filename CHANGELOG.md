@@ -7,6 +7,25 @@ unreleased.
 
 ### Added
 
+- Activated the post-Stage-5 Chinese/Pinyin regression repair on 2026-08-23.
+  Reproduced the defect at the document-language boundary: timed Han-only
+  provider documents without language metadata stopped as ambiguous before the
+  Chinese adapter, while explicit `zh` proved alignment, timing, persistence,
+  synchronization, and desktop grouping remained intact.
+- Added conservative document-level Chinese evidence, Japanese kana priority,
+  a durable resettable per-document `zh`/`ja` override in append-only schema 9,
+  and actionable representation diagnostics. Overrides invalidate generated
+  fallback only; original/provider lyrics, timestamps, imported candidates,
+  and approved line edits remain unchanged.
+- Replaced generic ICU Chinese generation with local phrase-aware pypinyin
+  Hanyu Pinyin using Unicode tone marks while retaining ICU for conservative
+  character-variant evidence and the existing generic script transforms.
+  Added ADR 0016 and an explicit multilingual support/limitations matrix.
+- Added deterministic Chinese phrase/polyphone, Simplified/Traditional,
+  mixed-text, timed/repeated-line, restart, CLI override/reset, Japanese
+  non-regression, Latin no-duplicate, generic-script, desktop, and sync tests.
+  Real Wowkie/Japanese/Latin acceptance and repair publication evidence remain
+  pending; Stage 10 has not begun.
 - Authorized the repository-defined Stage 9 Music-directory scanner and batch
   downloads scope on 2026-08-23. Stage 10 and later work remain unauthorized.
 - Implemented Stage 9 typed global library settings; deterministic read-only

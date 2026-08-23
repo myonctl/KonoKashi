@@ -525,6 +525,22 @@ MIGRATIONS: tuple[Migration, ...] = (
             """,
         ),
     ),
+    Migration(
+        9,
+        "user-approved lyric document language routing",
+        (
+            """
+            CREATE TABLE lyric_document_language_overrides (
+                document_id TEXT PRIMARY KEY
+                    REFERENCES lyrics_documents(document_id) ON DELETE CASCADE,
+                language_code TEXT NOT NULL CHECK (language_code IN ('zh', 'ja')),
+                provenance TEXT NOT NULL CHECK (provenance = 'user-approved'),
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            )
+            """,
+        ),
+    ),
 )
 
 CURRENT_SCHEMA_VERSION = MIGRATIONS[-1].version

@@ -7,6 +7,7 @@ from datetime import UTC, datetime
 
 from lyricflow.domain.lyrics import ApprovalState, ContentProvenance, RepresentationKind
 from lyricflow.domain.representations import (
+    DocumentLanguageOverride,
     GenerationStatus,
     RepresentationCandidate,
     RepresentationDecision,
@@ -236,6 +237,78 @@ class SQLiteRepresentationRepository:
             raise InvalidStoredDataError(
                 "stored representation decision is invalid"
             ) from error
+
+    def language_override(self, document_id: str) -> DocumentLanguageOverride | None:
+        """Return one exact-document user-approved routing hint."""
+
+        with self._database.connection(readonly=True) as connection:
+            row = connection.execute(
+                """
+                SELECT document_id, language_code, created_at, updated_at
+                FROM lyric_document_language_overrides
+                WHERE document_id = ?
+                """,
+                (document_id,),
+            ).fetchone()
+        if row is None:
+            return None
+        try:
+            return DocumentLanguageOverride(
+                str(row["document_id"]),
+                str(row["language_code"]),
+                datetime.fromisoformat(str(row["created_at"])),
+                datetime.fromisoformat(str(row["updated_at"])),
+            )
+        except (TypeError, ValueError) as error:
+            raise InvalidStoredDataError(
+                "stored lyric document language override is invalid"
+            ) from error
+
+    def put_language_override(self, override: DocumentLanguageOverride) -> None:
+        """Persist one user-approved Chinese/Japanese document hint."""
+
+        if not override.document_id or override.language not in {"zh", "ja"}:
+            raise StorageValidationError("invalid lyric document language override")
+        with self._database.transaction() as connection:
+            connection.execute(
+                """
+                INSERT INTO lyric_document_language_overrides(
+                    document_id, language_code, provenance, created_at, updated_at
+                ) VALUES (?, ?, 'user-approved', ?, ?)
+                ON CONFLICT(document_id) DO UPDATE SET
+                    language_code = excluded.language_code,
+                    updated_at = excluded.updated_at
+                """,
+                (
+                    override.document_id,
+                    override.language,
+                    _datetime_text(override.created_at),
+                    _datetime_text(override.updated_at),
+                ),
+            )
+
+    def delete_language_override(self, document_id: str) -> bool:
+        """Reset one exact-document routing hint."""
+
+        with self._database.transaction() as connection:
+            cursor = connection.execute(
+                "DELETE FROM lyric_document_language_overrides WHERE document_id = ?",
+                (document_id,),
+            )
+            return cursor.rowcount > 0
+
+    def delete_generated(self, document_id: str) -> int:
+        """Delete only generated fallback for one document."""
+
+        with self._database.transaction() as connection:
+            cursor = connection.execute(
+                """
+                DELETE FROM lyric_representation_candidates
+                WHERE document_id = ? AND provenance = 'generated'
+                """,
+                (document_id,),
+            )
+            return cursor.rowcount
 
     def put_candidates(self, candidates: tuple[RepresentationCandidate, ...]) -> None:
         """Atomically insert/update provider or imported explicitly aligned values."""
