@@ -10,9 +10,11 @@ under it, and an optional translation forms a third layer.
 
 ## Current status
 
-Stages 1 through 7 are **Completed**. Stage 8 — Review and correction workflow
-is **published with automated verification; real desktop verification remains
-pending**. Stage 9 and later work remain unauthorized.
+Stages 1 through 8 are **Completed**. Stage 8 — Review and correction workflow
+passed its automated gate and accepted real Strawberry/desktop correction,
+restart, preservation, and cleanup matrix on 2026-08-23. Stage 9 —
+Music-directory scanner and batch downloads is Proposed / unauthorized; no
+implementation stage is currently authorized.
 Stage 7 — Desktop MVP passed its automated
 gate and accepted real KDE, playback, recovery, scaling, theme, state, and
 longer-run verification on 2026-08-23. Native Qt/Wayland interactive resizing

@@ -165,20 +165,18 @@ def test_project_state_contains_the_continuation_contract() -> None:
     assert "/home/example/Documents/LyricFlow/" in content
 
 
-def test_agent_todo_authorizes_only_stage_eight() -> None:
+def test_agent_todo_proposes_stage_nine_without_authorizing_it() -> None:
     content = (REPOSITORY_ROOT / "AGENT_TODO.md").read_text(encoding="utf-8")
 
-    assert content.startswith(
-        "# Active stage — Stage 8 Review and correction workflow\n"
-    )
-    assert (
-        "Stage 8 — Review and correction workflow is **Implementation complete;\n"
-        "verification pending**"
-    ) in content
-    assert "Stage 7 — Desktop MVP" in content
+    assert content.startswith("# Proposed next stage — not authorized\n")
+    assert "Stage 8 — Review and correction workflow is **Completed**" in content
     assert "**Completed**" in content
-    assert "No Stage 9 or later implementation is authorized" in content
-    assert "Do not implement the full-screen `lyricflow tui`" in content
+    assert (
+        "Stage 9 — Music-directory scanner and batch downloads is Proposed /" in content
+    )
+    assert "unauthorized" in content
+    assert "There is no currently authorized implementation stage" in content
+    assert "Do not implement Stage 9" in content
     assert "without separate explicit user authorization" in content
 
 
@@ -188,8 +186,11 @@ def test_manifest_is_inventory_not_authority() -> None:
     )
 
     assert manifest["implementation_authority"] == "AGENT_TODO.md"
-    assert manifest["authorized_stage"] == "Stage 8 — Review and correction workflow"
-    assert manifest["proposed_stage"] is None
+    assert manifest["authorized_stage"] is None
+    assert (
+        manifest["proposed_stage"]
+        == "Stage 9 — Music-directory scanner and batch downloads"
+    )
     assert all((REPOSITORY_ROOT / path).is_file() for path in manifest["files"])
 
 
