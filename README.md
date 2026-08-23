@@ -10,12 +10,14 @@ under it, and an optional translation forms a third layer.
 
 ## Current status
 
-Stages 1 through 8 are **Completed**. Stage 8 — Review and correction workflow
+Stages 1 through 9 are **Completed**. Stage 8 — Review and correction workflow
 passed its automated gate and accepted real Strawberry/desktop correction,
 restart, preservation, and cleanup matrix on 2026-08-23. Stage 9 —
-Music-directory scanner and batch downloads has a complete implementation
-checkpoint and is verification pending. Stage 10 and later work remain
-unauthorized.
+Music-directory scanner and batch downloads passed its automated and real
+disposable-directory migration, incremental, move/delete, filename-fallback,
+batch-download/review, preservation, desktop-worker, and cleanup gates later
+that day. Stage 10 is Proposed / unauthorized, and there is no active
+implementation stage.
 Stage 7 — Desktop MVP passed its automated
 gate and accepted real KDE, playback, recovery, scaling, theme, state, and
 longer-run verification on 2026-08-23. Native Qt/Wayland interactive resizing
@@ -132,8 +134,9 @@ Supporting authorities:
   real KDE/player/state/resource evidence, and accepted limitations.
 - `docs/STAGE_8_COMPLETION.md` — completed Stage 8 implementation, automated,
   real desktop, cleanup, publication, and CI evidence.
-- `docs/STAGE_9_COMPLETION.md` — Stage 9 implementation, automated, and pending
-  manual-verification evidence.
+- `docs/STAGE_9_COMPLETION.md` — completed Stage 9 implementation, automated,
+  disposable-directory, preservation, desktop-worker, cleanup, and publication
+  evidence.
 - `docs/PRODUCT_GAP_RESEARCH.md` — bounded public product-feedback findings and
   Stage 7/future/rejected scope decisions.
 - `docs/adr/0010-stage4-lyrics-resolution.md` — accepted Stage 4 precedence,

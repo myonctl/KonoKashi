@@ -16,12 +16,18 @@ unreleased.
   review/status; CLI automation; and background desktop scan/cancel controls.
 - Added append-only schema 8, safe aggregate library diagnostics, ADR 0015, and
   deterministic cancellation, no-tag-edit, policy, resume, 200-file worker
-  bound, and simulated 10,000-item responsive-desktop regressions. Stage 9
-  remains verification pending until publication/CI and the accepted small-test-
-  directory matrix.
+  bound, and simulated 10,000-item responsive-desktop regressions.
 - Published Stage 9 implementation commit `936279c` under `myonctl`; exact-SHA
   GitHub Actions run `32643929046` passed the complete quality job in 54 seconds.
-  Stage 9 remains verification pending at the required small-directory gate.
+  Evidence commit `27a612d` is also published, and run `32644177784` passed.
+- Accepted the complete real Stage 9 disposable-directory matrix: migration,
+  initial and unchanged scans, same-filesystem move, missing/restoration,
+  conservative filename fallback, explicit download/review behavior, unchanged
+  audio hashes/sizes/mtimes, real desktop-worker responsiveness, and final
+  schema-8/root/review cleanup all passed. The post-matrix non-editable closure
+  gate passed 510 tests plus Ruff, format, mypy, doctor, installed CLI smokes,
+  and final storage/library checks. Stage 9 is Completed; Stage 10 — Packaging
+  and v1 release is Proposed / unauthorized.
 - Authorized the repository-defined Stage 8 Review and correction workflow on
   2026-08-23 after confirming it remains exactly the roadmap's alternative
   lyric selection, source-identity correction, match approval/rejection,
