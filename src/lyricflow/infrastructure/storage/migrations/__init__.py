@@ -379,6 +379,21 @@ MIGRATIONS: tuple[Migration, ...] = (
             """,
         ),
     ),
+    Migration(
+        6,
+        "desktop interaction settings",
+        (
+            """
+            CREATE TABLE desktop_interaction_settings (
+                settings_id INTEGER PRIMARY KEY CHECK (settings_id = 1),
+                allow_lyric_selection INTEGER NOT NULL CHECK (
+                    allow_lyric_selection IN (0, 1)
+                ),
+                updated_at TEXT NOT NULL
+            )
+            """,
+        ),
+    ),
 )
 
 CURRENT_SCHEMA_VERSION = MIGRATIONS[-1].version

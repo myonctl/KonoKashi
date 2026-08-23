@@ -9,6 +9,7 @@ import pytest
 
 from lyricflow.application.representation_diagnostics import render_representations
 from lyricflow.application.representations import RepresentationService
+from lyricflow.application.settings import DesktopInteractionSettings
 from lyricflow.domain.lyrics import (
     ApprovalState,
     ContentProvenance,
@@ -342,6 +343,17 @@ def test_display_settings_default_and_fresh_process_round_trip(tmp_path: Path) -
     first.put_representation_display(expected)
 
     assert open_storage(path).settings.get_representation_display() == expected
+
+
+def test_desktop_interaction_defaults_passive_and_round_trips(tmp_path: Path) -> None:
+    path = tmp_path / "desktop-interaction.sqlite3"
+    first = open_storage(path).settings
+    assert first.get_desktop_interaction() == DesktopInteractionSettings(False)
+
+    expected = DesktopInteractionSettings(True)
+    first.put_desktop_interaction(expected)
+
+    assert open_storage(path).settings.get_desktop_interaction() == expected
 
 
 def test_display_settings_control_each_diagnostic_preview_layer(tmp_path: Path) -> None:

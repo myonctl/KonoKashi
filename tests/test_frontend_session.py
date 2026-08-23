@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import replace
 
 from lyricflow.application.frontend_session import FrontendSessionService
+from lyricflow.application.settings import DesktopInteractionSettings
 from lyricflow.domain.identity import YouTubeIdentity
 from lyricflow.domain.lyrics import (
     LyricsResolutionResult,
@@ -64,6 +65,12 @@ class _Lyrics:
 
 
 class _Representations:
+    def __init__(self) -> None:
+        self.generated = []
+
+    def generate(self, lyric_document):  # type: ignore[no-untyped-def]
+        self.generated.append(lyric_document.document_id)
+
     def effective_lines(self, lyric_document, kind):  # type: ignore[no-untyped-def]
         line = lyric_document.representations[0].lines[0]
         text = "romaji" if kind is RepresentationKind.ROMANIZED else None
@@ -78,6 +85,7 @@ class _Settings:
 
         self.player = PlayerSelectionConfig(preferred_players=("strawberry",))
         self.display = RepresentationDisplaySettings(True, True, False)
+        self.interactions = DesktopInteractionSettings()
 
     def get_player_selection(self):  # type: ignore[no-untyped-def]
         return self.player
@@ -87,6 +95,12 @@ class _Settings:
 
     def put_representation_display(self, value):  # type: ignore[no-untyped-def]
         self.display = value
+
+    def get_desktop_interaction(self):  # type: ignore[no-untyped-def]
+        return self.interactions
+
+    def put_desktop_interaction(self, value):  # type: ignore[no-untyped-def]
+        self.interactions = value
 
 
 class _Timing:
@@ -98,11 +112,12 @@ def test_frontend_session_combines_existing_services_without_adapter_values() ->
     track = _track()
     selection = _Selection(track)
     settings = _Settings()
+    representations = _Representations()
     cancellations: list[str] = []
     service = FrontendSessionService(
         selection,  # type: ignore[arg-type]
         _Lyrics(track),  # type: ignore[arg-type]
-        _Representations(),  # type: ignore[arg-type]
+        representations,  # type: ignore[arg-type]
         settings,  # type: ignore[arg-type]
         _Timing(),  # type: ignore[arg-type]
         lambda: cancellations.append("cancelled"),
@@ -123,9 +138,13 @@ def test_frontend_session_combines_existing_services_without_adapter_values() ->
     )
     assert len(bundle.representations) == 3
     assert bundle.representations[0].text == "romaji"
+    assert representations.generated == [bundle.resolution.document.document_id]  # type: ignore[union-attr]
 
     changed = RepresentationDisplaySettings(False, True, True)
     service.put_display_settings(changed)
     assert settings.display == changed
+    interactions = DesktopInteractionSettings(True)
+    service.put_interaction_settings(interactions)
+    assert settings.interactions == interactions
     service.cancel_inflight()
     assert cancellations == ["cancelled"]

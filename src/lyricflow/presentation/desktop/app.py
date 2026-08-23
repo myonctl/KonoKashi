@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import signal
 import sys
 from collections.abc import Callable, Sequence
 from pathlib import Path
@@ -67,4 +68,19 @@ def run_desktop(
                 (str(error),),
             )
         )
-    return application.exec()
+    previous_sigint = None
+    try:
+        previous_sigint = signal.getsignal(signal.SIGINT)
+
+        def stop_from_terminal(_signum: int, _frame: object) -> None:
+            application.exit(130)
+
+        signal.signal(signal.SIGINT, stop_from_terminal)
+    except ValueError:
+        # Embedders may run the Qt application outside Python's main thread.
+        previous_sigint = None
+    try:
+        return application.exec()
+    finally:
+        if previous_sigint is not None:
+            signal.signal(signal.SIGINT, previous_sigint)

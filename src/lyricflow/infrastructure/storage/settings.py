@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 from lyricflow.application.settings import (
+    DesktopInteractionSettings,
+    default_desktop_interaction_settings,
     default_player_selection_config,
     default_representation_display_settings,
 )
@@ -144,4 +146,39 @@ class SQLiteSettingsRepository:
                     int(settings.show_translated),
                     utc_now_text(),
                 ),
+            )
+
+    def get_desktop_interaction(self) -> DesktopInteractionSettings:
+        """Return durable desktop mechanics or passive defaults."""
+
+        with self._database.connection(readonly=True) as connection:
+            row = connection.execute(
+                """
+                SELECT allow_lyric_selection
+                FROM desktop_interaction_settings WHERE settings_id = 1
+                """
+            ).fetchone()
+        if row is None:
+            return default_desktop_interaction_settings()
+        value = row["allow_lyric_selection"]
+        if value not in (0, 1):
+            raise InvalidStoredDataError(
+                "stored desktop interaction setting is invalid"
+            )
+        return DesktopInteractionSettings(bool(value))
+
+    def put_desktop_interaction(self, settings: DesktopInteractionSettings) -> None:
+        """Persist desktop interaction mechanics independently of lyric layers."""
+
+        with self._database.transaction() as connection:
+            connection.execute(
+                """
+                INSERT INTO desktop_interaction_settings(
+                    settings_id, allow_lyric_selection, updated_at
+                ) VALUES (1, ?, ?)
+                ON CONFLICT(settings_id) DO UPDATE SET
+                    allow_lyric_selection = excluded.allow_lyric_selection,
+                    updated_at = excluded.updated_at
+                """,
+                (int(settings.allow_lyric_selection), utc_now_text()),
             )

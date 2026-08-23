@@ -8,10 +8,12 @@ from collections.abc import Callable
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 import pytest
+from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QApplication
 
 from lyricflow.application.frontend_session import FrontendLyricsBundle
 from lyricflow.application.playback_clock import PlaybackClock
+from lyricflow.application.settings import DesktopInteractionSettings
 from lyricflow.application.sync_session import PlaybackSyncSession
 from lyricflow.domain.lyrics import LyricsResolutionResult, LyricsResolutionStatus
 from lyricflow.domain.models import (
@@ -27,7 +29,7 @@ from lyricflow.domain.tracks import (
     ResolvedTrack,
 )
 from lyricflow.presentation.desktop.coordinator import DesktopCoordinator
-from lyricflow.presentation.desktop.main_window import MainWindow
+from lyricflow.presentation.desktop.main_window import DesktopSettingsUpdate, MainWindow
 from tests.test_desktop_state import _snapshot, _track
 
 
@@ -80,6 +82,8 @@ class _Frontend:
         self.selected = selected
         self.load_calls: list[ResolvedTrack] = []
         self.cancellations = 0
+        self.display_settings: RepresentationDisplaySettings | None = None
+        self.interaction_settings: DesktopInteractionSettings | None = None
 
     def select_track(self, players: PlayerListResult) -> PlayerSelectionResult:
         del players
@@ -103,7 +107,10 @@ class _Frontend:
         )
 
     def put_display_settings(self, settings: RepresentationDisplaySettings) -> None:
-        del settings
+        self.display_settings = settings
+
+    def put_interaction_settings(self, settings: DesktopInteractionSettings) -> None:
+        self.interaction_settings = settings
 
     def cancel_inflight(self) -> None:
         self.cancellations += 1
@@ -164,6 +171,30 @@ class _DeferredCoordinator(_ImmediateCoordinator):
     def complete_next(self) -> None:
         callback, result, error = self.pending.pop(0)
         callback(result, error)
+
+
+def test_settings_update_applies_and_persists_opt_in_selection(
+    qt_app: QApplication,
+) -> None:
+    window = MainWindow()
+    coordinator = _ImmediateCoordinator(qt_app, window)
+    frontend = _Frontend(None)
+    coordinator._frontend = frontend
+    display = RepresentationDisplaySettings(False, True, True)
+    interactions = DesktopInteractionSettings(True)
+
+    coordinator._save_display_settings(DesktopSettingsUpdate(display, interactions))
+
+    assert window.representation_settings == display
+    assert window.interaction_settings == interactions
+    assert (
+        window.active_band.textInteractionFlags()
+        & Qt.TextInteractionFlag.TextSelectableByMouse
+    )
+    assert frontend.display_settings == display
+    assert frontend.interaction_settings == interactions
+    coordinator.close()
+    window.close()
 
 
 def _install_timed_source(

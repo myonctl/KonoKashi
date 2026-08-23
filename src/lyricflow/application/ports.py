@@ -7,6 +7,7 @@ from datetime import datetime
 from enum import Enum
 from typing import Protocol
 
+from lyricflow.application.settings import DesktopInteractionSettings
 from lyricflow.domain.identity import LocalFileIdentity, SourceIdentity
 from lyricflow.domain.lyrics import (
     LocalLyricsResult,
@@ -248,6 +249,12 @@ class SettingsRepositoryPort(Protocol):
         self, settings: RepresentationDisplaySettings
     ) -> None:
         """Atomically persist independent original/romanized/translated toggles."""
+
+    def get_desktop_interaction(self) -> DesktopInteractionSettings:
+        """Return durable desktop mechanics or their passive defaults."""
+
+    def put_desktop_interaction(self, settings: DesktopInteractionSettings) -> None:
+        """Persist opt-in desktop interaction mechanics."""
 
 
 class LyricsRepositoryPort(Protocol):

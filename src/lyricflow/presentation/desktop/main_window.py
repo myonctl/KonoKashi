@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from dataclasses import dataclass
 from html import escape
+from math import sqrt
 
-from PySide6.QtCore import QEvent, Qt, Signal
-from PySide6.QtGui import QFont, QFontMetrics, QPainter, QPalette
+from PySide6.QtCore import QEvent, QSize, Qt, QTimer, Signal
+from PySide6.QtGui import QFont, QFontMetrics, QPainter, QPalette, QResizeEvent
 from PySide6.QtWidgets import (
     QCheckBox,
     QDialog,
@@ -28,6 +29,7 @@ from lyricflow.application.desktop_state import (
     DesktopLyricsState,
     DesktopViewState,
 )
+from lyricflow.application.settings import DesktopInteractionSettings
 from lyricflow.domain.representations import RepresentationDisplaySettings
 
 
@@ -53,14 +55,23 @@ class ElidingLabel(QLabel):
         # Qt tooltips auto-detect rich text, so escape untrusted metadata before
         # handing it to that surface while the painted label remains plain text.
         self.setToolTip(escape(text))
+        self.updateGeometry()
         self.update()
 
     def text(self) -> str:
         return self._full_text
 
+    def sizeHint(self) -> QSize:
+        metrics = QFontMetrics(self.font())
+        return QSize(0, metrics.lineSpacing() + 6)
+
+    def minimumSizeHint(self) -> QSize:
+        return self.sizeHint()
+
     def paintEvent(self, event: QEvent) -> None:
         del event
         painter = QPainter(self)
+        painter.setFont(self.font())
         painter.setPen(self.palette().color(QPalette.ColorRole.WindowText))
         metrics = QFontMetrics(self.font())
         text = metrics.elidedText(
@@ -92,24 +103,92 @@ def _group_text(groups: tuple[DesktopLyricGroup, ...]) -> str:
     return "\n\n".join(rendered)
 
 
-class LyricBand(QLabel):
+def _lyric_layer_label(accessible_name: str) -> QLabel:
+    label = _plain_label()
+    label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+    label.setWordWrap(True)
+    label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
+    label.setAccessibleName(accessible_name)
+    return label
+
+
+class _LyricGroupWidget(QWidget):
+    """Three reusable plain-text labels for one aligned representation group."""
+
+    def __init__(self, *, active: bool) -> None:
+        super().__init__()
+        self._active = active
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(1)
+        region = "current" if active else "nearby"
+        self.original = _lyric_layer_label(f"Original {region} lyric")
+        self.romanized = _lyric_layer_label(f"Romanized {region} lyric")
+        self.translation = _lyric_layer_label(f"Translated {region} lyric")
+        layout.addWidget(self.original)
+        layout.addWidget(self.romanized)
+        layout.addWidget(self.translation)
+
+    def set_group(self, group: DesktopLyricGroup) -> None:
+        for label, text in (
+            (self.original, group.original),
+            (self.romanized, group.romanized_or_transliterated),
+            (self.translation, group.translation),
+        ):
+            label.setText(text or "")
+            label.setVisible(text is not None)
+
+    def set_point_size(self, original_point_size: float) -> None:
+        for label, point_size, weight in (
+            (
+                self.original,
+                original_point_size,
+                QFont.Weight.DemiBold if self._active else QFont.Weight.Normal,
+            ),
+            (self.romanized, original_point_size * 0.78, QFont.Weight.Normal),
+            (self.translation, original_point_size * 0.7, QFont.Weight.Normal),
+        ):
+            font = label.font()
+            font.setPointSizeF(point_size)
+            font.setWeight(weight)
+            label.setFont(font)
+
+    def set_selection_enabled(self, enabled: bool) -> None:
+        for label in (self.original, self.romanized, self.translation):
+            label.setTextInteractionFlags(
+                (
+                    Qt.TextInteractionFlag.TextSelectableByMouse
+                    | Qt.TextInteractionFlag.TextSelectableByKeyboard
+                )
+                if enabled
+                else Qt.TextInteractionFlag.NoTextInteraction
+            )
+            label.setCursor(
+                Qt.CursorShape.IBeamCursor if enabled else Qt.CursorShape.ArrowCursor
+            )
+
+
+class LyricBand(QWidget):
     """A reusable plain-text band for one semantic lyric context region."""
+
+    _MAX_VISIBLE_GROUPS = 8
 
     def __init__(self, *, active: bool = False) -> None:
         super().__init__()
-        self.setTextFormat(Qt.TextFormat.PlainText)
-        self.setWordWrap(True)
-        self.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._active = active
+        self._groups: tuple[DesktopLyricGroup, ...] = ()
+        self._group_widgets: list[_LyricGroupWidget] = []
+        self._selection_enabled = False
+        initial_point_size = self.font().pointSizeF()
+        self._point_size = initial_point_size if initial_point_size > 0 else 10.0
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
-        self.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByKeyboard)
-        font = self.font()
+        self._layout = QVBoxLayout(self)
+        self._layout.setContentsMargins(0, 0, 0, 0)
+        self._layout.setSpacing(8 if active else 4)
+        self.set_selection_enabled(False)
         if active:
-            font.setPointSizeF(max(18.0, font.pointSizeF() * 1.8))
-            font.setWeight(QFont.Weight.DemiBold)
             self.setAccessibleName("Current lyric")
-            self.setMinimumHeight(100)
         else:
-            font.setPointSizeF(max(11.0, font.pointSizeF() * 1.1))
             self.setAccessibleName("Nearby lyric")
             palette = self.palette()
             palette.setColor(
@@ -117,20 +196,93 @@ class LyricBand(QLabel):
                 palette.color(QPalette.ColorRole.PlaceholderText),
             )
             self.setPalette(palette)
-            self.setMinimumHeight(54)
+
+    def set_responsive_size(self, point_size: float, minimum_height: int) -> None:
+        """Apply one logical-size typography update without changing content."""
+
+        if (
+            abs(point_size - self._point_size) < 0.01
+            and minimum_height == self.minimumHeight()
+        ):
+            return
+        font = self.font()
+        font.setPointSizeF(point_size)
+        font.setWeight(QFont.Weight.DemiBold if self._active else QFont.Weight.Normal)
         self.setFont(font)
+        self._point_size = point_size
+        self.setMinimumHeight(minimum_height)
+        for widget in self._group_widgets:
+            widget.set_point_size(point_size)
 
     def set_groups(self, groups: tuple[DesktopLyricGroup, ...]) -> None:
-        text = _group_text(groups)
-        self.setText(text)
-        self.setVisible(bool(text))
+        self._groups = groups
+        self._render_groups()
+
+    def set_selection_enabled(self, enabled: bool) -> None:
+        """Make copying lyrics an explicit opt-in interaction mechanic."""
+
+        self._selection_enabled = enabled
+        self.setCursor(
+            Qt.CursorShape.IBeamCursor if enabled else Qt.CursorShape.ArrowCursor
+        )
+        for widget in self._group_widgets:
+            widget.set_selection_enabled(enabled)
+
+    def text(self) -> str:
+        """Expose the rendered plain text for accessibility-oriented tests."""
+
+        return _group_text(self._groups)
+
+    def textInteractionFlags(self) -> Qt.TextInteractionFlag:
+        if self._selection_enabled:
+            return (
+                Qt.TextInteractionFlag.TextSelectableByMouse
+                | Qt.TextInteractionFlag.TextSelectableByKeyboard
+            )
+        return Qt.TextInteractionFlag.NoTextInteraction
+
+    @staticmethod
+    def textFormat() -> Qt.TextFormat:
+        return Qt.TextFormat.PlainText
+
+    @staticmethod
+    def openExternalLinks() -> bool:
+        return False
+
+    def _render_groups(self) -> None:
+        visible_groups = self._groups[: self._MAX_VISIBLE_GROUPS]
+        while len(self._group_widgets) < len(visible_groups):
+            widget = _LyricGroupWidget(active=self._active)
+            widget.set_point_size(self._point_size)
+            widget.set_selection_enabled(self._selection_enabled)
+            self._layout.addWidget(widget)
+            self._group_widgets.append(widget)
+        for index, widget in enumerate(self._group_widgets):
+            if index < len(visible_groups):
+                widget.set_group(visible_groups[index])
+                widget.setVisible(True)
+            else:
+                widget.setVisible(False)
+        self.setVisible(bool(_group_text(visible_groups)))
+
+
+@dataclass(frozen=True, slots=True)
+class DesktopSettingsUpdate:
+    """One settings-dialog result spanning content and interaction policy."""
+
+    representations: RepresentationDisplaySettings
+    interactions: DesktopInteractionSettings
 
 
 class RepresentationSettingsDialog(QDialog):
     """Small semantic editor for the existing shared display settings."""
 
     def __init__(
-        self, settings: RepresentationDisplaySettings, parent: QWidget | None = None
+        self,
+        settings: RepresentationDisplaySettings,
+        parent: QWidget | None = None,
+        *,
+        interaction_settings: DesktopInteractionSettings | None = None,
     ) -> None:
         super().__init__(parent)
         self.setWindowTitle("Lyric display")
@@ -151,6 +303,14 @@ class RepresentationSettingsDialog(QDialog):
         layout.addWidget(self.original)
         layout.addWidget(self.romanized)
         layout.addWidget(self.translated)
+        self.lyric_selection = QCheckBox("Allow lyric text selection")
+        self.lyric_selection.setChecked(
+            (interaction_settings or DesktopInteractionSettings()).allow_lyric_selection
+        )
+        self.lyric_selection.setToolTip(
+            "When enabled, lyric lines use an I-beam cursor and can be selected."
+        )
+        layout.addWidget(self.lyric_selection)
         buttons = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Save
             | QDialogButtonBox.StandardButton.Cancel
@@ -165,6 +325,9 @@ class RepresentationSettingsDialog(QDialog):
             self.romanized.isChecked(),
             self.translated.isChecked(),
         )
+
+    def interaction_value(self) -> DesktopInteractionSettings:
+        return DesktopInteractionSettings(self.lyric_selection.isChecked())
 
 
 class DiagnosticsDialog(QDialog):
@@ -209,10 +372,23 @@ class MainWindow(QMainWindow):
         self,
         settings: RepresentationDisplaySettings | None = None,
         parent: QWidget | None = None,
+        *,
+        interaction_settings: DesktopInteractionSettings | None = None,
     ) -> None:
         super().__init__(parent)
         self._settings = settings or RepresentationDisplaySettings()
+        self._interaction_settings = (
+            interaction_settings or DesktopInteractionSettings()
+        )
         self._state = DesktopViewState(DesktopLyricsState.WAITING, "Waiting for media…")
+        system_point_size = self.font().pointSizeF()
+        self._base_point_size = system_point_size if system_point_size > 0 else 10.0
+        self._pending_typography_size = QSize(760, 720)
+        self._applied_typography_scale: float | None = None
+        self._resize_typography_timer = QTimer(self)
+        self._resize_typography_timer.setSingleShot(True)
+        self._resize_typography_timer.setInterval(80)
+        self._resize_typography_timer.timeout.connect(self._finish_resize_typography)
         self.setWindowTitle("LyricFlow")
         self.setMinimumSize(420, 420)
         self.resize(760, 720)
@@ -220,16 +396,11 @@ class MainWindow(QMainWindow):
         root = QWidget()
         root.setAccessibleName("LyricFlow main view")
         layout = QVBoxLayout(root)
-        layout.setContentsMargins(28, 24, 28, 24)
-        layout.setSpacing(14)
+        self._root_layout = layout
 
         header = QHBoxLayout()
         metadata = QVBoxLayout()
         self.title_label = ElidingLabel("LyricFlow")
-        title_font = self.title_label.font()
-        title_font.setPointSizeF(max(16.0, title_font.pointSizeF() * 1.45))
-        title_font.setWeight(QFont.Weight.DemiBold)
-        self.title_label.setFont(title_font)
         self.title_label.setAccessibleName("Track title")
         self.artist_label = ElidingLabel("")
         self.artist_label.setAccessibleName("Track artist")
@@ -269,6 +440,7 @@ class MainWindow(QMainWindow):
         self.static_lyrics.setLineWrapMode(QPlainTextEdit.LineWrapMode.WidgetWidth)
         self.static_lyrics.setAccessibleName("Untimed lyrics")
         self.static_lyrics.setVisible(False)
+        self._apply_interaction_settings()
         layout.addWidget(self.static_lyrics, 1)
         layout.addStretch(1)
 
@@ -299,7 +471,79 @@ class MainWindow(QMainWindow):
         layout.addWidget(self.source_label)
 
         self.setCentralWidget(root)
+        self._apply_responsive_typography(
+            self._responsive_scale(self.width(), self.height())
+        )
         self.render_state(self._state)
+
+    def resizeEvent(self, event: QResizeEvent) -> None:
+        """Scale lyric presentation with logical window area, not device pixels."""
+
+        super().resizeEvent(event)
+        self._pending_typography_size = event.size()
+        self._resize_typography_timer.start()
+
+    @staticmethod
+    def _responsive_scale(width: int, height: int) -> float:
+        # The geometric mean responds to either useful width or height while
+        # avoiding runaway sizes on an ultrawide or very tall window. Qt maps
+        # these point sizes to the current screen's device-pixel ratio.
+        area_ratio = max(1, width * height) / (760 * 720)
+        return min(2.2, max(0.8, sqrt(area_ratio)))
+
+    def _finish_resize_typography(self) -> None:
+        size = self._pending_typography_size
+        exact_scale = self._responsive_scale(size.width(), size.height())
+        if (
+            self._applied_typography_scale is None
+            or abs(exact_scale - self._applied_typography_scale) >= 0.002
+        ):
+            self._apply_responsive_typography(exact_scale)
+
+    def _apply_responsive_typography(self, scale: float) -> None:
+        self._applied_typography_scale = scale
+        body_size = self._base_point_size * scale
+
+        title_font = self.title_label.font()
+        title_font.setPointSizeF(max(13.0, self._base_point_size * 1.45 * scale))
+        title_font.setWeight(QFont.Weight.DemiBold)
+        self.title_label.setFont(title_font)
+
+        for label in (
+            self.artist_label,
+            self.status_label,
+            self.playback_label,
+            self.time_label,
+            self.source_label,
+        ):
+            font = label.font()
+            font.setPointSizeF(max(8.0, body_size))
+            label.setFont(font)
+
+        for button in (self.settings_button, self.details_button):
+            font = button.font()
+            font.setPointSizeF(max(8.0, body_size))
+            button.setFont(font)
+
+        static_font = self.static_lyrics.font()
+        static_font.setPointSizeF(max(9.0, self._base_point_size * 1.1 * scale))
+        self.static_lyrics.setFont(static_font)
+        self.previous_band.set_responsive_size(
+            max(9.0, self._base_point_size * 1.1 * scale),
+            round(54 * scale),
+        )
+        self.active_band.set_responsive_size(
+            max(15.0, self._base_point_size * 1.8 * scale),
+            round(100 * scale),
+        )
+        self.next_band.set_responsive_size(
+            max(9.0, self._base_point_size * 1.1 * scale),
+            round(54 * scale),
+        )
+        margin_x = round(28 * min(1.6, scale))
+        margin_y = round(24 * min(1.6, scale))
+        self._root_layout.setContentsMargins(margin_x, margin_y, margin_x, margin_y)
+        self._root_layout.setSpacing(round(14 * min(1.6, scale)))
 
     @property
     def state(self) -> DesktopViewState:
@@ -309,12 +553,38 @@ class MainWindow(QMainWindow):
     def representation_settings(self) -> RepresentationDisplaySettings:
         return self._settings
 
+    @property
+    def interaction_settings(self) -> DesktopInteractionSettings:
+        return self._interaction_settings
+
     def set_representation_settings(
         self, settings: RepresentationDisplaySettings
     ) -> None:
         """Update the dialog baseline after shared settings load or save."""
 
         self._settings = settings
+
+    def set_interaction_settings(self, settings: DesktopInteractionSettings) -> None:
+        """Update and apply the persisted interaction mechanics."""
+
+        self._interaction_settings = settings
+        self._apply_interaction_settings()
+
+    def _apply_interaction_settings(self) -> None:
+        enabled = self._interaction_settings.allow_lyric_selection
+        for band in (self.previous_band, self.active_band, self.next_band):
+            band.set_selection_enabled(enabled)
+        if enabled:
+            self.static_lyrics.setTextInteractionFlags(
+                Qt.TextInteractionFlag.TextSelectableByMouse
+                | Qt.TextInteractionFlag.TextSelectableByKeyboard
+            )
+            self.static_lyrics.viewport().setCursor(Qt.CursorShape.IBeamCursor)
+        else:
+            self.static_lyrics.setTextInteractionFlags(
+                Qt.TextInteractionFlag.NoTextInteraction
+            )
+            self.static_lyrics.viewport().setCursor(Qt.CursorShape.ArrowCursor)
 
     def render_state(self, state: DesktopViewState) -> None:
         """Render one immutable semantic state without external side effects."""
@@ -378,10 +648,18 @@ class MainWindow(QMainWindow):
         )
 
     def _open_settings(self) -> None:
-        dialog = RepresentationSettingsDialog(self._settings, self)
+        dialog = RepresentationSettingsDialog(
+            self._settings,
+            self,
+            interaction_settings=self._interaction_settings,
+        )
         if dialog.exec() == QDialog.DialogCode.Accepted:
             self._settings = dialog.value()
-            self.settings_requested.emit(self._settings)
+            self._interaction_settings = dialog.interaction_value()
+            self._apply_interaction_settings()
+            self.settings_requested.emit(
+                DesktopSettingsUpdate(self._settings, self._interaction_settings)
+            )
 
     def _open_details(self) -> None:
         DiagnosticsDialog(self._state, self).exec()
@@ -396,6 +674,3 @@ def _time_text(value_us: int | None) -> str:
     if hours:
         return f"{hours:d}:{minutes:02d}:{seconds:02d}"
     return f"{minutes:d}:{seconds:02d}"
-
-
-SettingsHandler = Callable[[RepresentationDisplaySettings], None]

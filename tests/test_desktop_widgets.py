@@ -9,7 +9,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 import pytest
 from PySide6.QtCore import Qt, QTimer
-from PySide6.QtGui import QColor, QPalette
+from PySide6.QtGui import QColor, QFontMetrics, QPalette
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication, QLabel, QWidget
 
@@ -18,6 +18,7 @@ from lyricflow.application.desktop_state import (
     DesktopLyricsState,
     DesktopViewState,
 )
+from lyricflow.application.settings import DesktopInteractionSettings
 from lyricflow.domain.synchronization import ClockHealth, PlaybackState
 from lyricflow.presentation.desktop.app import run_desktop
 from lyricflow.presentation.desktop.main_window import (
@@ -77,6 +78,11 @@ def test_main_window_launches_and_renders_plain_multilingual_text(
     assert "君の声が聞こえる" in window.active_band.text()
     assert "Kimi no koe ga kikoeru" in window.active_band.text()
     assert "I can hear your voice" in window.active_band.text()
+    group = window.active_band._group_widgets[0]
+    original_size = group.original.font().pointSizeF()
+    romanized_size = group.romanized.font().pointSizeF()
+    translation_size = group.translation.font().pointSizeF()
+    assert original_size > romanized_size > translation_size
     assert window.active_band.accessibleName() == "Current lyric"
     assert window.progress.value() == 420
     assert window.title_label.toolTip() == state.title
@@ -128,7 +134,8 @@ def test_untrusted_unicode_and_markup_render_as_plain_text(
     window.show()
     qt_app.processEvents()
 
-    assert text in window.active_band.text()
+    assert window.active_band.text().splitlines()[0] == text
+    assert window.active_band._group_widgets[0].original.text() == text
     assert window.active_band.textFormat() is Qt.TextFormat.PlainText
     assert not window.active_band.openExternalLinks()
     window.close()
@@ -173,6 +180,92 @@ def test_representative_logical_sizes_keep_current_lyric_valid_and_visible(
     assert geometry.y() >= 0
     assert window.minimumWidth() <= width
     assert window.styleSheet() == ""
+    window.close()
+
+
+def test_lyric_typography_scales_with_logical_window_area(
+    qt_app: QApplication,
+) -> None:
+    window = MainWindow()
+    window.render_state(_state())
+    window.resize(420, 420)
+    window.show()
+    qt_app.processEvents()
+    QTest.qWait(100)
+    compact_active_size = window.active_band.font().pointSizeF()
+    compact_title_size = window.title_label.font().pointSizeF()
+
+    window.resize(1440, 900)
+    qt_app.processEvents()
+    QTest.qWait(100)
+
+    assert window.active_band.font().pointSizeF() > compact_active_size
+    assert window.title_label.font().pointSizeF() > compact_title_size
+    assert (
+        window.previous_band.font().pointSizeF()
+        < window.active_band.font().pointSizeF()
+    )
+    assert window.styleSheet() == ""
+    window.close()
+
+
+def test_resize_burst_bounds_expensive_lyric_relayout(
+    qt_app: QApplication, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    window = MainWindow()
+    window.render_state(_state())
+    window.show()
+    qt_app.processEvents()
+    resize_calls = 0
+    set_responsive_size = window.active_band.set_responsive_size
+
+    def counted_resize(point_size: float, minimum_height: int) -> None:
+        nonlocal resize_calls
+        resize_calls += 1
+        set_responsive_size(point_size, minimum_height)
+
+    monkeypatch.setattr(window.active_band, "set_responsive_size", counted_resize)
+    for width in range(760, 1_161, 2):
+        window.resize(width, 720)
+        qt_app.processEvents()
+    QTest.qWait(100)
+
+    assert resize_calls <= 1
+    assert window.active_band.font().pointSizeF() > 18
+    window.close()
+
+
+def test_scaled_title_has_vertical_painting_room_and_selection_is_opt_in(
+    qt_app: QApplication,
+) -> None:
+    window = MainWindow()
+    window.render_state(_state())
+    window.resize(1440, 900)
+    window.show()
+    qt_app.processEvents()
+
+    title_metrics = QFontMetrics(window.title_label.font())
+    assert window.title_label.height() >= title_metrics.lineSpacing() + 4
+    assert (
+        window.active_band.textInteractionFlags()
+        is Qt.TextInteractionFlag.NoTextInteraction
+    )
+    assert window.active_band.cursor().shape() is Qt.CursorShape.ArrowCursor
+    assert (
+        window.static_lyrics.textInteractionFlags()
+        is Qt.TextInteractionFlag.NoTextInteraction
+    )
+
+    window.set_interaction_settings(DesktopInteractionSettings(True))
+    assert (
+        window.active_band.textInteractionFlags()
+        & Qt.TextInteractionFlag.TextSelectableByMouse
+    )
+    assert window.active_band.cursor().shape() is Qt.CursorShape.IBeamCursor
+    assert (
+        window.static_lyrics.textInteractionFlags()
+        & Qt.TextInteractionFlag.TextSelectableByMouse
+    )
     window.close()
 
 

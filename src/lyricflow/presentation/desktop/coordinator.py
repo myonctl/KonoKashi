@@ -20,6 +20,7 @@ from lyricflow.application.frontend_session import (
 from lyricflow.application.lyrics_sync import synchronize
 from lyricflow.application.playback_clock import PlaybackClock
 from lyricflow.application.ports import MprisRuntimePort
+from lyricflow.application.settings import DesktopInteractionSettings
 from lyricflow.application.sync_session import PlaybackSyncSession
 from lyricflow.application.sync_state import (
     SnapshotSubscription,
@@ -42,7 +43,7 @@ from lyricflow.infrastructure.lyrics.lrclib import LrclibLyricsProvider
 from lyricflow.infrastructure.mpris.backend import MprisBackendError
 from lyricflow.infrastructure.mpris.qt_dbus_client import create_qt_mpris_runtime
 from lyricflow.infrastructure.storage.bootstrap import open_storage
-from lyricflow.presentation.desktop.main_window import MainWindow
+from lyricflow.presentation.desktop.main_window import DesktopSettingsUpdate, MainWindow
 
 
 class _JobSignals(QObject):
@@ -77,6 +78,7 @@ class _FunctionJob(QRunnable):
 class _InitializedServices:
     frontend: FrontendSessionPort
     settings: RepresentationDisplaySettings
+    interactions: DesktopInteractionSettings
 
 
 def _session_id(track: ResolvedTrack) -> str:
@@ -175,6 +177,7 @@ class DesktopCoordinator(QObject):
         return _InitializedServices(
             frontend,
             storage.settings.get_representation_display(),
+            storage.settings.get_desktop_interaction(),
         )
 
     def _services_initialized(
@@ -195,6 +198,7 @@ class DesktopCoordinator(QObject):
         self._frontend = result.frontend
         self._controller.set_representation_settings(result.settings)
         self._window.set_representation_settings(result.settings)
+        self._window.set_interaction_settings(result.interactions)
         self._refresh_selection()
 
     def _refresh_if_idle(self) -> None:
@@ -460,9 +464,13 @@ class DesktopCoordinator(QObject):
         self._selection_timer.start()
 
     def _save_display_settings(self, value: Any) -> None:
-        if not isinstance(value, RepresentationDisplaySettings):
+        if not isinstance(value, DesktopSettingsUpdate):
             return
-        self._controller.set_representation_settings(value)
+        representations = value.representations
+        interactions = value.interactions
+        self._controller.set_representation_settings(representations)
+        self._window.set_representation_settings(representations)
+        self._window.set_interaction_settings(interactions)
         bundle = self._bundle
         token = self._controller.current_token
         if bundle is not None and token is not None:
@@ -470,7 +478,7 @@ class DesktopCoordinator(QObject):
                 token,
                 bundle.resolution,
                 bundle.representations,
-                value,
+                representations,
             )
             if self._publisher is not None and self._publisher.current is not None:
                 self._controller.accept_snapshot(self._publisher.current)
@@ -479,16 +487,20 @@ class DesktopCoordinator(QObject):
         if frontend is None:
             return
         self._start_job(
-            lambda: self._persist_display_settings(frontend, value),
+            lambda: self._persist_display_settings(
+                frontend, representations, interactions
+            ),
             self._settings_saved,
         )
 
     @staticmethod
     def _persist_display_settings(
         frontend: FrontendSessionPort,
-        value: RepresentationDisplaySettings,
+        representations: RepresentationDisplaySettings,
+        interactions: DesktopInteractionSettings,
     ) -> None:
-        frontend.put_display_settings(value)
+        frontend.put_display_settings(representations)
+        frontend.put_interaction_settings(interactions)
 
     def _settings_saved(
         self, result: object | None, error: BaseException | None

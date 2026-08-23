@@ -34,6 +34,17 @@ unreleased.
   selected metadata/disappearance and genuinely changed sources still
   invalidate immediately. Added coordinator, stale-selection, keyboard-focus,
   Escape-dialog, and fixed-widget-tree regressions.
+- Completed the Stage 7 real KDE matrix and repaired issues it exposed:
+  automatic offline romanization now runs at the shared frontend boundary;
+  logical-area typography scales without clipping the title; romanization and
+  translation use visibly subordinate plain-text layers; lyric selection and
+  the I-beam cursor are persisted opt-in mechanics through append-only schema
+  6; and direct SIGINT exits 130 without a traceback.
+- Recorded accepted real Strawberry/browser playback, pause/seek/track/player
+  recovery, multilingual toggles, untimed/instrumental/no-result states,
+  taskbar/keyboard/window lifecycle, light/dark palettes, and longer-run
+  resource evidence. Native Qt 6.11.1/KWin 6.7.4 Wayland resize latency also
+  reproduced in an empty control; XWayland is the accepted current workaround.
 
 - Activated Stage 6 after explicit user authorization on 2026-08-22 and made
   the accepted future full-screen `lyricflow tui` requirement durable in the

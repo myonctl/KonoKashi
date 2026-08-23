@@ -10,10 +10,11 @@ under it, and an optional translation forms a third layer.
 
 ## Current status
 
-Stages 1 through 6 are **Completed**. Stage 7 — Desktop MVP is **implementation
-complete; verification pending**, with
-implementation and automated verification complete; required real KDE,
-playback, scaling, theme, and longer-run verification remains pending. Stage 5
+Stages 1 through 7 are **Completed**. Stage 7 — Desktop MVP passed its automated
+gate and accepted real KDE, playback, recovery, scaling, theme, state, and
+longer-run verification on 2026-08-23. Native Qt/Wayland interactive resizing
+showed the same pointer lag in an empty PySide6 control; XWayland is the accepted
+current workaround. Stage 5
 — Romanization and multilingual
 layers — passed its published automated gate and real Japanese generation,
 fresh-process correction/reset, and Latin no-duplicate verification. Stage 3 —
@@ -110,8 +111,8 @@ Supporting authorities:
   multilingual/correction/Latin-safety, publication, and CI evidence.
 - `docs/STAGE_6_COMPLETION.md` — completed Stage 6 implementation, automated,
   real-player/timed-lyrics, delay, publication, and CI evidence.
-- `docs/STAGE_7_COMPLETION.md` — Stage 7 implementation, automated evidence,
-  limitations, and the exact pending real KDE verification matrix.
+- `docs/STAGE_7_COMPLETION.md` — completed Stage 7 implementation, automated,
+  real KDE/player/state/resource evidence, and accepted limitations.
 - `docs/PRODUCT_GAP_RESEARCH.md` — bounded public product-feedback findings and
   Stage 7/future/rejected scope decisions.
 - `docs/adr/0010-stage4-lyrics-resolution.md` — accepted Stage 4 precedence,
@@ -258,7 +259,9 @@ deliberate waiting state when no player is available, automatically follows
 player/source changes, invalidates old lyrics before resolving a new track,
 and displays timed, untimed, instrumental, ambiguous, no-result, offline, and
 provider-failure states without diagnostic clutter. Settings edits use the
-same durable original/romanized/translated toggles as the CLI. Provider,
+same durable original/romanized/translated toggles as the CLI and a schema 6
+opt-in lyric-selection mechanic; lyrics are passive by default. Available
+offline romanization is generated at the shared frontend boundary. Provider,
 filesystem, and storage work runs outside the Qt UI thread; in-flight provider
 requests are cancelled on source changes and shutdown. Detailed limitations
 remain available from the Details button.
