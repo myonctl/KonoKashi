@@ -8,7 +8,7 @@ from typing import cast
 
 import pytest
 
-from lyricflow.infrastructure.mpris.metadata_mapper import (
+from lyriflux.infrastructure.mpris.metadata_mapper import (
     full_service_name,
     map_player_snapshot,
 )

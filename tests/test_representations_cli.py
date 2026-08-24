@@ -7,8 +7,8 @@ from pathlib import Path
 
 import pytest
 
-from lyricflow import cli
-from lyricflow.domain.lyrics import (
+from lyriflux import cli
+from lyriflux.domain.lyrics import (
     LyricsProviderCandidate,
     LyricsProviderResult,
     LyricsProviderStatus,

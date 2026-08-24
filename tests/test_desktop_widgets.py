@@ -13,31 +13,31 @@ from PySide6.QtGui import QColor, QFontMetrics, QPalette
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication, QLabel, QPlainTextEdit, QWidget
 
-from lyricflow.application.desktop_state import (
+from lyriflux.application.desktop_state import (
     DesktopLyricGroup,
     DesktopLyricsState,
     DesktopViewState,
 )
-from lyricflow.application.review_corrections import (
+from lyriflux.application.review_corrections import (
     ReviewCorrectionSnapshot,
     TrackAuditEvidence,
 )
-from lyricflow.application.settings import DesktopInteractionSettings
-from lyricflow.domain.identity import YouTubeIdentity
-from lyricflow.domain.lyrics import (
+from lyriflux.application.settings import DesktopInteractionSettings
+from lyriflux.domain.identity import YouTubeIdentity
+from lyriflux.domain.lyrics import (
     LyricsAlternative,
     LyricsMatchConfidence,
     LyricsMatchDecision,
     LyricsProviderCandidate,
 )
-from lyricflow.domain.synchronization import ClockHealth, PlaybackState
-from lyricflow.presentation.desktop.app import run_desktop
-from lyricflow.presentation.desktop.main_window import (
+from lyriflux.domain.synchronization import ClockHealth, PlaybackState
+from lyriflux.presentation.desktop.app import run_desktop
+from lyriflux.presentation.desktop.main_window import (
     DiagnosticsDialog,
     MainWindow,
     RepresentationSettingsDialog,
 )
-from lyricflow.presentation.desktop.review_dialog import (
+from lyriflux.presentation.desktop.review_dialog import (
     CorrectionActionKind,
     ReviewCorrectionDialog,
 )
@@ -45,7 +45,7 @@ from lyricflow.presentation.desktop.review_dialog import (
 
 @pytest.fixture(scope="module")
 def qt_app() -> QApplication:
-    application = QApplication.instance() or QApplication(["lyricflow-test"])
+    application = QApplication.instance() or QApplication(["lyriflux-test"])
     assert isinstance(application, QApplication)
     return application
 
@@ -92,7 +92,7 @@ def test_main_window_launches_and_renders_plain_multilingual_text(
     window.show()
     qt_app.processEvents()
 
-    assert window.windowTitle() == "LyricFlow"
+    assert window.windowTitle() == "LyriFlux"
     assert window.active_band.isVisible()
     assert "君の声が聞こえる" in window.active_band.text()
     assert "Kimi no koe ga kikoeru" in window.active_band.text()
@@ -147,7 +147,10 @@ def test_desktop_entry_point_launches_and_shuts_down_cleanly(
         captured.append(window)
         return Lifecycle()
 
-    assert run_desktop(["lyricflow"], coordinator_factory=factory) == 0
+    assert run_desktop(["lyriflux"], coordinator_factory=factory) == 0
+    assert qt_app.applicationName() == "LyriFlux"
+    assert qt_app.organizationName() == "LyriFlux"
+    assert qt_app.desktopFileName() == "io.github.myonctl.LyriFlux"
     assert len(captured) == 1
     assert captured[0].state.state is DesktopLyricsState.WAITING
     captured[0].close()

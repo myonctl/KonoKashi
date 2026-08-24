@@ -3,14 +3,14 @@ requires = ["setuptools==84.0.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "lyricflow"
+name = "lyriflux"
 version = "1.0.0"
 description = "Local-first synchronized lyrics for Linux MPRIS players"
 readme = "README.md"
 requires-python = ">=3.11"
 license = "LicenseRef-Proprietary"
 license-files = ["LICENSE"]
-authors = [{ name = "LyricFlow contributors" }]
+authors = [{ name = "LyriFlux contributors" }]
 classifiers = [
     "Development Status :: 5 - Production/Stable",
     "Environment :: X11 Applications :: Qt",
@@ -44,13 +44,13 @@ dev = [
 ]
 
 [project.scripts]
-lyricflow = "lyricflow.cli:main"
+lyriflux = "lyriflux.cli:main"
 
 [tool.setuptools]
 package-dir = { "" = "src" }
 
 [tool.setuptools.package-data]
-lyricflow = ["resources/*.desktop.in", "resources/*.svg"]
+lyriflux = ["resources/*.desktop.in", "resources/*.svg"]
 
 [tool.setuptools.packages.find]
 where = ["src"]

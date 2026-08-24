@@ -4,15 +4,15 @@ from __future__ import annotations
 
 import pytest
 
-from lyricflow.application.source_identity import SourceIdentityResolver
-from lyricflow.domain.identity import YouTubeIdentity
-from lyricflow.domain.normalization import (
+from lyriflux.application.source_identity import SourceIdentityResolver
+from lyriflux.domain.identity import YouTubeIdentity
+from lyriflux.domain.normalization import (
     comparison_key,
     normalize_artist,
     normalize_text,
     parse_youtube_title,
 )
-from lyricflow.domain.tracks import ApprovedTrackIdentity, Confidence
+from lyriflux.domain.tracks import ApprovedTrackIdentity, Confidence
 from tests.stage2_helpers import (
     PredictableLocalPaths,
     fixture_snapshot,

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build, compare, inspect, and publish local LyricFlow release artifacts."""
+"""Build, compare, inspect, and publish local LyriFlux release artifacts."""
 
 from __future__ import annotations
 
@@ -18,19 +18,21 @@ from io import BytesIO
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
-APP_ID = "io.github.myonctl.LyricFlow"
+APP_ID = "io.github.myonctl.LyriFlux"
 REQUIRED_WHEEL_SUFFIXES = (
-    "lyricflow/cli.py",
-    f"lyricflow/resources/{APP_ID}.desktop.in",
-    f"lyricflow/resources/{APP_ID}.svg",
+    "lyriflux/cli.py",
+    f"lyriflux/resources/{APP_ID}.desktop.in",
+    f"lyriflux/resources/{APP_ID}.svg",
 )
 REQUIRED_SDIST_SUFFIXES = (
     "LICENSE",
     "README.md",
     "pyproject.toml",
-    f"src/lyricflow/resources/{APP_ID}.desktop.in",
-    f"src/lyricflow/resources/{APP_ID}.svg",
+    f"src/lyriflux/resources/{APP_ID}.desktop.in",
+    f"src/lyriflux/resources/{APP_ID}.svg",
 )
+FORBIDDEN_WHEEL_PREFIXES = ("lyricflow/",)
+FORBIDDEN_SDIST_PARTS = ("/src/lyricflow/",)
 
 
 class ReleaseBuildError(RuntimeError):
@@ -88,22 +90,39 @@ def _canonicalize_sdist(path: Path, epoch: int) -> None:
 
 
 def _build(output: Path, environment: dict[str, str], epoch: int) -> None:
-    subprocess.run(
-        [
-            sys.executable,
-            "-m",
-            "build",
-            "--no-isolation",
-            "--sdist",
-            "--wheel",
-            "--outdir",
-            str(output),
-            str(PROJECT_ROOT),
-        ],
-        cwd=PROJECT_ROOT,
-        env=environment,
-        check=True,
-    )
+    with tempfile.TemporaryDirectory(prefix="lyriflux-release-source-") as source_name:
+        source = Path(source_name) / "source"
+        shutil.copytree(
+            PROJECT_ROOT,
+            source,
+            ignore=shutil.ignore_patterns(
+                ".git",
+                ".venv",
+                ".mypy_cache",
+                ".pytest_cache",
+                ".ruff_cache",
+                "__pycache__",
+                "*.egg-info",
+                "build",
+                "dist",
+            ),
+        )
+        subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "build",
+                "--no-isolation",
+                "--sdist",
+                "--wheel",
+                "--outdir",
+                str(output),
+                str(source),
+            ],
+            cwd=source,
+            env=environment,
+            check=True,
+        )
     source = next(output.glob("*.tar.gz"), None)
     if source is None:
         raise ReleaseBuildError("build did not produce a source distribution")
@@ -153,6 +172,18 @@ def _verify_contents(artifacts: dict[str, Path]) -> None:
         raise ReleaseBuildError(
             f"release artifacts are missing required files: {missing}"
         )
+    forbidden = sorted(
+        name for name in wheel_names if name.startswith(FORBIDDEN_WHEEL_PREFIXES)
+    ) + sorted(
+        name
+        for name in source_names
+        if any(part in f"/{name}" for part in FORBIDDEN_SDIST_PARTS)
+    )
+    if forbidden:
+        raise ReleaseBuildError(
+            "release artifacts contain the legacy lyricflow package: "
+            + ", ".join(forbidden[:5])
+        )
 
 
 def build_release(output_directory: Path, *, force: bool = False) -> tuple[Path, ...]:
@@ -169,8 +200,8 @@ def build_release(output_directory: Path, *, force: bool = False) -> tuple[Path,
         }
     )
     with (
-        tempfile.TemporaryDirectory(prefix="lyricflow-release-a-") as first_name,
-        tempfile.TemporaryDirectory(prefix="lyricflow-release-b-") as second_name,
+        tempfile.TemporaryDirectory(prefix="lyriflux-release-a-") as first_name,
+        tempfile.TemporaryDirectory(prefix="lyriflux-release-b-") as second_name,
     ):
         first_directory = Path(first_name)
         second_directory = Path(second_name)

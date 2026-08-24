@@ -13,12 +13,12 @@ import pytest
 def test_desktop_uses_logical_geometry_at_qt_scale_factors(scale: str) -> None:
     script = """
 from PySide6.QtWidgets import QApplication
-from lyricflow.application.desktop_state import (
+from lyriflux.application.desktop_state import (
     DesktopLyricGroup,
     DesktopLyricsState,
     DesktopViewState,
 )
-from lyricflow.presentation.desktop.main_window import MainWindow
+from lyriflux.presentation.desktop.main_window import MainWindow
 
 app = QApplication(["dpi-test"])
 window = MainWindow()

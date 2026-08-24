@@ -1,12 +1,14 @@
-# LyricFlow
+# LyriFlux
 
-LyricFlow is a planned Linux-first desktop application that detects current
+LyriFlux is a planned Linux-first desktop application that detects current
 playback through MPRIS, resolves track identity conservatively, finds local or
 provider lyrics, and displays synchronized lyrics. For non-Latin scripts, the
 original line remains first, a romanized/transliterated line appears directly
 under it, and an optional translation forms a third layer.
 
-`LyricFlow` is a working name. The current version is 1.0.0.
+The canonical product name is `LyriFlux`; its canonical machine identifier is
+`lyriflux`. The project was renamed from LyricFlow after Stage 10. The current
+version is 1.0.0.
 
 ## Current status
 
@@ -43,7 +45,7 @@ no-result verification.
 The [`myonctl/LyricFlow`](https://github.com/myonctl/LyricFlow) GitHub repository
 is private during pre-alpha development. Its `origin` remote and default branch
 use the conventional `main` workflow. The project is intended to become public
-later, but LyricFlow is **not currently open source**: no open-source license
+later, but LyriFlux is **not currently open source**: no open-source license
 has been selected, and `LICENSE` reserves all rights until that decision is
 made. Public release prerequisites are tracked in `BACKLOG.md`.
 
@@ -87,7 +89,7 @@ authority.
 - Keep provider, player, language, storage, and UI integrations replaceable.
 - Keep operation local-first and do no slow external work on the UI thread.
 - Continue safely from repository evidence without prior conversation context.
-- Keep LyricFlow Python-first. Native Rust is available only for a coherent
+- Keep LyriFlux Python-first. Native Rust is available only for a coherent
   subsystem with measured benefit; there is no whole-project rewrite or daemon.
 - Evolve settings and safe declarative themes through one frontend-neutral
   validated model shared by desktop, future TUI, files, and automation.
@@ -118,6 +120,8 @@ Supporting authorities:
 - `docs/DEPENDENCIES.md` — dependency rationale and replacement paths.
 - `docs/RELEASE.md` — v1 build, installation, backup, upgrade, diagnostics,
   uninstall, end-to-end matrix, and supported-player claims.
+- `docs/PROJECT_RENAME_LYRIFLUX.md` — the post-Stage-10 identity and data
+  migration contract and verification record.
 - `docs/REFERENCES.md` — external primary technical references.
 - `docs/MULTILINGUAL_SUPPORT.md` — exact local language routes, terminology,
   evidence policy, and limitations.
@@ -170,7 +174,7 @@ the current repository state; it cannot authorize a stage.
 
 ## Development setup
 
-LyricFlow requires Python 3.11 or newer. From the repository root:
+LyriFlux requires Python 3.11 or newer. From the repository root:
 
 ```bash
 python -m venv .venv
@@ -186,31 +190,31 @@ Rationale, licensing cautions, and usage boundaries are recorded in
 ## Implemented commands
 
 ```bash
-.venv/bin/lyricflow --version
-.venv/bin/lyricflow doctor
-.venv/bin/lyricflow desktop
-.venv/bin/lyricflow players list
-.venv/bin/lyricflow players inspect <service>
-.venv/bin/lyricflow players watch
-.venv/bin/lyricflow players select
-.venv/bin/lyricflow storage status
-.venv/bin/lyricflow storage migrate
-.venv/bin/lyricflow storage settings show
-.venv/bin/lyricflow lyrics current
-.venv/bin/lyricflow lyrics current --offline
-.venv/bin/lyricflow lyrics current --refresh
-.venv/bin/lyricflow lyrics romanize current --language ja
-.venv/bin/lyricflow lyrics representations current --offline
-.venv/bin/lyricflow storage display show
-.venv/bin/lyricflow library settings
-.venv/bin/lyricflow library settings --root /absolute/test/music --workers 2
-.venv/bin/lyricflow library scan --offline
-.venv/bin/lyricflow library status
-.venv/bin/lyricflow library review
-.venv/bin/lyricflow sync current --offline
-.venv/bin/lyricflow sync probe --duration-seconds 30
-.venv/bin/lyricflow sync delay show --offline
-.venv/bin/lyricflow sync audio status
+.venv/bin/lyriflux --version
+.venv/bin/lyriflux doctor
+.venv/bin/lyriflux desktop
+.venv/bin/lyriflux players list
+.venv/bin/lyriflux players inspect <service>
+.venv/bin/lyriflux players watch
+.venv/bin/lyriflux players select
+.venv/bin/lyriflux storage status
+.venv/bin/lyriflux storage migrate
+.venv/bin/lyriflux storage settings show
+.venv/bin/lyriflux lyrics current
+.venv/bin/lyriflux lyrics current --offline
+.venv/bin/lyriflux lyrics current --refresh
+.venv/bin/lyriflux lyrics romanize current --language ja
+.venv/bin/lyriflux lyrics representations current --offline
+.venv/bin/lyriflux storage display show
+.venv/bin/lyriflux library settings
+.venv/bin/lyriflux library settings --root /absolute/test/music --workers 2
+.venv/bin/lyriflux library scan --offline
+.venv/bin/lyriflux library status
+.venv/bin/lyriflux library review
+.venv/bin/lyriflux sync current --offline
+.venv/bin/lyriflux sync probe --duration-seconds 30
+.venv/bin/lyriflux sync delay show --offline
+.venv/bin/lyriflux sync audio status
 ```
 
 `doctor` checks local prerequisites only: Linux, the session D-Bus environment,
@@ -247,8 +251,8 @@ corrected with `--approve-title` plus one or more `--approve-artist` values and
 reset with `--reset-override`. Session-only generic sources reject approval.
 
 The default database is
-`$XDG_DATA_HOME/lyricflow/lyricflow.sqlite3`, falling back to
-`$HOME/.local/share/lyricflow/lyricflow.sqlite3`. Tests inject isolated temporary
+`$XDG_DATA_HOME/lyriflux/lyriflux.sqlite3`, falling back to
+`$HOME/.local/share/lyriflux/lyriflux.sqlite3`. Tests inject isolated temporary
 paths and never depend on the current working directory.
 
 `library settings` is the noninteractive adapter over one typed global model.
@@ -287,13 +291,13 @@ The safe correction commands operate only on the current resolved lyric
 document and confirm its document and line IDs:
 
 ```bash
-.venv/bin/lyricflow lyrics representations set current \
+.venv/bin/lyriflux lyrics representations set current \
   --offline --line-id LINE_ID --kind romanized --text "Corrected text"
-.venv/bin/lyricflow lyrics representations approve current \
+.venv/bin/lyriflux lyrics representations approve current \
   --offline --line-id LINE_ID --kind romanized
-.venv/bin/lyricflow lyrics representations reject current \
+.venv/bin/lyriflux lyrics representations reject current \
   --offline --line-id LINE_ID --kind romanized
-.venv/bin/lyricflow lyrics representations reset current \
+.venv/bin/lyriflux lyrics representations reset current \
   --offline --line-id LINE_ID --kind romanized
 ```
 
@@ -351,7 +355,7 @@ an unambiguous interrupt check, run it directly rather than through a capture
 pipeline:
 
 ```bash
-.venv/bin/lyricflow players watch
+.venv/bin/lyriflux players watch
 ```
 
 ## Quality gate
@@ -363,10 +367,10 @@ Run from the repository root:
 .venv/bin/python -m ruff check .
 .venv/bin/python -m ruff format --check .
 .venv/bin/python -m mypy src
-.venv/bin/lyricflow --version
-.venv/bin/lyricflow doctor
-.venv/bin/lyricflow storage status
-.venv/bin/lyricflow desktop --help
+.venv/bin/lyriflux --version
+.venv/bin/lyriflux doctor
+.venv/bin/lyriflux storage status
+.venv/bin/lyriflux desktop --help
 ```
 
 Exact current results belong in `PROJECT_STATE.md` and `AGENT_TODO.md`.

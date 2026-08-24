@@ -7,8 +7,8 @@ from pathlib import Path
 
 import pytest
 
-from lyricflow.infrastructure.storage.bootstrap import open_storage_readonly
-from lyricflow.infrastructure.storage.errors import (
+from lyriflux.infrastructure.storage.bootstrap import open_storage_readonly
+from lyriflux.infrastructure.storage.errors import (
     StorageCorruptError,
     StorageError,
     StorageLockedError,
@@ -16,13 +16,13 @@ from lyricflow.infrastructure.storage.errors import (
     StoragePathError,
     UnsupportedSchemaError,
 )
-from lyricflow.infrastructure.storage.migrations import (
+from lyriflux.infrastructure.storage.migrations import (
     CURRENT_SCHEMA_VERSION,
     MIGRATIONS,
     Migration,
 )
-from lyricflow.infrastructure.storage.paths import default_database_path
-from lyricflow.infrastructure.storage.sqlite import SQLiteDatabase
+from lyriflux.infrastructure.storage.paths import default_database_path
+from lyriflux.infrastructure.storage.sqlite import SQLiteDatabase
 
 
 def test_default_database_path_uses_absolute_xdg_data_home_without_writes(
@@ -34,7 +34,7 @@ def test_default_database_path_uses_absolute_xdg_data_home_without_writes(
         environment={"XDG_DATA_HOME": str(xdg)}, home=tmp_path / "home"
     )
 
-    assert path == xdg / "lyricflow" / "lyricflow.sqlite3"
+    assert path == xdg / "lyriflux" / "lyriflux.sqlite3"
     assert not path.exists()
 
 
@@ -43,7 +43,7 @@ def test_relative_xdg_data_home_is_ignored(tmp_path: Path) -> None:
         environment={"XDG_DATA_HOME": "relative"}, home=tmp_path
     )
 
-    assert path == tmp_path / ".local/share/lyricflow/lyricflow.sqlite3"
+    assert path == tmp_path / ".local/share/lyriflux/lyriflux.sqlite3"
 
 
 def test_brand_new_unicode_database_migrates_in_order_and_reopens_noop(

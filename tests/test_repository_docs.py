@@ -23,6 +23,7 @@ REQUIRED_DOCUMENTS = (
     "docs/MANUAL_TEST_LOG.md",
     "docs/DEPENDENCIES.md",
     "docs/RELEASE.md",
+    "docs/PROJECT_RENAME_LYRIFLUX.md",
     "docs/REFERENCES.md",
     "docs/MULTILINGUAL_SUPPORT.md",
     "docs/DOCUMENTATION_STYLE.md",
@@ -168,15 +169,17 @@ def test_readme_indexes_the_continuation_documents() -> None:
 def test_project_state_contains_the_continuation_contract() -> None:
     content = (REPOSITORY_ROOT / "PROJECT_STATE.md").read_text(encoding="utf-8")
 
-    assert content.startswith("# LyricFlow Project State\n")
+    assert content.startswith("# LyriFlux Project State\n")
     assert all(heading in content for heading in PROJECT_STATE_HEADINGS)
     assert "/home/example/Documents/LyricFlow/" in content
+    assert "docs/PROJECT_RENAME_LYRIFLUX.md" in content
 
 
-def test_agent_todo_stops_after_completed_stage_ten() -> None:
+def test_agent_todo_authorizes_only_the_pre_stage_eleven_rename() -> None:
     content = (REPOSITORY_ROOT / "AGENT_TODO.md").read_text(encoding="utf-8")
 
-    assert content.startswith("# No active implementation stage\n")
+    assert content.startswith("# Active pre-Stage-11 product rename\n")
+    assert "LyricFlow /\n`lyricflow` to LyriFlux / `lyriflux`" in content
     assert "Stage 10 — Packaging and v1 release is **Completed**" in content
     assert "1 through 9 and the multilingual repair remain historically" in content
     assert "No PyPI, public-repository, or public artifact publication" in content
@@ -205,7 +208,7 @@ def test_stage_completion_template_keeps_every_required_section() -> None:
 def test_runtime_source_does_not_embed_the_local_repository_path() -> None:
     offending: list[str] = []
     for path in (REPOSITORY_ROOT / "src").rglob("*.py"):
-        if "/home/example/Documents/LyricFlow/" in path.read_text(encoding="utf-8"):
+        if "/home/example/Documents/LyriFlux/" in path.read_text(encoding="utf-8"):
             offending.append(str(path.relative_to(REPOSITORY_ROOT)))
 
     assert offending == []
@@ -232,14 +235,14 @@ def test_accepted_cross_cutting_architecture_is_durable() -> None:
             "Retain PySide6",
             "Qt Quick/QML",
             "Textual",
-            "Do not create `lyricflowd` now",
+            "Do not create `lyrifluxd` now",
         )
     )
     assert all(
         phrase in settings
         for phrase in (
             "one canonical typed, versioned, validated settings schema/service",
-            "`lyricflow settings`",
+            "`lyriflux settings`",
             "human-edited XDG configuration files",
             "last-known-good runtime state",
             "hot reload",
@@ -251,9 +254,9 @@ def test_accepted_cross_cutting_architecture_is_durable() -> None:
     assert all(
         phrase in product
         for phrase in (
-            "`lyricflow tui`",
-            "`lyricflow settings`",
-            "`lyricflow follow --json`",
+            "`lyriflux tui`",
+            "`lyriflux settings`",
+            "`lyriflux follow --json`",
             "wallpaper/desktop-overlay modes",
         )
     )

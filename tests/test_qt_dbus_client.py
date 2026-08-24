@@ -9,12 +9,12 @@ import pytest
 from PySide6.QtCore import QCoreApplication
 from PySide6.QtDBus import QDBusConnection, QDBusObjectPath, QDBusVariant
 
-from lyricflow.infrastructure.mpris.backend import (
+from lyriflux.infrastructure.mpris.backend import (
     MprisBackendError,
     MprisServiceUnavailable,
     Subscription,
 )
-from lyricflow.infrastructure.mpris.qt_dbus_client import (
+from lyriflux.infrastructure.mpris.qt_dbus_client import (
     DBUS_INTERFACE,
     DBUS_PATH,
     DBUS_PROPERTIES_INTERFACE,
@@ -24,7 +24,7 @@ from lyricflow.infrastructure.mpris.qt_dbus_client import (
     _MprisPlayerInterface,
     _NameOwnerChangedReceiver,
 )
-from lyricflow.infrastructure.mpris.qt_dbus_values import (
+from lyriflux.infrastructure.mpris.qt_dbus_values import (
     PROPERTIES_SLOT,
     SEEKED_SLOT,
 )
@@ -172,8 +172,8 @@ def _subscribe_services(
 
 
 def test_player_proxy_declares_metadata_as_qvariant_map() -> None:
-    QCoreApplication.instance() or QCoreApplication(["lyricflow-test"])
-    connection = QDBusConnection("lyricflow-test-no-bus")
+    QCoreApplication.instance() or QCoreApplication(["lyriflux-test"])
+    connection = QDBusConnection("lyriflux-test-no-bus")
     proxy = _MprisPlayerInterface("org.mpris.MediaPlayer2.test", connection)
     meta_object = proxy.metaObject()
     declared_types = {

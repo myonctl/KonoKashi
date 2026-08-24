@@ -1,5 +1,5 @@
 name: Bug report
-description: Report a reproducible LyricFlow defect without sensitive data
+description: Report a reproducible LyriFlux defect without sensitive data
 title: "[Bug]: "
 labels:
   - bug
@@ -7,7 +7,7 @@ body:
   - type: markdown
     attributes:
       value: |
-        Thanks for helping improve LyricFlow. Do not include credentials,
+        Thanks for helping improve LyriFlux. Do not include credentials,
         private media paths, complete lyrics, or other personal information.
   - type: checkboxes
     id: checks
@@ -24,7 +24,7 @@ body:
     id: revision
     attributes:
       label: Version or revision
-      description: LyricFlow version or commit hash where the problem occurs.
+      description: LyriFlux version or commit hash where the problem occurs.
     validations:
       required: true
   - type: textarea

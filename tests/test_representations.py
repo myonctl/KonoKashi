@@ -7,10 +7,10 @@ from pathlib import Path
 
 import pytest
 
-from lyricflow.application.representation_diagnostics import render_representations
-from lyricflow.application.representations import RepresentationService
-from lyricflow.application.settings import DesktopInteractionSettings
-from lyricflow.domain.lyrics import (
+from lyriflux.application.representation_diagnostics import render_representations
+from lyriflux.application.representations import RepresentationService
+from lyriflux.application.settings import DesktopInteractionSettings
+from lyriflux.domain.lyrics import (
     ApprovalState,
     ContentProvenance,
     LyricDocument,
@@ -20,7 +20,7 @@ from lyricflow.domain.lyrics import (
     RepresentationKind,
     TimingProvenance,
 )
-from lyricflow.domain.representations import (
+from lyriflux.domain.representations import (
     GenerationStatus,
     ImportedRepresentationLine,
     RepresentationDisplaySettings,
@@ -28,11 +28,11 @@ from lyricflow.domain.representations import (
     RomanizationProviderResult,
     RomanizationRequest,
 )
-from lyricflow.infrastructure.romanization.offline import (
+from lyriflux.infrastructure.romanization.offline import (
     IcuHanLanguageEvidenceAdapter,
     OfflineRomanizationProvider,
 )
-from lyricflow.infrastructure.storage.bootstrap import open_storage
+from lyriflux.infrastructure.storage.bootstrap import open_storage
 
 NOW = datetime(2026, 8, 13, 12, tzinfo=UTC)
 

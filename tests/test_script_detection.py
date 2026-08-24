@@ -6,9 +6,9 @@ import unicodedata
 
 import pytest
 
-from lyricflow.application.representations import route_romanization
-from lyricflow.domain.representations import RomanizationRoute
-from lyricflow.domain.scripts import UnicodeScript, analyze_scripts
+from lyriflux.application.representations import route_romanization
+from lyriflux.domain.representations import RomanizationRoute
+from lyriflux.domain.scripts import UnicodeScript, analyze_scripts
 
 
 @pytest.mark.parametrize(

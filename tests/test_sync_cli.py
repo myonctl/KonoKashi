@@ -8,16 +8,16 @@ from pathlib import Path
 
 import pytest
 
-from lyricflow import cli
-from lyricflow.application.ports import PlayerDiscoveryPort
-from lyricflow.domain.models import (
+from lyriflux import cli
+from lyriflux.application.ports import PlayerDiscoveryPort
+from lyriflux.domain.models import (
     PlayerEvent,
     PlayerEventKind,
     PlayerInspection,
     PlayerListResult,
     PlayerSnapshot,
 )
-from lyricflow.domain.synchronization import (
+from lyriflux.domain.synchronization import (
     AudioLatencyProbeResult,
     AudioLatencyProbeStatus,
     ObservationReason,

@@ -1,7 +1,7 @@
 """Bounded LRC and first-class plain lyrics parsing regressions."""
 
-from lyricflow.domain.lyrics import LyricsTextParseStatus
-from lyricflow.infrastructure.lyrics.lrc import parse_lyrics_text
+from lyriflux.domain.lyrics import LyricsTextParseStatus
+from lyriflux.infrastructure.lyrics.lrc import parse_lyrics_text
 
 
 def test_lrc_hundredths_milliseconds_bom_crlf_and_unicode() -> None:

@@ -16,13 +16,13 @@ def _imports(path: Path) -> set[str]:
 
 
 def test_core_layers_do_not_import_frameworks_or_adapters() -> None:
-    source_root = Path(__file__).parents[1] / "src" / "lyricflow"
+    source_root = Path(__file__).parents[1] / "src" / "lyriflux"
     forbidden_roots = {
         "PySide6",
         "httpx",
         "sqlite3",
-        "lyricflow.infrastructure",
-        "lyricflow.presentation",
+        "lyriflux.infrastructure",
+        "lyriflux.presentation",
     }
 
     violations: list[str] = []
@@ -39,7 +39,7 @@ def test_core_layers_do_not_import_frameworks_or_adapters() -> None:
 
 
 def test_pyside_imports_are_confined_to_qt_adapters() -> None:
-    source_root = Path(__file__).parents[1] / "src" / "lyricflow"
+    source_root = Path(__file__).parents[1] / "src" / "lyriflux"
     violations: list[str] = []
 
     for path in source_root.rglob("*.py"):

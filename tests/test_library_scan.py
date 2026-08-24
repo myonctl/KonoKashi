@@ -9,21 +9,21 @@ from time import sleep
 
 import pytest
 
-from lyricflow.application.library_scan import LibraryScanService
-from lyricflow.cli import main
-from lyricflow.domain.identity import LocalFileIdentity
-from lyricflow.domain.library import (
+from lyriflux.application.library_scan import LibraryScanService
+from lyriflux.cli import main
+from lyriflux.domain.identity import LocalFileIdentity
+from lyriflux.domain.library import (
     LibraryFile,
     LibraryMetadata,
     LibraryMetadataSource,
     LibrarySettings,
 )
-from lyricflow.domain.tracks import ApprovedTrackIdentity, Confidence, TrackCandidate
-from lyricflow.infrastructure.metadata.library import (
+from lyriflux.domain.tracks import ApprovedTrackIdentity, Confidence, TrackCandidate
+from lyriflux.infrastructure.metadata.library import (
     MusicDirectoryFilesystem,
     MutagenLibraryMetadataReader,
 )
-from lyricflow.infrastructure.storage.bootstrap import open_storage
+from lyriflux.infrastructure.storage.bootstrap import open_storage
 
 
 class _Files:
@@ -227,7 +227,7 @@ def test_mutagen_reader_uses_conservative_filename_fallback_without_writes(
         calls.append((path, easy))
         return None
 
-    monkeypatch.setattr("lyricflow.infrastructure.metadata.library.mutagen.File", read)
+    monkeypatch.setattr("lyriflux.infrastructure.metadata.library.mutagen.File", read)
     result = MutagenLibraryMetadataReader().read(
         _file("key", "/music/07 - Artist - Song Title.mp3")
     )

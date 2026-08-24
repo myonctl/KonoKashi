@@ -4,14 +4,14 @@ from dataclasses import replace
 
 import pytest
 
-from lyricflow.application.desktop_state import (
+from lyriflux.application.desktop_state import (
     DesktopLyricsState,
     DesktopStateController,
 )
-from lyricflow.application.lyrics_sync import synchronize
-from lyricflow.application.sync_state import build_sync_snapshot
-from lyricflow.domain.identity import YouTubeIdentity
-from lyricflow.domain.lyrics import (
+from lyriflux.application.lyrics_sync import synchronize
+from lyriflux.application.sync_state import build_sync_snapshot
+from lyriflux.domain.identity import YouTubeIdentity
+from lyriflux.domain.lyrics import (
     ContentProvenance,
     LyricDocumentKind,
     LyricRepresentation,
@@ -19,17 +19,17 @@ from lyricflow.domain.lyrics import (
     LyricsResolutionStatus,
     RepresentationKind,
 )
-from lyricflow.domain.representations import (
+from lyriflux.domain.representations import (
     EffectiveRepresentationLine,
     RepresentationDisplaySettings,
 )
-from lyricflow.domain.synchronization import (
+from lyriflux.domain.synchronization import (
     AudioOutputLatency,
     LyricTimingCalibration,
     PlaybackState,
     SynchronizationCalibration,
 )
-from lyricflow.domain.tracks import Confidence, ResolvedTrack, TrackCandidate
+from lyriflux.domain.tracks import Confidence, ResolvedTrack, TrackCandidate
 from tests.stage2_helpers import fixture_snapshot
 from tests.test_lyrics_sync import document, estimate
 

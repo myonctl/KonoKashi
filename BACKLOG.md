@@ -33,8 +33,19 @@ authorize implementation. Staged v1 ordering lives in `docs/ROADMAP.md`.
 
 ## UX improvements
 
+- **Final LyriFlux identity design** — Refine an original minimalist vector
+  mark built from stacked lyric lines and a synchronization/playhead motif.
+  Preferred accent direction is cyan, but the exact palette and logo are not
+  finalized. The mark must have a strong small-size silhouette, work at 16,
+  32, and 64 pixels plus large sizes, survive monochrome and light/dark
+  backgrounds, and receive reasonable category/reverse-image similarity
+  research before adoption. The current application icon remains an explicit
+  placeholder; branding must use semantic/configurable theme values rather
+  than scattering a hardcoded cyan. Status: Deferred; separate future design
+  decision, not part of the pre-Stage-11 rename.
+
 - **One canonical settings schema and service** — Unify GUI settings,
-  `lyricflow settings`, human-edited XDG configuration, and noninteractive CLI
+  `lyriflux settings`, human-edited XDG configuration, and noninteractive CLI
   automation over typed validated semantics with explicit scope and reload
   class. Include actionable unknown-key/value diagnostics, atomic
   last-known-good reload, and deliberate comment-preservation/migration policy.
@@ -67,10 +78,10 @@ authorize implementation. Staged v1 ordering lives in `docs/ROADMAP.md`.
   click-through/layering/blur/taskbar behavior requires portable Wayland-first
   capability research plus optional compositor adapters. Status: Planned
   investigation; not Stage 8. Preserve the accepted native Wayland resize
-  limitation and do not make LyricFlow KDE-only.
+  limitation and do not make LyriFlux KDE-only.
 
 - **First-class full-screen TUI** — Provide an everyday-use terminal frontend,
-  conceptually `lyricflow tui`, with current track, synchronized multilingual
+  conceptually `lyriflux tui`, with current track, synchronized multilingual
   lyrics, explicit states, corrections, and settings through the same
   application services used by the desktop frontend. It is not a diagnostic
   log or reduced fallback. Status: Planned; explicitly not implemented in Stage
@@ -241,7 +252,7 @@ authorize implementation. Staged v1 ordering lives in `docs/ROADMAP.md`.
 
 - **Evidence-gated native module** — If a Python/native binding, packaging,
   concurrency, reliability, or measured performance problem justifies it,
-  assess one coherent `lyricflow-native` Rust module via PyO3/maturin. Do not
+  assess one coherent `lyriflux-native` Rust module via PyO3/maturin. Do not
   rewrite functioning Python subsystems, including the Stage 6 clock, merely
   for theoretical speed. Status: Architectural option only; no native code is
   authorized. Related: ADR 0013.
@@ -309,7 +320,7 @@ separate explicit authorization.
 
 ## Rejected / intentionally deferred ideas
 
-- **Silent metadata modification** — Rejected. LyricFlow will not edit audio
+- **Silent metadata modification** — Rejected. LyriFlux will not edit audio
   tags or files without explicit action and preview.
 - **Fragile Strawberry private-schema dependency** — Rejected. Unsupported or
   mutable private storage must fail as a normal miss.
@@ -318,10 +329,10 @@ separate explicit authorization.
 - **Genius or Musixmatch scraping for v1** — Rejected. Related: ADR 0003.
 - **Foobar2000/Wine-specific v1 integration** — Deferred because the observed
   setup exposed no MPRIS player.
-- **Whole-project Rust rewrite** — Rejected. LyricFlow remains Python-first;
+- **Whole-project Rust rewrite** — Rejected. LyriFlux remains Python-first;
   only measured, coherent native extraction may be considered. Related: ADR
   0013.
-- **Pre-emptive `lyricflowd` daemon** — Rejected until multiple simultaneous
+- **Pre-emptive `lyrifluxd` daemon** — Rejected until multiple simultaneous
   clients demonstrate a shared live-state need that justifies lifecycle, IPC,
   versioning, reconnect, supervision, and recovery costs. Related: ADR 0013.
 - **Executable themes/configuration** — Rejected. Themes/layouts/configuration

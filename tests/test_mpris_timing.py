@@ -2,11 +2,11 @@
 
 import pytest
 
-from lyricflow.domain.models import PlayerCapabilities, PlayerSnapshot, RawTrackMetadata
-from lyricflow.domain.synchronization import ObservationReason, PlaybackState
-from lyricflow.infrastructure.mpris.backend import MprisBackendError
-from lyricflow.infrastructure.mpris.metadata_mapper import MPRIS_PLAYER_INTERFACE
-from lyricflow.infrastructure.mpris.player_registry import MprisPositionSampler
+from lyriflux.domain.models import PlayerCapabilities, PlayerSnapshot, RawTrackMetadata
+from lyriflux.domain.synchronization import ObservationReason, PlaybackState
+from lyriflux.infrastructure.mpris.backend import MprisBackendError
+from lyriflux.infrastructure.mpris.metadata_mapper import MPRIS_PLAYER_INTERFACE
+from lyriflux.infrastructure.mpris.player_registry import MprisPositionSampler
 from tests.mpris_fakes import FakeMprisBackend
 
 

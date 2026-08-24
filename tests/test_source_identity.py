@@ -6,17 +6,17 @@ from pathlib import Path
 
 import pytest
 
-from lyricflow.application.source_identity import (
+from lyriflux.application.source_identity import (
     SourceIdentityResolver,
     extract_youtube_video_id,
 )
-from lyricflow.domain.identity import (
+from lyriflux.domain.identity import (
     GenericMprisIdentity,
     LocalFileIdentity,
     PersistenceScope,
     YouTubeIdentity,
 )
-from lyricflow.infrastructure.metadata.local_paths import (
+from lyriflux.infrastructure.metadata.local_paths import (
     FilesystemLocalPathCanonicalizer,
 )
 from tests.stage2_helpers import PredictableLocalPaths, snapshot

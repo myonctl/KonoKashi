@@ -1,11 +1,11 @@
 """Deterministic suspend and adaptive-resampling policy tests."""
 
-from lyricflow.application.clock_lifecycle import (
+from lyriflux.application.clock_lifecycle import (
     AdaptiveResampler,
     SamplingMode,
     SuspendResumeDetector,
 )
-from lyricflow.domain.synchronization import (
+from lyriflux.domain.synchronization import (
     ClockCorrectionClass,
     ClockHealth,
     ClockUpdate,

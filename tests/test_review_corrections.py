@@ -8,16 +8,16 @@ from pathlib import Path
 
 import pytest
 
-from lyricflow.application.review_corrections import (
+from lyriflux.application.review_corrections import (
     ReviewCorrectionError,
     ReviewCorrectionService,
 )
-from lyricflow.domain.identity import (
+from lyriflux.domain.identity import (
     GenericMprisIdentity,
     LocalFileIdentity,
     YouTubeIdentity,
 )
-from lyricflow.domain.lyrics import (
+from lyriflux.domain.lyrics import (
     ContentProvenance,
     LyricsAlternative,
     LyricsAlternativeResult,
@@ -28,13 +28,13 @@ from lyricflow.domain.lyrics import (
     LyricsResolutionResult,
     LyricsResolutionStatus,
 )
-from lyricflow.domain.models import PlayerCapabilities, PlayerSnapshot, RawTrackMetadata
-from lyricflow.domain.synchronization import LyricDocumentTiming
-from lyricflow.domain.tracks import Confidence, ResolvedTrack, TrackCandidate
-from lyricflow.infrastructure.lyrics.provider_documents import (
+from lyriflux.domain.models import PlayerCapabilities, PlayerSnapshot, RawTrackMetadata
+from lyriflux.domain.synchronization import LyricDocumentTiming
+from lyriflux.domain.tracks import Confidence, ResolvedTrack, TrackCandidate
+from lyriflux.infrastructure.lyrics.provider_documents import (
     ProviderLyricDocumentBuilder,
 )
-from lyricflow.infrastructure.storage.bootstrap import open_storage
+from lyriflux.infrastructure.storage.bootstrap import open_storage
 
 NOW = datetime(2026, 8, 23, 18, tzinfo=UTC)
 

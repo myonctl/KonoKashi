@@ -7,14 +7,14 @@ from pathlib import Path
 
 import pytest
 
-from lyricflow.application.resolve_track import TrackResolver
-from lyricflow.application.source_identity import SourceIdentityResolver
-from lyricflow.domain.identity import (
+from lyriflux.application.resolve_track import TrackResolver
+from lyriflux.application.source_identity import SourceIdentityResolver
+from lyriflux.domain.identity import (
     GenericMprisIdentity,
     LocalFileIdentity,
     YouTubeIdentity,
 )
-from lyricflow.domain.lyrics import (
+from lyriflux.domain.lyrics import (
     ApprovalState,
     ContentProvenance,
     LyricDocument,
@@ -29,13 +29,13 @@ from lyricflow.domain.lyrics import (
     RepresentationKind,
     TimingProvenance,
 )
-from lyricflow.domain.tracks import (
+from lyriflux.domain.tracks import (
     ApprovedTrackIdentity,
     Confidence,
     PlayerSelectionConfig,
 )
-from lyricflow.infrastructure.storage.bootstrap import open_storage
-from lyricflow.infrastructure.storage.errors import (
+from lyriflux.infrastructure.storage.bootstrap import open_storage
+from lyriflux.infrastructure.storage.errors import (
     InvalidStoredDataError,
     StorageError,
     StorageValidationError,

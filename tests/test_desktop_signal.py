@@ -12,7 +12,7 @@ def test_desktop_sigint_exits_130_without_traceback() -> None:
 import os
 import signal
 from PySide6.QtCore import QTimer
-from lyricflow.presentation.desktop.app import run_desktop
+from lyriflux.presentation.desktop.app import run_desktop
 
 class Lifecycle:
     def start(self):
@@ -21,7 +21,7 @@ class Lifecycle:
 def factory(application, window, database_path):
     return Lifecycle()
 
-raise SystemExit(run_desktop(["lyricflow"], coordinator_factory=factory))
+raise SystemExit(run_desktop(["lyriflux"], coordinator_factory=factory))
 """
     environment = os.environ.copy()
     environment["QT_QPA_PLATFORM"] = "offscreen"

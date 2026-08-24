@@ -1,9 +1,9 @@
 """Signal-driven lifecycle and property-event tests."""
 
-from lyricflow.domain.models import PlayerEvent, PlayerEventKind
-from lyricflow.infrastructure.mpris.backend import MprisBackendError
-from lyricflow.infrastructure.mpris.metadata_mapper import full_service_name
-from lyricflow.infrastructure.mpris.player_registry import MprisMonitor
+from lyriflux.domain.models import PlayerEvent, PlayerEventKind
+from lyriflux.infrastructure.mpris.backend import MprisBackendError
+from lyriflux.infrastructure.mpris.metadata_mapper import full_service_name
+from lyriflux.infrastructure.mpris.player_registry import MprisMonitor
 from tests.mpris_fakes import FakeMprisBackend
 
 

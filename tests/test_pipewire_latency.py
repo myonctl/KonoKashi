@@ -2,8 +2,8 @@
 
 from collections.abc import Sequence
 
-from lyricflow.domain.synchronization import AudioLatencyProbeStatus
-from lyricflow.infrastructure.audio.pipewire import CommandResult, PipeWireLatencyProbe
+from lyriflux.domain.synchronization import AudioLatencyProbeStatus
+from lyriflux.infrastructure.audio.pipewire import CommandResult, PipeWireLatencyProbe
 
 
 def test_pipewire_latency_range_is_reported_but_not_auto_applied() -> None:

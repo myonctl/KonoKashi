@@ -8,9 +8,9 @@ from typing import Any
 
 import httpx
 
-from lyricflow.domain.lyrics import LyricsMatchConfidence, LyricsQuery
-from lyricflow.domain.lyrics_matching import assess_candidate
-from lyricflow.infrastructure.lyrics.lrclib import LrclibLyricsProvider
+from lyriflux.domain.lyrics import LyricsMatchConfidence, LyricsQuery
+from lyriflux.domain.lyrics_matching import assess_candidate
+from lyriflux.infrastructure.lyrics.lrclib import LrclibLyricsProvider
 
 FIXTURES = Path(__file__).parent / "fixtures" / "stage4"
 

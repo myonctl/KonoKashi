@@ -6,16 +6,16 @@ import json
 from collections.abc import Mapping
 from pathlib import Path
 
-from lyricflow.application.ports import LocalPathResolution
-from lyricflow.application.resolve_track import TrackResolver
-from lyricflow.application.select_player import PlayerSelectionService
-from lyricflow.application.source_identity import SourceIdentityResolver
-from lyricflow.domain.models import PlayerInspection, PlayerListResult, PlayerSnapshot
-from lyricflow.infrastructure.mpris.metadata_mapper import (
+from lyriflux.application.ports import LocalPathResolution
+from lyriflux.application.resolve_track import TrackResolver
+from lyriflux.application.select_player import PlayerSelectionService
+from lyriflux.application.source_identity import SourceIdentityResolver
+from lyriflux.domain.models import PlayerInspection, PlayerListResult, PlayerSnapshot
+from lyriflux.infrastructure.mpris.metadata_mapper import (
     full_service_name,
     map_player_snapshot,
 )
-from lyricflow.infrastructure.storage.track_overrides import (
+from lyriflux.infrastructure.storage.track_overrides import (
     InMemoryTrackOverrideRepository,
 )
 

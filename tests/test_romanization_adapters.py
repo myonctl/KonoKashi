@@ -7,13 +7,13 @@ import socket
 import icu
 import pytest
 
-from lyricflow.domain.representations import (
+from lyriflux.domain.representations import (
     GenerationStatus,
     RomanizationRequest,
     RomanizationRoute,
 )
-from lyricflow.infrastructure.romanization import offline
-from lyricflow.infrastructure.romanization.offline import (
+from lyriflux.infrastructure.romanization import offline
+from lyriflux.infrastructure.romanization.offline import (
     IcuHanLanguageEvidenceAdapter,
     OfflineRomanizationProvider,
 )

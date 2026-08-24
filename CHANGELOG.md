@@ -7,6 +7,20 @@ unreleased.
 
 ### Changed
 
+- Renamed the current product from LyricFlow to LyriFlux: display/application
+  name, CLI (`lyriflux`), Python namespace and distribution (`lyriflux`), XDG
+  namespace, desktop application ID/launcher, resources, and current docs.
+- Added non-destructive, idempotent legacy XDG migration. Healthy legacy-only
+  SQLite/config/cache state is copied and validated in the new namespace while
+  the old state is retained; ambiguous dual-state layouts fail safely.
+- Installing the LyriFlux desktop integration removes only the recognized
+  project-owned LyricFlow launcher/icon so KDE does not show duplicate entries.
+- Hardened reproducible builds to use sanitized temporary source copies and to
+  reject stale legacy package members; this prevents an ignored old `build/`
+  directory from contaminating the renamed wheel.
+- The GitHub repository remains `myonctl/LyricFlow` while authentication and a
+  safe in-place rename are pending; it will never be replaced to obtain the new
+  name.
 - Generated desktop launchers now reference the exact installed SVG path.
   This avoids reliance on user-local icon-theme name discovery; paths
   containing spaces use desktop-entry escaping and pass launcher validation.

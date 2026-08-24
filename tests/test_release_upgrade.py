@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from lyricflow.infrastructure.storage.migrations import MIGRATIONS
-from lyricflow.infrastructure.storage.sqlite import SQLiteDatabase
+from lyriflux.infrastructure.storage.migrations import MIGRATIONS
+from lyriflux.infrastructure.storage.sqlite import SQLiteDatabase
 
 
 def test_schema_eight_upgrade_preserves_user_and_library_data(tmp_path: Path) -> None:

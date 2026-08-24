@@ -3,8 +3,8 @@
 from dataclasses import replace
 from datetime import UTC, datetime
 
-from lyricflow.application.lyrics_sync import active_lyrics_at, synchronize
-from lyricflow.domain.lyrics import (
+from lyriflux.application.lyrics_sync import active_lyrics_at, synchronize
+from lyriflux.domain.lyrics import (
     ApprovalState,
     ContentProvenance,
     LyricDocument,
@@ -13,7 +13,7 @@ from lyricflow.domain.lyrics import (
     LyricRepresentation,
     RepresentationKind,
 )
-from lyricflow.domain.synchronization import (
+from lyriflux.domain.synchronization import (
     AudioOutputLatency,
     ClockQuality,
     LineTimingCalibration,

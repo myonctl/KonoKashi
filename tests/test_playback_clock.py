@@ -2,8 +2,8 @@
 
 import pytest
 
-from lyricflow.application.playback_clock import PlaybackClock
-from lyricflow.domain.synchronization import (
+from lyriflux.application.playback_clock import PlaybackClock
+from lyriflux.domain.synchronization import (
     ClockHealth,
     ClockQuality,
     ClockUpdateKind,

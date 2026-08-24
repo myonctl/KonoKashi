@@ -5,9 +5,9 @@ from types import ModuleType
 
 import pytest
 
-from lyricflow import cli
-from lyricflow.application.ports import DiagnosticCheck, DiagnosticStatus
-from lyricflow.presentation.desktop import app as desktop_app
+from lyriflux import cli
+from lyriflux.application.ports import DiagnosticCheck, DiagnosticStatus
+from lyriflux.presentation.desktop import app as desktop_app
 
 
 def test_version_output(capsys: pytest.CaptureFixture[str]) -> None:
@@ -15,7 +15,7 @@ def test_version_output(capsys: pytest.CaptureFixture[str]) -> None:
         cli.main(["--version"])
 
     assert exit_info.value.code == 0
-    assert capsys.readouterr().out == "lyricflow 1.0.0\n"
+    assert capsys.readouterr().out == "lyriflux 1.0.0\n"
 
 
 def test_desktop_command_dispatches_to_the_qt_entry_point(
@@ -30,7 +30,7 @@ def test_desktop_command_dispatches_to_the_qt_entry_point(
     monkeypatch.setattr(desktop_app, "run_desktop", launch)
 
     assert cli.main(["desktop"], database_path=tmp_path / "desktop.sqlite3") == 23
-    assert observed == [(["lyricflow"], tmp_path / "desktop.sqlite3")]
+    assert observed == [(["lyriflux"], tmp_path / "desktop.sqlite3")]
 
 
 def test_desktop_startup_failure_is_controlled(
@@ -66,7 +66,7 @@ def test_doctor_success_output_and_exit_code(
 
     assert cli.main(["doctor"]) == 0
     assert capsys.readouterr().out == (
-        "LyricFlow doctor\n"
+        "LyriFlux doctor\n"
         "[OK] platform: Linux detected\n"
         "[WARN] playerctl: not found (optional debugging tool)\n"
         "Summary: 1 passed, 1 warning, 0 failures\n"
@@ -94,7 +94,7 @@ def test_qtdbus_import_failure_is_reported() -> None:
     def unavailable(_name: str) -> ModuleType:
         raise ImportError("missing")
 
-    from lyricflow.infrastructure.diagnostics import collect_local_diagnostics
+    from lyriflux.infrastructure.diagnostics import collect_local_diagnostics
 
     checks = collect_local_diagnostics(
         platform_name="linux",

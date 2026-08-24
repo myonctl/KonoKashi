@@ -1,1 +1,1 @@
-"""LyricFlow automated test package."""
+"""LyriFlux automated test package."""

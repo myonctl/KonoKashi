@@ -4,21 +4,21 @@ from __future__ import annotations
 
 from dataclasses import replace
 
-from lyricflow.application.frontend_session import FrontendSessionService
-from lyricflow.application.settings import DesktopInteractionSettings
-from lyricflow.domain.identity import YouTubeIdentity
-from lyricflow.domain.lyrics import (
+from lyriflux.application.frontend_session import FrontendSessionService
+from lyriflux.application.settings import DesktopInteractionSettings
+from lyriflux.domain.identity import YouTubeIdentity
+from lyriflux.domain.lyrics import (
     LyricsResolutionResult,
     LyricsResolutionStatus,
     RepresentationKind,
 )
-from lyricflow.domain.models import PlayerListResult
-from lyricflow.domain.representations import (
+from lyriflux.domain.models import PlayerListResult
+from lyriflux.domain.representations import (
     EffectiveRepresentationLine,
     RepresentationDisplaySettings,
 )
-from lyricflow.domain.synchronization import LyricDocumentTiming
-from lyricflow.domain.tracks import (
+from lyriflux.domain.synchronization import LyricDocumentTiming
+from lyriflux.domain.tracks import (
     Confidence,
     PlayerAssessment,
     PlayerSelectionResult,
@@ -81,7 +81,7 @@ class _Representations:
 
 class _Settings:
     def __init__(self) -> None:
-        from lyricflow.domain.tracks import PlayerSelectionConfig
+        from lyriflux.domain.tracks import PlayerSelectionConfig
 
         self.player = PlayerSelectionConfig(preferred_players=("strawberry",))
         self.display = RepresentationDisplaySettings(True, True, False)

@@ -1,6 +1,6 @@
-# Contributing to LyricFlow
+# Contributing to LyriFlux
 
-LyricFlow is a private, pre-alpha project intended to become public open source
+LyriFlux is a private, pre-alpha project intended to become public open source
 after its licensing, security, privacy, packaging, and release prerequisites are
 resolved. The current `LICENSE` grants no open-source permissions. Repository
 access does not change that license status.
@@ -23,7 +23,7 @@ explicitly authorizes it through `AGENT_TODO.md`.
 
 ## Development setup
 
-LyricFlow requires Python 3.11 or newer. From the repository root:
+LyriFlux requires Python 3.11 or newer. From the repository root:
 
 ```bash
 python -m venv .venv
@@ -59,8 +59,8 @@ Run the complete gate from the repository root:
 .venv/bin/python -m ruff check .
 .venv/bin/python -m ruff format --check .
 .venv/bin/python -m mypy src
-.venv/bin/lyricflow --version
-.venv/bin/lyricflow doctor
+.venv/bin/lyriflux --version
+.venv/bin/lyriflux doctor
 ```
 
 Record exact results. A configured CI workflow or passing subset is not proof

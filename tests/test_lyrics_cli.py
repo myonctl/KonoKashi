@@ -6,14 +6,14 @@ from pathlib import Path
 
 import pytest
 
-from lyricflow import cli
-from lyricflow.domain.lyrics import (
+from lyriflux import cli
+from lyriflux.domain.lyrics import (
     LyricsProviderCandidate,
     LyricsProviderResult,
     LyricsProviderStatus,
     LyricsQuery,
 )
-from lyricflow.domain.models import PlayerInspection, PlayerListResult
+from lyriflux.domain.models import PlayerInspection, PlayerListResult
 from tests.stage2_helpers import fixture_snapshot
 from tests.test_players_cli import FakeClient, FakeRuntime
 

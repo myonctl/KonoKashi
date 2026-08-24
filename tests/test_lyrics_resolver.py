@@ -5,9 +5,9 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
-from lyricflow.application.resolve_lyrics import LyricsResolver, provider_cache_key
-from lyricflow.domain.identity import LocalFileIdentity, YouTubeIdentity
-from lyricflow.domain.lyrics import (
+from lyriflux.application.resolve_lyrics import LyricsResolver, provider_cache_key
+from lyriflux.domain.identity import LocalFileIdentity, YouTubeIdentity
+from lyriflux.domain.lyrics import (
     ApprovalState,
     ContentProvenance,
     LocalLyricsResult,
@@ -28,12 +28,12 @@ from lyricflow.domain.lyrics import (
     RepresentationKind,
     TimingProvenance,
 )
-from lyricflow.domain.models import PlayerCapabilities, PlayerSnapshot, RawTrackMetadata
-from lyricflow.domain.tracks import Confidence, ResolvedTrack, TrackCandidate
-from lyricflow.infrastructure.lyrics.provider_documents import (
+from lyriflux.domain.models import PlayerCapabilities, PlayerSnapshot, RawTrackMetadata
+from lyriflux.domain.tracks import Confidence, ResolvedTrack, TrackCandidate
+from lyriflux.infrastructure.lyrics.provider_documents import (
     ProviderLyricDocumentBuilder,
 )
-from lyricflow.infrastructure.storage.bootstrap import open_storage
+from lyriflux.infrastructure.storage.bootstrap import open_storage
 
 NOW = datetime(2026, 8, 13, 14, tzinfo=UTC)
 

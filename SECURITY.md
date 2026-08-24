@@ -2,7 +2,7 @@
 
 ## Supported versions
 
-LyricFlow is pre-alpha and has no supported public release. Security fixes apply
+LyriFlux is pre-alpha and has no supported public release. Security fixes apply
 to the current development branch according to repository authorization and
 review rules.
 

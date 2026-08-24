@@ -2,24 +2,24 @@
 
 from dataclasses import replace
 
-from lyricflow.application.lyrics_sync import synchronize
-from lyricflow.application.sync_state import (
+from lyriflux.application.lyrics_sync import synchronize
+from lyriflux.application.sync_state import (
     SourceGenerationGuard,
     SynchronizationPublisher,
     build_sync_snapshot,
 )
-from lyricflow.domain.identity import YouTubeIdentity
-from lyricflow.domain.lyrics import ApprovalState, ContentProvenance, RepresentationKind
-from lyricflow.domain.representations import (
+from lyriflux.domain.identity import YouTubeIdentity
+from lyriflux.domain.lyrics import ApprovalState, ContentProvenance, RepresentationKind
+from lyriflux.domain.representations import (
     EffectiveRepresentationLine,
     RepresentationUncertainty,
 )
-from lyricflow.domain.synchronization import (
+from lyriflux.domain.synchronization import (
     AudioOutputLatency,
     LyricTimingCalibration,
     SynchronizationCalibration,
 )
-from lyricflow.domain.tracks import Confidence, ResolvedTrack, TrackCandidate
+from lyriflux.domain.tracks import Confidence, ResolvedTrack, TrackCandidate
 from tests.stage2_helpers import fixture_snapshot
 from tests.test_lyrics_sync import document, estimate
 
@@ -91,7 +91,7 @@ def test_snapshot_retains_explained_missing_representation_diagnostics() -> None
         None,
         ContentProvenance.GENERATED,
         ApprovalState.UNREVIEWED,
-        "LyricFlow language routing",
+        "LyriFlux language routing",
         "1",
         RepresentationUncertainty.AMBIGUOUS,
         ("Han-only document lacks sufficient language evidence",),

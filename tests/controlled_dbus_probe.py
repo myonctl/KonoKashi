@@ -7,14 +7,14 @@ from collections.abc import Mapping
 from PySide6.QtCore import QCoreApplication, QMetaType
 from PySide6.QtDBus import QDBus, QDBusArgument, QDBusConnection, QDBusMessage
 
-from lyricflow.infrastructure.mpris.backend import MprisPropertyRead
-from lyricflow.infrastructure.mpris.qt_dbus_values import PlayerSignalReceiver
+from lyriflux.infrastructure.mpris.backend import MprisPropertyRead
+from lyriflux.infrastructure.mpris.qt_dbus_values import PlayerSignalReceiver
 
 
 def main() -> int:
     """Verify the installed binding's real raw-map shape and typed recovery."""
 
-    QCoreApplication.instance() or QCoreApplication(["lyricflow-dbus-probe"])
+    QCoreApplication.instance() or QCoreApplication(["lyriflux-dbus-probe"])
     connection = QDBusConnection.sessionBus()
     if not connection.isConnected():
         raise RuntimeError(connection.lastError().message())

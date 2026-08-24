@@ -5,12 +5,12 @@ from pathlib import Path
 
 import pytest
 
-from lyricflow.domain.synchronization import (
+from lyriflux.domain.synchronization import (
     LyricDocumentTiming,
     OutputDeviceCalibration,
 )
-from lyricflow.infrastructure.storage.bootstrap import open_storage
-from lyricflow.infrastructure.storage.errors import StorageValidationError
+from lyriflux.infrastructure.storage.bootstrap import open_storage
+from lyriflux.infrastructure.storage.errors import StorageValidationError
 from tests.test_storage_repositories import _multilingual_document
 
 

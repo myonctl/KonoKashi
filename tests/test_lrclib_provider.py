@@ -8,8 +8,8 @@ from threading import Event, Thread
 import httpx
 import pytest
 
-from lyricflow.domain.lyrics import LyricsProviderStatus, LyricsQuery
-from lyricflow.infrastructure.lyrics.lrclib import LrclibLyricsProvider
+from lyriflux.domain.lyrics import LyricsProviderStatus, LyricsQuery
+from lyriflux.infrastructure.lyrics.lrclib import LrclibLyricsProvider
 
 
 def _record(**overrides: object) -> dict[str, object]:
@@ -64,7 +64,9 @@ def test_exact_request_uses_official_fields_duration_headers_and_injected_url() 
         "album_name": "Elevate & More",
         "duration": "183.771",
     }
-    assert request.headers["user-agent"].startswith("LyricFlow/1.0.0")
+    assert request.headers["user-agent"] == (
+        "LyriFlux/1.0.0 (https://github.com/myonctl/LyricFlow)"
+    )
     assert request.headers["accept"] == "application/json"
     assert "authorization" not in request.headers
     assert provider.timeout.connect == 1.25

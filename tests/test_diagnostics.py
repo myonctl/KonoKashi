@@ -3,9 +3,9 @@
 from pathlib import Path
 from types import ModuleType
 
-from lyricflow.application.diagnostics import build_doctor_report
-from lyricflow.application.ports import DiagnosticStatus
-from lyricflow.infrastructure.diagnostics import collect_local_diagnostics
+from lyriflux.application.diagnostics import build_doctor_report
+from lyriflux.application.ports import DiagnosticStatus
+from lyriflux.infrastructure.diagnostics import collect_local_diagnostics
 
 
 def _available(_name: str) -> ModuleType:
@@ -44,9 +44,9 @@ def test_all_required_local_prerequisites_pass(tmp_path: Path) -> None:
     ]
     assert all(check.status is DiagnosticStatus.OK for check in checks)
     assert probed == [
-        tmp_path / "config" / "lyricflow",
-        tmp_path / "data" / "lyricflow",
-        tmp_path / "cache" / "lyricflow",
+        tmp_path / "config" / "lyriflux",
+        tmp_path / "data" / "lyriflux",
+        tmp_path / "cache" / "lyriflux",
     ]
     assert build_doctor_report(checks).exit_code == 0
 
@@ -72,7 +72,7 @@ def test_each_missing_required_prerequisite_fails_doctor(tmp_path: Path) -> None
         raise ImportError
 
     def fail_cache(path: Path) -> str | None:
-        return "permission denied" if path.name == "lyricflow" else None
+        return "permission denied" if path.name == "lyriflux" else None
 
     checks = collect_local_diagnostics(
         platform_name="darwin",
@@ -106,6 +106,35 @@ def test_real_directory_probe_creates_writable_app_directories(tmp_path: Path) -
 
     directory_checks = [check for check in checks if check.name.endswith("-dir")]
     assert all(check.status is DiagnosticStatus.OK for check in directory_checks)
-    assert (tmp_path / "config" / "lyricflow").is_dir()
-    assert (tmp_path / "data" / "lyricflow").is_dir()
-    assert (tmp_path / "cache" / "lyricflow").is_dir()
+    assert (tmp_path / "config" / "lyriflux").is_dir()
+    assert (tmp_path / "data" / "lyriflux").is_dir()
+    assert (tmp_path / "cache" / "lyriflux").is_dir()
+
+
+def test_doctor_reports_dual_state_conflict_without_creating_more_state(
+    tmp_path: Path,
+) -> None:
+    environment = {
+        "DBUS_SESSION_BUS_ADDRESS": "unix:path=/session",
+        "XDG_CONFIG_HOME": str(tmp_path / "config"),
+        "XDG_DATA_HOME": str(tmp_path / "data"),
+        "XDG_CACHE_HOME": str(tmp_path / "cache"),
+    }
+    (tmp_path / "data" / "lyricflow").mkdir(parents=True)
+    (tmp_path / "data" / "lyriflux").mkdir(parents=True)
+
+    checks = collect_local_diagnostics(
+        platform_name="linux",
+        environment=environment,
+        home=tmp_path,
+        module_importer=_available,
+        command_locator=lambda _name: None,
+    )
+
+    migration = next(
+        check for check in checks if check.name == "legacy-state-migration"
+    )
+    assert migration.status is DiagnosticStatus.FAILURE
+    assert "both legacy LyricFlow and current LyriFlux state exist" in migration.message
+    assert not (tmp_path / "config" / "lyriflux").exists()
+    assert not (tmp_path / "cache" / "lyriflux").exists()

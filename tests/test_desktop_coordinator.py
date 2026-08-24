@@ -14,27 +14,27 @@ from PySide6.QtCore import Qt, QTimer
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication
 
-from lyricflow.application.frontend_session import FrontendLyricsBundle
-from lyricflow.application.playback_clock import PlaybackClock
-from lyricflow.application.settings import DesktopInteractionSettings
-from lyricflow.application.sync_session import PlaybackSyncSession
-from lyricflow.domain.library import LibraryScanSummary
-from lyricflow.domain.lyrics import LyricsResolutionResult, LyricsResolutionStatus
-from lyricflow.domain.models import (
+from lyriflux.application.frontend_session import FrontendLyricsBundle
+from lyriflux.application.playback_clock import PlaybackClock
+from lyriflux.application.settings import DesktopInteractionSettings
+from lyriflux.application.sync_session import PlaybackSyncSession
+from lyriflux.domain.library import LibraryScanSummary
+from lyriflux.domain.lyrics import LyricsResolutionResult, LyricsResolutionStatus
+from lyriflux.domain.models import (
     PlayerEvent,
     PlayerEventKind,
     PlayerInspection,
     PlayerListResult,
 )
-from lyricflow.domain.representations import RepresentationDisplaySettings
-from lyricflow.domain.tracks import (
+from lyriflux.domain.representations import RepresentationDisplaySettings
+from lyriflux.domain.tracks import (
     PlayerAssessment,
     PlayerSelectionResult,
     ResolvedTrack,
 )
-from lyricflow.presentation.desktop.coordinator import DesktopCoordinator
-from lyricflow.presentation.desktop.main_window import DesktopSettingsUpdate, MainWindow
-from lyricflow.presentation.desktop.review_dialog import (
+from lyriflux.presentation.desktop.coordinator import DesktopCoordinator
+from lyriflux.presentation.desktop.main_window import DesktopSettingsUpdate, MainWindow
+from lyriflux.presentation.desktop.review_dialog import (
     CorrectionActionKind,
     CorrectionActionRequest,
 )
@@ -256,7 +256,7 @@ def test_large_library_job_keeps_qt_event_loop_responsive(
         return LibraryScanSummary(1, 10_000, 10_000, 0, 0, 0, 0, 0, 0, 0)
 
     monkeypatch.setattr(
-        "lyricflow.application.library_scan.LibraryScanService.scan", large_scan
+        "lyriflux.application.library_scan.LibraryScanService.scan", large_scan
     )
     window = MainWindow()
     coordinator = DesktopCoordinator(

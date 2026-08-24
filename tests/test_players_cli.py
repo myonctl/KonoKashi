@@ -7,9 +7,9 @@ from pathlib import Path
 
 import pytest
 
-from lyricflow import cli
-from lyricflow.application.player_diagnostics import render_player_event
-from lyricflow.domain.models import (
+from lyriflux import cli
+from lyriflux.application.player_diagnostics import render_player_event
+from lyriflux.domain.models import (
     InspectionFailure,
     PlayerEvent,
     PlayerEventKind,
@@ -17,7 +17,7 @@ from lyricflow.domain.models import (
     PlayerListResult,
     PlayerWatchStart,
 )
-from lyricflow.infrastructure.mpris.metadata_mapper import (
+from lyriflux.infrastructure.mpris.metadata_mapper import (
     full_service_name,
     map_player_snapshot,
 )

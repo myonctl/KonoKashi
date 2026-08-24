@@ -5,10 +5,10 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import replace
 
-from lyricflow.application.playback_clock import PlaybackClock
-from lyricflow.application.sync_session import PlaybackSyncSession
-from lyricflow.domain.models import PlayerEvent, PlayerEventKind
-from lyricflow.domain.synchronization import (
+from lyriflux.application.playback_clock import PlaybackClock
+from lyriflux.application.sync_session import PlaybackSyncSession
+from lyriflux.domain.models import PlayerEvent, PlayerEventKind
+from lyriflux.domain.synchronization import (
     ClockUpdateKind,
     ObservationReason,
     PlaybackState,
