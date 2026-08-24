@@ -21,6 +21,8 @@ unreleased.
 - Renamed the existing private GitHub repository in place to
   `myonctl/LyriFlux`. Its repository ID, creation date, history, branch SHA, and
   Actions run were preserved; no replacement repository or force-push was used.
+- Accepted the real KDE menu/window, normal-song lyrics/synchronization, and
+  restart/persistence matrix, completing the dedicated pre-Stage-11 rename.
 - Generated desktop launchers now reference the exact installed SVG path.
   This avoids reliance on user-local icon-theme name discovery; paths
   containing spaces use desktop-entry escaping and pass launcher validation.

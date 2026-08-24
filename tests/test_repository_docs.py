@@ -175,13 +175,13 @@ def test_project_state_contains_the_continuation_contract() -> None:
     assert "docs/PROJECT_RENAME_LYRIFLUX.md" in content
 
 
-def test_agent_todo_authorizes_only_the_pre_stage_eleven_rename() -> None:
+def test_agent_todo_authorizes_no_stage_after_the_rename() -> None:
     content = (REPOSITORY_ROOT / "AGENT_TODO.md").read_text(encoding="utf-8")
 
-    assert content.startswith("# Active pre-Stage-11 product rename\n")
-    assert "LyricFlow /\n`lyricflow` to LyriFlux / `lyriflux`" in content
-    assert "Stage 10 — Packaging and v1 release is **Completed**" in content
-    assert "1 through 9 and the multilingual repair remain historically" in content
+    assert content.startswith("# No active implementation stage\n")
+    assert "No implementation stage is authorized." in content
+    assert "LyriFlux rename is **Completed**" in content
+    assert "Stages 1 through 10" in content
     assert "No PyPI, public-repository, or public artifact publication" in content
     assert "Stage 11 and later work remain Proposed / unauthorized" in content
 
