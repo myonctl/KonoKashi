@@ -65,7 +65,7 @@ def test_exact_request_uses_official_fields_duration_headers_and_injected_url() 
         "duration": "183.771",
     }
     assert request.headers["user-agent"] == (
-        "LyriFlux/1.0.0 (https://github.com/myonctl/LyricFlow)"
+        "LyriFlux/1.0.0 (https://github.com/myonctl/LyriFlux)"
     )
     assert request.headers["accept"] == "application/json"
     assert "authorization" not in request.headers

@@ -42,7 +42,7 @@ Stage 4 — lyrics resolution — passed its complete automated gate and accepte
 real Strawberry sidecar, LRCLIB, fresh-process offline-cache, and conservative
 no-result verification.
 
-The [`myonctl/LyricFlow`](https://github.com/myonctl/LyricFlow) GitHub repository
+The [`myonctl/LyriFlux`](https://github.com/myonctl/LyriFlux) GitHub repository
 is private during pre-alpha development. Its `origin` remote and default branch
 use the conventional `main` workflow. The project is intended to become public
 later, but LyriFlux is **not currently open source**: no open-source license

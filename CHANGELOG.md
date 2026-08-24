@@ -18,9 +18,9 @@ unreleased.
 - Hardened reproducible builds to use sanitized temporary source copies and to
   reject stale legacy package members; this prevents an ignored old `build/`
   directory from contaminating the renamed wheel.
-- The GitHub repository remains `myonctl/LyricFlow` while authentication and a
-  safe in-place rename are pending; it will never be replaced to obtain the new
-  name.
+- Renamed the existing private GitHub repository in place to
+  `myonctl/LyriFlux`. Its repository ID, creation date, history, branch SHA, and
+  Actions run were preserved; no replacement repository or force-push was used.
 - Generated desktop launchers now reference the exact installed SVG path.
   This avoids reliance on user-local icon-theme name discovery; paths
   containing spaces use desktop-entry escaping and pass launcher validation.

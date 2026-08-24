@@ -18,7 +18,7 @@ from lyriflux.domain.lyrics import (
 )
 
 DEFAULT_BASE_URL = "https://lrclib.net"
-DEFAULT_USER_AGENT = f"LyriFlux/{__version__} (https://github.com/myonctl/LyricFlow)"
+DEFAULT_USER_AGENT = f"LyriFlux/{__version__} (https://github.com/myonctl/LyriFlux)"
 MAX_PROVIDER_RESPONSE_BYTES = 2_000_000
 MAX_PROVIDER_RECORDS = 100
 MAX_PROVIDER_DURATION_MS = 7 * 24 * 60 * 60 * 1000
