@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from lyriflux.application.frontend_session import FrontendSessionService
-from lyriflux.application.ports import LyricsProviderPort
+from lyriflux.application.ports import LyricsProviderPort, SettingsRepositoryPort
 from lyriflux.application.representations import RepresentationService
 from lyriflux.application.resolve_lyrics import LyricsResolver
 from lyriflux.application.resolve_track import TrackResolver
@@ -28,6 +28,7 @@ from lyriflux.infrastructure.storage.bootstrap import StorageRepositories
 def create_frontend_session(
     storage: StorageRepositories,
     provider: LyricsProviderPort,
+    settings: SettingsRepositoryPort | None = None,
 ) -> FrontendSessionService:
     """Assemble shared application services for desktop and future frontends."""
 
@@ -56,7 +57,7 @@ def create_frontend_session(
             storage.representations,
             language_evidence=IcuHanLanguageEvidenceAdapter(),
         ),
-        storage.settings,
+        settings or storage.settings,
         storage.timing_calibrations,
         ReviewCorrectionService(
             track_overrides=storage.track_overrides,

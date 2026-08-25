@@ -69,20 +69,28 @@ class SQLiteLibraryRepository:
                 "VALUES (1, ?, ?)",
                 tuple(enumerate(settings.roots)),
             )
-            if settings.roots:
-                placeholders = ",".join("?" for _ in settings.roots)
-                connection.execute(
+        self.reconcile_configured_roots(settings.roots)
+
+    def reconcile_configured_roots(self, roots: tuple[str, ...]) -> int:
+        """Mark tracks outside canonical configured roots missing."""
+
+        now = utc_now_text()
+        with self._database.transaction() as connection:
+            if roots:
+                placeholders = ",".join("?" for _ in roots)
+                cursor = connection.execute(
                     "UPDATE library_tracks SET state = 'missing', "
                     "review_reason = NULL, updated_at = ? "
                     f"WHERE root_path NOT IN ({placeholders}) AND state != 'missing'",
-                    (now, *settings.roots),
+                    (now, *roots),
                 )
             else:
-                connection.execute(
+                cursor = connection.execute(
                     "UPDATE library_tracks SET state = 'missing', "
                     "review_reason = NULL, updated_at = ? WHERE state != 'missing'",
                     (now,),
                 )
+        return cursor.rowcount
 
     def begin_scan(self) -> int:
         with self._database.transaction() as connection:

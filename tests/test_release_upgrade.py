@@ -4,7 +4,10 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from lyriflux.infrastructure.storage.migrations import MIGRATIONS
+from lyriflux.infrastructure.storage.migrations import (
+    CURRENT_SCHEMA_VERSION,
+    MIGRATIONS,
+)
 from lyriflux.infrastructure.storage.sqlite import SQLiteDatabase
 
 
@@ -85,7 +88,7 @@ def test_schema_eight_upgrade_preserves_user_and_library_data(tmp_path: Path) ->
             """
         )
 
-    assert database.initialize() == 9
+    assert database.initialize() == CURRENT_SCHEMA_VERSION
 
     with database.connection(readonly=True) as connection:
         assert connection.execute("PRAGMA quick_check").fetchone()[0] == "ok"

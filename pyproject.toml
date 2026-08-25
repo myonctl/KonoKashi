@@ -31,6 +31,7 @@ dependencies = [
     "mutagen>=1.47,<2",
     "pypinyin>=0.55,<0.56",
     "PyICU>=2.16.2,<3",
+    "tomlkit>=0.15.1,<0.16",
     "unidic-lite>=1.0.8,<2",
 ]
 

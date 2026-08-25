@@ -15,6 +15,7 @@ from pathlib import Path
 from lyriflux.infrastructure.storage.backup import backup_database
 from lyriflux.infrastructure.storage.diagnostics import inspect_storage
 from lyriflux.infrastructure.storage.errors import StorageError, StorageMigrationError
+from lyriflux.infrastructure.storage.migrations import CURRENT_SCHEMA_VERSION
 from lyriflux.infrastructure.storage.sqlite import SQLiteDatabase
 
 LEGACY_APPLICATION_DIRECTORY = "lyricflow"
@@ -121,19 +122,59 @@ def _is_verified_prior_migration(
     return payload == _marker_payload(kind, fingerprint) and legacy.is_dir()
 
 
-def _validate_legacy_database(path: Path) -> object:
+_USER_DATA_TABLES = (
+    "source_identities",
+    "track_overrides",
+    "lyrics_documents",
+    "lyrics_matches",
+    "lyrics_match_rejections",
+    "provider_cache",
+    "lyric_representation_candidates",
+    "lyric_representation_decisions",
+    "lyric_document_language_overrides",
+    "lyric_document_timing",
+    "audio_output_calibrations",
+    "library_roots",
+    "library_tracks",
+    "library_scan_runs",
+)
+
+
+def _durable_counts(path: Path) -> dict[str, int]:
+    with SQLiteDatabase(path).connection(readonly=True) as connection:
+        tables = {
+            str(row[0])
+            for row in connection.execute(
+                "SELECT name FROM sqlite_master WHERE type = 'table'"
+            )
+        }
+        return {
+            table: int(
+                connection.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
+            )
+            for table in _USER_DATA_TABLES
+            if table in tables
+        }
+
+
+def _validate_legacy_database(path: Path) -> dict[str, int]:
     status = inspect_storage(path)
     if (
         status.error is not None
-        or status.migration_status != "current"
+        or status.schema_version
+        not in {
+            CURRENT_SCHEMA_VERSION,
+            CURRENT_SCHEMA_VERSION - 1,
+        }
         or status.integrity_status != "ok"
     ):
         raise StorageMigrationError(
-            "legacy LyricFlow database is not healthy and current; both the "
-            "legacy state and any existing LyriFlux state were left unchanged",
+            "legacy LyricFlow database is not healthy and current or safely "
+            "migratable; both the legacy state and any existing LyriFlux state "
+            "were left unchanged",
             path=path,
         )
-    return status.counts
+    return _durable_counts(path)
 
 
 def _prepare_data_copy(legacy: Path, temporary: Path) -> None:
@@ -145,12 +186,13 @@ def _prepare_data_copy(legacy: Path, temporary: Path) -> None:
         (temporary / f"{LEGACY_DATABASE_FILENAME}{suffix}").unlink(missing_ok=True)
     current_database = temporary / DATABASE_FILENAME
     backup_database(SQLiteDatabase(legacy_database), current_database)
+    SQLiteDatabase(current_database).initialize()
     migrated = inspect_storage(current_database)
     if (
         migrated.error is not None
         or migrated.migration_status != "current"
         or migrated.integrity_status != "ok"
-        or migrated.counts != expected_counts
+        or _durable_counts(current_database) != expected_counts
     ):
         raise StorageMigrationError(
             "migrated LyriFlux database did not validate; legacy state was retained",

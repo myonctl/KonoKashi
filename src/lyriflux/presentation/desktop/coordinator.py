@@ -23,6 +23,10 @@ from lyriflux.application.playback_clock import PlaybackClock
 from lyriflux.application.ports import MprisRuntimePort
 from lyriflux.application.review_corrections import ReviewCorrectionSnapshot
 from lyriflux.application.settings import DesktopInteractionSettings
+from lyriflux.application.settings_service import (
+    CanonicalSettingsService,
+    SettingsReloadResult,
+)
 from lyriflux.application.sync_session import PlaybackSyncSession
 from lyriflux.application.sync_state import (
     SnapshotSubscription,
@@ -41,6 +45,8 @@ from lyriflux.domain.synchronization import (
     SynchronizationCalibration,
 )
 from lyriflux.domain.tracks import PlayerSelectionResult, ResolvedTrack
+from lyriflux.infrastructure.configuration.bootstrap import open_settings
+from lyriflux.infrastructure.configuration.qt_watcher import QtSettingsWatcher
 from lyriflux.infrastructure.frontend import create_frontend_session
 from lyriflux.infrastructure.lyrics.lrclib import LrclibLyricsProvider
 from lyriflux.infrastructure.mpris.backend import MprisBackendError
@@ -84,6 +90,7 @@ class _FunctionJob(QRunnable):
 @dataclass(frozen=True, slots=True)
 class _InitializedServices:
     frontend: FrontendSessionPort
+    canonical: CanonicalSettingsService
     settings: RepresentationDisplaySettings
     interactions: DesktopInteractionSettings
 
@@ -103,15 +110,19 @@ class DesktopCoordinator(QObject):
         window: MainWindow,
         *,
         database_path: Path | None = None,
+        config_path: Path | None = None,
         runtime: MprisRuntimePort | None = None,
     ) -> None:
         super().__init__(application)
         self._application = application
         self._window = window
         self._database_path = database_path
+        self._config_path = config_path
         self._runtime: MprisRuntimePort = runtime or create_qt_mpris_runtime()
         self._controller = DesktopStateController()
         self._frontend: FrontendSessionPort | None = None
+        self._settings_service: CanonicalSettingsService | None = None
+        self._settings_watcher: QtSettingsWatcher | None = None
         self._track: ResolvedTrack | None = None
         self._bundle: FrontendLyricsBundle | None = None
         self._playback_session: PlaybackSyncSession | None = None
@@ -186,11 +197,13 @@ class DesktopCoordinator(QObject):
 
     def _initialize_services(self) -> _InitializedServices:
         storage = open_storage(self._database_path)
-        frontend = create_frontend_session(storage, LrclibLyricsProvider())
+        canonical = open_settings(storage, config_path=self._config_path)
+        frontend = create_frontend_session(storage, LrclibLyricsProvider(), canonical)
         return _InitializedServices(
             frontend,
-            storage.settings.get_representation_display(),
-            storage.settings.get_desktop_interaction(),
+            canonical,
+            canonical.get_representation_display(),
+            canonical.get_desktop_interaction(),
         )
 
     def _services_initialized(
@@ -209,10 +222,56 @@ class DesktopCoordinator(QObject):
             )
             return
         self._frontend = result.frontend
+        self._settings_service = result.canonical
+        self._settings_watcher = QtSettingsWatcher(
+            result.canonical, self._settings_reloaded, parent=self
+        )
         self._controller.set_representation_settings(result.settings)
         self._window.set_representation_settings(result.settings)
         self._window.set_interaction_settings(result.interactions)
+        for settings_diagnostic in result.canonical.diagnostics:
+            self._window.render_state(
+                self._controller.add_diagnostic(settings_diagnostic.render())
+            )
         self._refresh_selection()
+
+    def _settings_reloaded(self, result: SettingsReloadResult) -> None:
+        if self._closed:
+            return
+        if not result.applied:
+            for diagnostic in result.diagnostics:
+                self._window.render_state(
+                    self._controller.add_diagnostic(
+                        f"configuration reload rejected: {diagnostic.render()}"
+                    )
+                )
+            return
+        live_keys = set(result.changed_keys)
+        display_keys = {
+            "lyrics.display.original",
+            "lyrics.display.romanized",
+            "lyrics.display.translated",
+        }
+        if live_keys & display_keys:
+            display = result.snapshot.representation_display
+            self._controller.set_representation_settings(display)
+            self._window.set_representation_settings(display)
+            bundle = self._bundle
+            token = self._controller.current_token
+            if bundle is not None and token is not None:
+                self._controller.accept_resolution(
+                    token,
+                    bundle.resolution,
+                    bundle.representations,
+                    display,
+                )
+                if self._publisher is not None and self._publisher.current is not None:
+                    self._controller.accept_snapshot(self._publisher.current)
+                self._window.render_state(self._controller.state)
+        if "desktop.lyrics.selectable" in live_keys:
+            self._window.set_interaction_settings(result.snapshot.desktop_interaction)
+        if live_keys & {"players.preferred", "players.ignored"}:
+            self._refresh_selection()
 
     def _refresh_if_idle(self) -> None:
         if self._frontend is not None and self._track is None:
@@ -672,7 +731,10 @@ class DesktopCoordinator(QObject):
 
         def scan() -> LibraryScanSummary:
             storage = open_storage(self._database_path)
-            settings = storage.library.get_settings()
+            canonical = self._settings_service or open_settings(
+                storage, config_path=self._config_path
+            )
+            settings = canonical.get_library()
             downloader = (
                 LibraryLyricsDownloader(storage, LrclibLyricsProvider())
                 if settings.automatic_downloads
@@ -684,6 +746,7 @@ class DesktopCoordinator(QObject):
                 storage.library,
                 downloader=downloader,
                 overrides=storage.track_overrides,
+                settings=settings,
             ).scan(cancellation=cancellation)
 
         def scanned(result: object | None, error: BaseException | None) -> None:
@@ -742,6 +805,9 @@ class DesktopCoordinator(QObject):
         if self._closed:
             return
         self._closed = True
+        if self._settings_watcher is not None:
+            self._settings_watcher.close()
+            self._settings_watcher = None
         if self._frontend is not None:
             self._frontend.cancel_inflight()
         if self._library_cancellation is not None:

@@ -7,6 +7,7 @@ from pathlib import Path
 import pytest
 
 from lyriflux import cli
+from lyriflux.infrastructure.storage.migrations import CURRENT_SCHEMA_VERSION
 
 
 def test_storage_status_missing_then_migrate_then_current(
@@ -120,7 +121,7 @@ def test_storage_backup_is_verified_read_only_and_refuses_overwrite(
 
     assert cli.main(["storage", "backup", str(backup)], database_path=database) == 0
     output = capsys.readouterr().out
-    assert "schema version: 9" in output
+    assert f"schema version: {CURRENT_SCHEMA_VERSION}" in output
     assert "live database modified: no" in output
     assert database.read_bytes() == before
     assert backup.is_file()

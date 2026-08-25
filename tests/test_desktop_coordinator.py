@@ -16,7 +16,11 @@ from PySide6.QtWidgets import QApplication
 
 from lyriflux.application.frontend_session import FrontendLyricsBundle
 from lyriflux.application.playback_clock import PlaybackClock
-from lyriflux.application.settings import DesktopInteractionSettings
+from lyriflux.application.settings import (
+    DesktopInteractionSettings,
+    validate_settings_values,
+)
+from lyriflux.application.settings_service import SettingsReloadResult
 from lyriflux.application.sync_session import PlaybackSyncSession
 from lyriflux.domain.library import LibraryScanSummary
 from lyriflux.domain.lyrics import LyricsResolutionResult, LyricsResolutionStatus
@@ -237,6 +241,31 @@ def test_settings_update_applies_and_persists_opt_in_selection(
     )
     assert frontend.display_settings == display
     assert frontend.interaction_settings == interactions
+    coordinator.close()
+    window.close()
+
+
+def test_hot_reload_applies_live_desktop_interaction_setting(
+    qt_app: QApplication,
+) -> None:
+    window = MainWindow()
+    coordinator = _ImmediateCoordinator(qt_app, window)
+    snapshot = validate_settings_values(
+        {"desktop.lyrics.selectable": True},
+        explicit_keys=frozenset({"desktop.lyrics.selectable"}),
+    )
+
+    coordinator._settings_reloaded(
+        SettingsReloadResult(
+            True, snapshot, changed_keys=("desktop.lyrics.selectable",)
+        )
+    )
+
+    assert window.interaction_settings == DesktopInteractionSettings(True)
+    assert (
+        window.active_band.textInteractionFlags()
+        & Qt.TextInteractionFlag.TextSelectableByMouse
+    )
     coordinator.close()
     window.close()
 

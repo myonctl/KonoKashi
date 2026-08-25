@@ -12,6 +12,10 @@ from lyriflux.application.settings import DesktopInteractionSettings
 from lyriflux.infrastructure.storage.bootstrap import open_storage
 from lyriflux.infrastructure.storage.diagnostics import inspect_storage
 from lyriflux.infrastructure.storage.errors import StorageMigrationError
+from lyriflux.infrastructure.storage.migrations import (
+    CURRENT_SCHEMA_VERSION,
+    MIGRATIONS,
+)
 from lyriflux.infrastructure.storage.sqlite import SQLiteDatabase
 from lyriflux.infrastructure.storage.state_migration import (
     DATABASE_FILENAME,
@@ -200,6 +204,22 @@ def test_legacy_state_migrates_non_destructively_and_is_idempotent(
         assert (tmp_path / kind / "lyriflux" / f"{kind}.txt").read_text() == (
             f"preserved-{kind}"
         )
+
+
+def test_schema_nine_legacy_database_upgrades_in_copy_only(tmp_path: Path) -> None:
+    environment = _environment(tmp_path)
+    legacy_database = tmp_path / "data" / "lyricflow" / LEGACY_DATABASE_FILENAME
+    legacy = SQLiteDatabase(legacy_database)
+    legacy.initialize(MIGRATIONS[:9])
+    legacy_hash = _sha256(legacy_database)
+
+    migrate_legacy_xdg_state(environment=environment, home=tmp_path)
+
+    current_database = tmp_path / "data" / "lyriflux" / DATABASE_FILENAME
+    assert inspect_storage(current_database).schema_version == CURRENT_SCHEMA_VERSION
+    assert inspect_storage(current_database).integrity_status == "ok"
+    assert _sha256(legacy_database) == legacy_hash
+    assert inspect_storage(legacy_database).schema_version == 9
 
 
 def test_migration_preserves_settings_corrections_representations_timing_and_library(

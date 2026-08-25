@@ -171,19 +171,20 @@ def test_project_state_contains_the_continuation_contract() -> None:
 
     assert content.startswith("# LyriFlux Project State\n")
     assert all(heading in content for heading in PROJECT_STATE_HEADINGS)
-    assert "/home/example/Documents/LyricFlow/" in content
+    assert "/home/example/Documents/LyriFlux/" in content
     assert "docs/PROJECT_RENAME_LYRIFLUX.md" in content
 
 
-def test_agent_todo_authorizes_no_stage_after_the_rename() -> None:
+def test_agent_todo_authorizes_only_stage_11() -> None:
     content = (REPOSITORY_ROOT / "AGENT_TODO.md").read_text(encoding="utf-8")
 
-    assert content.startswith("# No active implementation stage\n")
-    assert "No implementation stage is authorized." in content
-    assert "LyriFlux rename is **Completed**" in content
-    assert "Stages 1 through 10" in content
-    assert "No PyPI, public-repository, or public artifact publication" in content
-    assert "Stage 11 and later work remain Proposed / unauthorized" in content
+    assert content.startswith(
+        "# Stage 11 — Canonical Settings & Configuration Foundation\n"
+    )
+    assert "Status: **Active**" in content
+    assert "one typed, versioned schema over existing real settings" in content
+    assert "Stage 12 and every remaining post-v1 backlog item" in content
+    assert "Do not begin them automatically." in content
 
 
 def test_manifest_is_inventory_not_authority() -> None:
@@ -192,8 +193,10 @@ def test_manifest_is_inventory_not_authority() -> None:
     )
 
     assert manifest["implementation_authority"] == "AGENT_TODO.md"
-    assert manifest["authorized_stage"] is None
-    assert manifest["proposed_stage"] == "Stage 11+ — Post-v1 backlog"
+    assert manifest["authorized_stage"] == (
+        "Stage 11 — Canonical Settings & Configuration Foundation"
+    )
+    assert manifest["proposed_stage"] == "Stage 12+ — Remaining post-v1 backlog"
     assert all((REPOSITORY_ROOT / path).is_file() for path in manifest["files"])
 
 

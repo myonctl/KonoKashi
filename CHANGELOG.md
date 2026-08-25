@@ -7,6 +7,20 @@ unreleased.
 
 ### Changed
 
+- Defined and activated Stage 11 from the existing canonical-settings and
+  dotfile backlog items. Added one versioned typed schema/service over the nine
+  actual Stage 1–10 preferences, explicit scope/reload/origin metadata, atomic
+  last-known-good validation, and a frontend-neutral subscription API.
+- Selected UTF-8 TOML at the LyriFlux XDG config path in ADR 0018. Added bounded
+  `tomllib` parsing, TOMLKit comment-preserving serialization, mode-preserving
+  atomic writes, safe symlink-target behavior, deterministic defaults < file
+  precedence, and event-driven debounced desktop hot reload.
+- Added `lyriflux config path|validate|get|set|reset|dump-defaults`; migrated
+  existing non-default SQLite preferences idempotently without overriding
+  explicit TOML; and retained SQLite for documents, corrections, caches,
+  timing/calibration, and indexed state. Append-only schema 10 records only the
+  successful handoff.
+
 - Renamed the current product from LyricFlow to LyriFlux: display/application
   name, CLI (`lyriflux`), Python namespace and distribution (`lyriflux`), XDG
   namespace, desktop application ID/launcher, resources, and current docs.

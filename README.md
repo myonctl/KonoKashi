@@ -13,9 +13,14 @@ version is 1.0.0.
 ## Current status
 
 Stages 1 through 10 and the post-Stage-5 Chinese/Pinyin repair are **Completed**.
+Stage 11 — Canonical Settings & Configuration Foundation is **Active** after a
+deliberate dependency-first selection from the existing post-v1 backlog. Its
+implementation and 579-test automated gate are complete; real verification is
+pending, so the stage is not yet Completed.
 The installed private v1 is launchable from KDE's application menu; its
 remaining cosmetic placeholder icon is explicitly deferred. Stage 11 and later
-work remain Proposed / unauthorized. Stage 8 —
+work no longer share one unordered bucket; Stage 12+ remains Proposed /
+unauthorized. Stage 8 —
 Review and correction workflow
 passed its automated gate and accepted real Strawberry/desktop correction,
 restart, preservation, and cleanup matrix on 2026-08-23. Stage 9 —
@@ -181,9 +186,9 @@ python -m venv .venv
 .venv/bin/python -m pip install ".[dev]"
 ```
 
-PySide6, HTTPX, Mutagen, Cutlet/Fugashi/UniDic-lite, pypinyin, and PyICU are runtime
-dependencies. PyICU requires system ICU development headers when installed
-from PyPI source. pytest, Ruff, and mypy are development dependencies.
+PySide6, HTTPX, Mutagen, Cutlet/Fugashi/UniDic-lite, pypinyin, PyICU, and
+TOMLKit are runtime dependencies. PyICU requires system ICU development headers
+when installed from PyPI source. pytest, Ruff, and mypy are development dependencies.
 Rationale, licensing cautions, and usage boundaries are recorded in
 `docs/DEPENDENCIES.md`.
 
@@ -193,6 +198,12 @@ Rationale, licensing cautions, and usage boundaries are recorded in
 .venv/bin/lyriflux --version
 .venv/bin/lyriflux doctor
 .venv/bin/lyriflux desktop
+.venv/bin/lyriflux config path
+.venv/bin/lyriflux config validate
+.venv/bin/lyriflux config get lyrics.display.translated
+.venv/bin/lyriflux config set lyrics.display.translated true
+.venv/bin/lyriflux config reset lyrics.display.translated
+.venv/bin/lyriflux config dump-defaults
 .venv/bin/lyriflux players list
 .venv/bin/lyriflux players inspect <service>
 .venv/bin/lyriflux players watch
@@ -241,11 +252,22 @@ family, `identity:NAME` for exact Identity, or `desktop-entry:NAME` for exact
 DesktopEntry matching. Ignored selectors take precedence when the same player
 is also preferred.
 
+Canonical settings use UTF-8 TOML at
+`$XDG_CONFIG_HOME/lyriflux/config.toml`, falling back to
+`$HOME/.config/lyriflux/config.toml`. Built-in defaults have lower precedence
+than explicit file values, and `config get` reports the origin, scope, type,
+and reload behavior. Direct edits, Git, symlinks, and Stow are supported;
+invalid complete saves are rejected while a running desktop retains its last
+known-good snapshot. LyriFlux writes through validated, comment-preserving,
+atomic replacement and never executes configuration. The existing `storage
+settings`/`storage display` and `library settings` commands are compatibility
+adapters over this same service.
+
 `storage status` is read-only and reports the XDG database path, schema and
 integrity state, and safe repository counts without dumping media paths or lyric
 content. `storage migrate` explicitly initializes or upgrades the database
 without destructive reset. `storage settings set --prefer ... --ignore ...`
-atomically replaces durable player configuration; `players select` uses it when
+atomically replaces canonical player configuration; `players select` uses it when
 command-line values are absent. A selected stable source can be deliberately
 corrected with `--approve-title` plus one or more `--approve-artist` values and
 reset with `--reset-override`. Session-only generic sources reject approval.

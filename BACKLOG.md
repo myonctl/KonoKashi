@@ -49,9 +49,9 @@ authorize implementation. Staged v1 ordering lives in `docs/ROADMAP.md`.
   automation over typed validated semantics with explicit scope and reload
   class. Include actionable unknown-key/value diagnostics, atomic
   last-known-good reload, and deliberate comment-preservation/migration policy.
-  Status: Planned future architecture; not Stage 8. Prerequisites: settings
-  schema/format design and migration from current typed SQLite settings.
-  Related: ADR 0014.
+  Status: Implemented by Stage 11; real completion verification is pending.
+  Existing actual settings now use one schema/service and TOML authority;
+  future settings surfaces remain separate work. Related: ADRs 0014 and 0018.
 - **First-class interactive settings TUI and GUI counterpart** — Provide a
   polished keyboard-first Textual candidate with categories, search, validated
   controls, reset, scope/origin, and preview, plus equivalent desktop
@@ -63,8 +63,10 @@ authorize implementation. Staged v1 ordering lives in `docs/ROADMAP.md`.
   XDG-compliant, version-control/symlink/Stow-friendly files, deterministic
   config commands, documented layering, and hot reload where safe. Preserve
   hand-written comments where practical and reject executable sourcing,
-  circular includes, and partial invalid application. Status: Planned future
-  work; exact format/layout deliberately undecided. Related: ADR 0014.
+  circular includes, and partial invalid application. Status: Implemented by
+  Stage 11 for canonical settings at XDG `lyriflux/config.toml`, including
+  validated CLI operations, safe writes, symlink workflows, and bounded live
+  reload; themes/rices remain future work. Related: ADRs 0014 and 0018.
 - **Safe frontend-neutral themes and shareable rices** — Define portable
   semantic theme/layout data with validation, named presets, import/export,
   duplication, and a user directory. Qt QSS/QML and Textual TCSS remain adapter

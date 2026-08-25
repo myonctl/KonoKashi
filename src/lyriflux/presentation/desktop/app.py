@@ -40,6 +40,7 @@ def run_desktop(
     argv: Sequence[str] | None = None,
     *,
     database_path: Path | None = None,
+    config_path: Path | None = None,
     coordinator_factory: DesktopCoordinatorFactory = _create_coordinator,
 ) -> int:
     """Launch the normal resizable Desktop MVP and return its Qt exit code."""
@@ -58,7 +59,16 @@ def run_desktop(
     window = MainWindow()
     window.show()
     try:
-        coordinator = coordinator_factory(application, window, database_path)
+        coordinator: DesktopLifecycle
+        if config_path is not None and coordinator_factory is _create_coordinator:
+            coordinator = DesktopCoordinator(
+                application,
+                window,
+                database_path=database_path,
+                config_path=config_path,
+            )
+        else:
+            coordinator = coordinator_factory(application, window, database_path)
         coordinator.start()
     except (ImportError, RuntimeError) as error:
         from lyriflux.application.desktop_state import DesktopStateController

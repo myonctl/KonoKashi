@@ -541,6 +541,21 @@ MIGRATIONS: tuple[Migration, ...] = (
             """,
         ),
     ),
+    Migration(
+        10,
+        "canonical configuration migration marker",
+        (
+            """
+            CREATE TABLE canonical_config_migrations (
+                migration_id INTEGER PRIMARY KEY CHECK (migration_id = 1),
+                config_schema_version INTEGER NOT NULL CHECK (
+                    config_schema_version = 1
+                ),
+                migrated_at TEXT NOT NULL
+            )
+            """,
+        ),
+    ),
 )
 
 CURRENT_SCHEMA_VERSION = MIGRATIONS[-1].version

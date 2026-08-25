@@ -41,6 +41,8 @@ class LibraryRepositoryPort(Protocol):
 
     def put_settings(self, settings: LibrarySettings) -> None: ...
 
+    def reconcile_configured_roots(self, roots: tuple[str, ...]) -> int: ...
+
     def begin_scan(self) -> int: ...
 
     def matching_file(self, file: LibraryFile) -> StoredLibraryTrack | None: ...
@@ -79,12 +81,14 @@ class LibraryScanService:
         *,
         downloader: LibraryDownloader | None = None,
         overrides: LibraryOverridePort | None = None,
+        settings: LibrarySettings | None = None,
     ) -> None:
         self._filesystem = filesystem
         self._metadata = metadata
         self._repository = repository
         self._downloader = downloader
         self._overrides = overrides
+        self._settings = settings
 
     def scan(
         self,
@@ -95,9 +99,10 @@ class LibraryScanService:
     ) -> LibraryScanSummary:
         """Scan configured roots and safely retain resumable per-file progress."""
 
-        settings = self._repository.get_settings()
+        settings = self._settings or self._repository.get_settings()
         if not settings.roots:
             raise ValueError("no music-library roots are configured")
+        self._repository.reconcile_configured_roots(settings.roots)
         stop = cancellation or Event()
         scan_id = self._repository.begin_scan()
         counters = {

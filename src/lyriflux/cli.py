@@ -30,6 +30,7 @@ from lyriflux.domain.tracks import PlayerSelectionConfig
 from lyriflux.infrastructure.diagnostics import collect_local_diagnostics
 
 if TYPE_CHECKING:
+    from lyriflux.application.settings_service import CanonicalSettingsService
     from lyriflux.domain.lyrics import LyricDocument
     from lyriflux.domain.representations import EffectiveRepresentationLine
     from lyriflux.domain.tracks import ResolvedTrack
@@ -38,6 +39,22 @@ if TYPE_CHECKING:
 RuntimeFactory: TypeAlias = Callable[[], MprisRuntimePort]
 LyricsProviderFactory: TypeAlias = Callable[[], LyricsProviderPort]
 AudioLatencyProbeFactory: TypeAlias = Callable[[], AudioLatencyProbePort]
+
+
+def _open_canonical_settings(
+    storage: StorageRepositories, config_path: Path | None
+) -> CanonicalSettingsService:
+    from lyriflux.infrastructure.configuration.bootstrap import open_settings
+
+    return open_settings(storage, config_path=config_path)
+
+
+def _open_readonly_settings(
+    storage: StorageRepositories, config_path: Path | None
+) -> CanonicalSettingsService:
+    from lyriflux.infrastructure.configuration.bootstrap import open_settings
+
+    return open_settings(storage, config_path=config_path, migrate=False)
 
 
 def _silence_broken_stdout() -> None:
@@ -155,6 +172,24 @@ def _parser() -> argparse.ArgumentParser:
     subparsers.add_parser(
         "desktop",
         help="open the PySide6 synchronized-lyrics desktop application",
+    )
+    config = subparsers.add_parser(
+        "config", help="inspect and edit canonical LyriFlux configuration"
+    )
+    config_commands = config.add_subparsers(dest="config_command", required=True)
+    config_commands.add_parser("path", help="print the resolved TOML path")
+    config_commands.add_parser("validate", help="validate the complete TOML file")
+    config_get = config_commands.add_parser("get", help="show one effective setting")
+    config_get.add_argument("key")
+    config_set = config_commands.add_parser("set", help="set one typed TOML value")
+    config_set.add_argument("key")
+    config_set.add_argument("value", help='TOML literal, for example true or ["a"]')
+    config_reset = config_commands.add_parser(
+        "reset", help="remove one explicit value and reveal its default"
+    )
+    config_reset.add_argument("key")
+    config_commands.add_parser(
+        "dump-defaults", help="print a complete documented default configuration"
     )
     desktop_integration = subparsers.add_parser(
         "desktop-integration",
@@ -565,6 +600,7 @@ def _run_players(
     arguments: argparse.Namespace,
     runtime_factory: RuntimeFactory,
     database_path: Path | None,
+    config_path: Path | None,
 ) -> int:
     try:
         runtime = runtime_factory()
@@ -587,6 +623,7 @@ def _run_players(
         from lyriflux.application.select_player import PlayerSelectionService
         from lyriflux.application.source_identity import SourceIdentityResolver
         from lyriflux.domain.tracks import ApprovedTrackIdentity
+        from lyriflux.infrastructure.configuration.bootstrap import open_settings
         from lyriflux.infrastructure.metadata.local_paths import (
             FilesystemLocalPathCanonicalizer,
         )
@@ -595,7 +632,9 @@ def _run_players(
 
         try:
             storage = open_storage(database_path)
-            persisted = storage.settings.get_player_selection()
+            persisted = open_settings(
+                storage, config_path=config_path
+            ).get_player_selection()
             config = PlayerSelectionConfig(
                 preferred_players=(
                     persisted.preferred_players
@@ -670,8 +709,94 @@ def _run_players(
     return 2
 
 
-def _run_storage(arguments: argparse.Namespace, database_path: Path | None) -> int:
+def _run_config(
+    arguments: argparse.Namespace,
+    database_path: Path | None,
+    config_path: Path | None,
+) -> int:
+    """Expose the same typed service used by every interactive consumer."""
+
+    import tomllib
+
+    import tomlkit
+
+    from lyriflux.application.settings import SETTINGS_BY_KEY, SettingsValidationError
+    from lyriflux.application.settings_service import (
+        CanonicalSettingsService,
+        SettingsFileError,
+    )
+    from lyriflux.infrastructure.configuration.bootstrap import (
+        open_settings,
+        resolved_config_path,
+    )
+    from lyriflux.infrastructure.configuration.toml_file import TomlSettingsFile
+    from lyriflux.infrastructure.storage.bootstrap import open_storage
+    from lyriflux.infrastructure.storage.errors import StorageError
+
+    path = resolved_config_path(database_path=database_path, config_path=config_path)
+    if arguments.config_command == "path":
+        print(path)
+        return 0
+    try:
+        standalone = CanonicalSettingsService(TomlSettingsFile(path))
+        if arguments.config_command == "validate":
+            snapshot = standalone.validate()
+            print(f"Valid LyriFlux configuration: {path}")
+            print(f"schema version: {snapshot.schema_version}")
+            print(f"settings: {len(snapshot.values)}")
+            return 0
+        if arguments.config_command == "dump-defaults":
+            print(standalone.dump_defaults(), end="")
+            return 0
+        storage = open_storage(database_path)
+        settings = open_settings(storage, config_path=path)
+        if settings.diagnostics:
+            raise SettingsValidationError(settings.diagnostics)
+        if arguments.config_command == "get":
+            resolved = settings.current.resolved(arguments.key)
+        elif arguments.config_command == "set":
+            try:
+                parsed = tomllib.loads(f"value = {arguments.value}\n")["value"]
+            except tomllib.TOMLDecodeError as error:
+                print(f"Invalid TOML literal: {error}", file=sys.stderr)
+                return 2
+            result = settings.set(arguments.key, parsed)
+            resolved = result.snapshot.resolved(arguments.key)
+        elif arguments.config_command == "reset":
+            result = settings.reset(arguments.key)
+            resolved = result.snapshot.resolved(arguments.key)
+        else:
+            return 2
+        definition = SETTINGS_BY_KEY[resolved.definition.key]
+        encoded = (
+            list(resolved.value)
+            if isinstance(resolved.value, tuple)
+            else resolved.value
+        )
+        literal = tomlkit.dumps({"value": encoded}).removeprefix("value = ").strip()
+        print(f"{definition.key} = {literal}")
+        print(f"type: {definition.value_type.value}")
+        print(f"scope: {definition.scope.value}")
+        print(f"reload: {definition.reload.value}")
+        print(f"origin: {resolved.origin.value}")
+        return 0
+    except (
+        SettingsFileError,
+        SettingsValidationError,
+        StorageError,
+        ValueError,
+    ) as error:
+        print(f"Unable to use LyriFlux configuration: {error}", file=sys.stderr)
+        return 1
+
+
+def _run_storage(
+    arguments: argparse.Namespace,
+    database_path: Path | None,
+    config_path: Path | None,
+) -> int:
     from lyriflux.application.storage_diagnostics import render_storage_status
+    from lyriflux.infrastructure.configuration.bootstrap import open_settings
     from lyriflux.infrastructure.storage.backup import backup_database
     from lyriflux.infrastructure.storage.bootstrap import (
         open_storage,
@@ -723,14 +848,15 @@ def _run_storage(arguments: argparse.Namespace, database_path: Path | None) -> i
             print(f"database path: {path}")
             return 0
         if arguments.storage_command == "settings":
+            canonical = open_settings(storage, config_path=config_path)
             if arguments.settings_command == "set":
-                storage.settings.put_player_selection(
+                canonical.put_player_selection(
                     PlayerSelectionConfig(
                         tuple(arguments.prefer), tuple(arguments.ignore)
                     )
                 )
                 print("Saved durable player settings.")
-            config = storage.settings.get_player_selection()
+            config = canonical.get_player_selection()
             preferred = ", ".join(config.preferred_players) or "none"
             ignored = ", ".join(config.ignored_players) or "none"
             print(f"preferred players: {preferred}")
@@ -739,7 +865,8 @@ def _run_storage(arguments: argparse.Namespace, database_path: Path | None) -> i
         if arguments.storage_command == "display":
             from lyriflux.domain.representations import RepresentationDisplaySettings
 
-            current = storage.settings.get_representation_display()
+            canonical = open_settings(storage, config_path=config_path)
+            current = canonical.get_representation_display()
             if arguments.display_command == "set":
                 supplied = (
                     arguments.original,
@@ -761,7 +888,7 @@ def _run_storage(arguments: argparse.Namespace, database_path: Path | None) -> i
                     selected(arguments.romanized, current.show_romanized),
                     selected(arguments.translated, current.show_translated),
                 )
-                storage.settings.put_representation_display(current)
+                canonical.put_representation_display(current)
                 print("Saved multilingual lyric display settings.")
             print(f"show original: {'on' if current.show_original else 'off'}")
             romanized_state = "on" if current.show_romanized else "off"
@@ -874,6 +1001,7 @@ def _run_library(
     arguments: argparse.Namespace,
     provider_factory: LyricsProviderFactory,
     database_path: Path | None,
+    config_path: Path | None,
 ) -> int:
     from lyriflux.application.library_scan import LibraryScanService
     from lyriflux.domain.library import LibrarySettings
@@ -887,8 +1015,9 @@ def _run_library(
 
     try:
         storage = open_storage(database_path)
+        canonical = _open_canonical_settings(storage, config_path)
         if arguments.library_command == "settings":
-            current = storage.library.get_settings()
+            current = canonical.get_library()
             changing = any(
                 value is not None
                 for value in (
@@ -919,7 +1048,8 @@ def _run_library(
                     if arguments.workers is None
                     else arguments.workers,
                 )
-                storage.library.put_settings(current)
+                canonical.put_library(current)
+                storage.library.reconcile_configured_roots(current.roots)
                 print("Saved typed music-library settings.")
             print(f"roots: {len(current.roots)}")
             for root in current.roots:
@@ -930,7 +1060,7 @@ def _run_library(
             print("scope: global; reload: next scan; audio files remain read-only")
             return 0
         if arguments.library_command == "status":
-            settings = storage.library.get_settings()
+            settings = canonical.get_library()
             root_count, tracks, review = storage.library.counts()
             print("LyriFlux music-library status")
             print(f"configured roots: {root_count}")
@@ -950,7 +1080,7 @@ def _run_library(
                 print(f"  reason: {item.reason}")
             return 0
 
-        settings = storage.library.get_settings()
+        settings = canonical.get_library()
         downloader = None
         if settings.automatic_downloads:
             downloader = LibraryLyricsDownloader(storage, provider_factory())
@@ -960,6 +1090,7 @@ def _run_library(
             storage.library,
             downloader=downloader,
             overrides=storage.track_overrides,
+            settings=settings,
         )
         summary = service.scan(offline=arguments.offline)
         print(f"LyriFlux library scan {summary.scan_id}")
@@ -984,6 +1115,7 @@ def _run_lyrics(
     runtime_factory: RuntimeFactory,
     provider_factory: LyricsProviderFactory,
     database_path: Path | None,
+    config_path: Path | None,
 ) -> int:
     offline = bool(getattr(arguments, "offline", False))
     refresh = bool(getattr(arguments, "refresh", False))
@@ -1017,12 +1149,13 @@ def _run_lyrics(
 
     try:
         storage = open_storage(database_path)
+        canonical = _open_canonical_settings(storage, config_path)
         selection = PlayerSelectionService(
             TrackResolver(
                 SourceIdentityResolver(FilesystemLocalPathCanonicalizer()),
                 storage.track_overrides,
             )
-        ).select(runtime.client.list_players(), storage.settings.get_player_selection())
+        ).select(runtime.client.list_players(), canonical.get_player_selection())
         if selection.selected is None:
             print("No selectable MPRIS track is available for lyrics resolution.")
             for diagnostic in selection.unavailable_diagnostics:
@@ -1077,7 +1210,7 @@ def _run_lyrics(
             language_evidence=IcuHanLanguageEvidenceAdapter(),
         )
         document = result.document
-        settings = storage.settings.get_representation_display()
+        settings = canonical.get_representation_display()
         track = selection.selected.track.candidate
         heading = (
             f"track: {track.title or '<unknown>'}\n"
@@ -1206,6 +1339,7 @@ def _sync_session_id(track: ResolvedTrack) -> str:
 def _select_sync_track(
     runtime: MprisRuntimePort,
     storage: StorageRepositories,
+    selection_config: PlayerSelectionConfig | None = None,
 ) -> ResolvedTrack | None:
     from lyriflux.application.resolve_track import TrackResolver
     from lyriflux.application.select_player import PlayerSelectionService
@@ -1219,7 +1353,11 @@ def _select_sync_track(
             SourceIdentityResolver(FilesystemLocalPathCanonicalizer()),
             storage.track_overrides,
         )
-    ).select(runtime.client.list_players(), storage.settings.get_player_selection())
+    ).select(
+        runtime.client.list_players(),
+        selection_config
+        or _open_canonical_settings(storage, None).get_player_selection(),
+    )
     if selection.selected is None:
         print("No selectable MPRIS track is available for synchronization.")
         for diagnostic in selection.unavailable_diagnostics:
@@ -1353,6 +1491,7 @@ def _run_sync_delay(
     runtime_factory: RuntimeFactory,
     provider_factory: LyricsProviderFactory,
     database_path: Path | None,
+    config_path: Path | None,
 ) -> int:
     from lyriflux.domain.synchronization import LyricDocumentTiming
     from lyriflux.infrastructure.storage.bootstrap import open_storage
@@ -1361,7 +1500,10 @@ def _run_sync_delay(
     try:
         runtime = runtime_factory()
         storage = open_storage(database_path)
-        track = _select_sync_track(runtime, storage)
+        selection_config = _open_canonical_settings(
+            storage, config_path
+        ).get_player_selection()
+        track = _select_sync_track(runtime, storage, selection_config)
         if track is None:
             return 1
         document = _resolve_sync_document(
@@ -1404,6 +1546,7 @@ def _run_sync_probe(
     runtime_factory: RuntimeFactory,
     latency_probe_factory: AudioLatencyProbeFactory,
     database_path: Path | None,
+    config_path: Path | None,
 ) -> int:
     from lyriflux.application.clock_lifecycle import (
         AdaptiveResampler,
@@ -1431,9 +1574,14 @@ def _run_sync_probe(
     except StorageError as error:
         storage = None
         print(f"Storage ignored by clock-only probe: {error}", file=sys.stderr)
+    selection_config = (
+        None
+        if storage is None
+        else _open_readonly_settings(storage, config_path).get_player_selection()
+    )
     try:
         track = (
-            _select_sync_track(runtime, storage)
+            _select_sync_track(runtime, storage, selection_config)
             if storage is not None
             else _select_sync_track_without_storage(runtime)
         )
@@ -1487,7 +1635,7 @@ def _run_sync_probe(
     refresh_serial = session.event_serial
     try:
         refreshed_track = (
-            _select_sync_track(runtime, storage)
+            _select_sync_track(runtime, storage, selection_config)
             if storage is not None
             else _select_sync_track_without_storage(runtime)
         )
@@ -1521,7 +1669,7 @@ def _run_sync_probe(
                 scheduler.trigger(session.requested_reason, now_ns)
             if session.requires_reload:
                 refreshed = (
-                    _select_sync_track(runtime, storage)
+                    _select_sync_track(runtime, storage, selection_config)
                     if storage is not None
                     else _select_sync_track_without_storage(runtime)
                 )
@@ -1602,6 +1750,7 @@ def _run_sync(
     provider_factory: LyricsProviderFactory,
     latency_probe_factory: AudioLatencyProbeFactory,
     database_path: Path | None,
+    config_path: Path | None,
 ) -> int:
     """Follow one selected player through the frontend-neutral Stage 6 engine."""
 
@@ -1609,11 +1758,19 @@ def _run_sync(
         return _run_sync_audio(arguments, latency_probe_factory, database_path)
     if arguments.sync_command == "delay":
         return _run_sync_delay(
-            arguments, runtime_factory, provider_factory, database_path
+            arguments,
+            runtime_factory,
+            provider_factory,
+            database_path,
+            config_path,
         )
     if arguments.sync_command == "probe":
         return _run_sync_probe(
-            arguments, runtime_factory, latency_probe_factory, database_path
+            arguments,
+            runtime_factory,
+            latency_probe_factory,
+            database_path,
+            config_path,
         )
 
     if arguments.offline and arguments.refresh:
@@ -1663,6 +1820,9 @@ def _run_sync(
         runtime = runtime_factory()
         storage = open_storage(database_path)
         provider = provider_factory()
+        selection_config = _open_canonical_settings(
+            storage, config_path
+        ).get_player_selection()
     except (ImportError, RuntimeError) as error:
         print(f"Unable to initialize synchronization: {error}", file=sys.stderr)
         return 1
@@ -1671,7 +1831,7 @@ def _run_sync(
         return 1
 
     def load_current() -> tuple[ResolvedTrack, LyricDocument] | None:
-        track = _select_sync_track(runtime, storage)
+        track = _select_sync_track(runtime, storage, selection_config)
         if track is None:
             return None
         document = _resolve_sync_document(
@@ -1786,7 +1946,7 @@ def _run_sync(
         return 1
     refresh_serial = session.event_serial
     try:
-        refreshed_track = _select_sync_track(runtime, storage)
+        refreshed_track = _select_sync_track(runtime, storage, selection_config)
     except (ImportError, RuntimeError, StorageError) as error:
         runtime.monitor.close()
         print(f"Unable to refresh synchronization source: {error}", file=sys.stderr)
@@ -1943,6 +2103,7 @@ def main(
     lyrics_provider_factory: LyricsProviderFactory = _create_lyrics_provider,
     audio_latency_probe_factory: AudioLatencyProbeFactory = _create_audio_latency_probe,
     database_path: Path | None = None,
+    config_path: Path | None = None,
     executable_path: Path | None = None,
 ) -> int:
     """Run the CLI and return a process exit code."""
@@ -1956,7 +2117,11 @@ def main(
         try:
             from lyriflux.presentation.desktop.app import run_desktop
 
-            return run_desktop(["lyriflux"], database_path=database_path)
+            if config_path is None:
+                return run_desktop(["lyriflux"], database_path=database_path)
+            return run_desktop(
+                ["lyriflux"], database_path=database_path, config_path=config_path
+            )
         except (ImportError, OSError, RuntimeError) as error:
             print(
                 "Unable to start the LyriFlux desktop: "
@@ -1972,15 +2137,23 @@ def main(
         return _run_desktop_integration(arguments, executable_path or Path(sys.argv[0]))
     if arguments.command == "diagnostics":
         return _run_diagnostics(arguments, database_path)
+    if arguments.command == "config":
+        return _run_config(arguments, database_path, config_path)
     if arguments.command == "players":
-        return _run_players(arguments, runtime_factory, database_path)
+        return _run_players(arguments, runtime_factory, database_path, config_path)
     if arguments.command == "storage":
-        return _run_storage(arguments, database_path)
+        return _run_storage(arguments, database_path, config_path)
     if arguments.command == "library":
-        return _run_library(arguments, lyrics_provider_factory, database_path)
+        return _run_library(
+            arguments, lyrics_provider_factory, database_path, config_path
+        )
     if arguments.command == "lyrics":
         return _run_lyrics(
-            arguments, runtime_factory, lyrics_provider_factory, database_path
+            arguments,
+            runtime_factory,
+            lyrics_provider_factory,
+            database_path,
+            config_path,
         )
     if arguments.command == "sync":
         return _run_sync(
@@ -1989,5 +2162,6 @@ def main(
             lyrics_provider_factory,
             audio_latency_probe_factory,
             database_path,
+            config_path,
         )
     return 2

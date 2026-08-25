@@ -32,6 +32,36 @@ class SQLiteSettingsRepository:
     def __init__(self, database: SQLiteDatabase) -> None:
         self._database = database
 
+    def canonical_config_migrated(self) -> bool:
+        """Return whether the one-time SQLite-to-TOML handoff completed."""
+
+        with self._database.connection(readonly=True) as connection:
+            row = connection.execute(
+                "SELECT config_schema_version FROM canonical_config_migrations "
+                "WHERE migration_id = 1"
+            ).fetchone()
+        if row is None:
+            return False
+        if int(row["config_schema_version"]) != 1:
+            raise InvalidStoredDataError(
+                "stored canonical configuration migration version is invalid"
+            )
+        return True
+
+    def mark_canonical_config_migrated(self) -> None:
+        """Record a completed handoff only after the target validates."""
+
+        with self._database.transaction() as connection:
+            connection.execute(
+                """
+                INSERT INTO canonical_config_migrations(
+                    migration_id, config_schema_version, migrated_at
+                ) VALUES (1, 1, ?)
+                ON CONFLICT(migration_id) DO NOTHING
+                """,
+                (utc_now_text(),),
+            )
+
     def get_player_selection(self) -> PlayerSelectionConfig:
         """Return durable player settings or a separately defined default."""
 
