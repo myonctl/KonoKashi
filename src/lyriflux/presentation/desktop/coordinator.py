@@ -7,7 +7,7 @@ from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path
 from threading import Event
-from typing import Any
+from typing import Any, cast
 
 from PySide6.QtCore import QObject, QRunnable, QThreadPool, QTimer, Signal, Slot
 from PySide6.QtWidgets import QApplication
@@ -22,10 +22,18 @@ from lyriflux.application.lyrics_sync import synchronize
 from lyriflux.application.playback_clock import PlaybackClock
 from lyriflux.application.ports import MprisRuntimePort
 from lyriflux.application.review_corrections import ReviewCorrectionSnapshot
-from lyriflux.application.settings import DesktopInteractionSettings
+from lyriflux.application.settings import (
+    DesktopInteractionSettings,
+    SettingsSnapshot,
+    SettingsValidationError,
+    SettingValue,
+)
 from lyriflux.application.settings_service import (
     CanonicalSettingsService,
+    SettingsChange,
+    SettingsFileError,
     SettingsReloadResult,
+    SettingsSubscription,
 )
 from lyriflux.application.sync_session import PlaybackSyncSession
 from lyriflux.application.sync_state import (
@@ -46,17 +54,19 @@ from lyriflux.domain.synchronization import (
 )
 from lyriflux.domain.tracks import PlayerSelectionResult, ResolvedTrack
 from lyriflux.infrastructure.configuration.bootstrap import open_settings
+from lyriflux.infrastructure.configuration.paths import default_config_path
 from lyriflux.infrastructure.configuration.qt_watcher import QtSettingsWatcher
 from lyriflux.infrastructure.frontend import create_frontend_session
 from lyriflux.infrastructure.lyrics.lrclib import LrclibLyricsProvider
 from lyriflux.infrastructure.mpris.backend import MprisBackendError
 from lyriflux.infrastructure.mpris.qt_dbus_client import create_qt_mpris_runtime
 from lyriflux.infrastructure.storage.bootstrap import open_storage
-from lyriflux.presentation.desktop.main_window import DesktopSettingsUpdate, MainWindow
+from lyriflux.presentation.desktop.main_window import MainWindow
 from lyriflux.presentation.desktop.review_dialog import (
     CorrectionActionKind,
     CorrectionActionRequest,
 )
+from lyriflux.presentation.desktop.settings_window import SettingsWindow
 
 
 class _JobSignals(QObject):
@@ -104,6 +114,8 @@ def _session_id(track: ResolvedTrack) -> str:
 class DesktopCoordinator(QObject):
     """Keep widgets passive while coordinating Qt events and background work."""
 
+    settings_change_observed = Signal(object)
+
     def __init__(
         self,
         application: QApplication,
@@ -123,6 +135,8 @@ class DesktopCoordinator(QObject):
         self._frontend: FrontendSessionPort | None = None
         self._settings_service: CanonicalSettingsService | None = None
         self._settings_watcher: QtSettingsWatcher | None = None
+        self._settings_subscription: SettingsSubscription | None = None
+        self._settings_window: SettingsWindow | None = None
         self._track: ResolvedTrack | None = None
         self._bundle: FrontendLyricsBundle | None = None
         self._playback_session: PlaybackSyncSession | None = None
@@ -158,12 +172,13 @@ class DesktopCoordinator(QObject):
         self._sync_timer.setInterval(100)
         self._sync_timer.timeout.connect(self._sync_tick)
 
-        self._window.settings_requested.connect(self._save_display_settings)
+        self._window.settings_requested.connect(self._open_settings_window)
         self._window.review_requested.connect(self._load_review)
         self._window.correction_requested.connect(self._apply_correction)
         self._window.library_scan_requested.connect(self._start_library_scan)
         self._window.library_scan_cancel_requested.connect(self._cancel_library_scan)
         self._application.aboutToQuit.connect(self.close)
+        self.settings_change_observed.connect(self._settings_changed)
 
     @property
     def controller(self) -> DesktopStateController:
@@ -224,7 +239,10 @@ class DesktopCoordinator(QObject):
         self._frontend = result.frontend
         self._settings_service = result.canonical
         self._settings_watcher = QtSettingsWatcher(
-            result.canonical, self._settings_reloaded, parent=self
+            result.canonical, self._settings_reload_observed, parent=self
+        )
+        self._settings_subscription = result.canonical.subscribe(
+            lambda change: self.settings_change_observed.emit(change)
         )
         self._controller.set_representation_settings(result.settings)
         self._window.set_representation_settings(result.settings)
@@ -233,12 +251,24 @@ class DesktopCoordinator(QObject):
             self._window.render_state(
                 self._controller.add_diagnostic(settings_diagnostic.render())
             )
+        if self._settings_window is not None:
+            self._settings_window.set_snapshot(result.canonical.current)
+            self._settings_window.set_diagnostics(result.canonical.diagnostics)
         self._refresh_selection()
 
-    def _settings_reloaded(self, result: SettingsReloadResult) -> None:
+    def _settings_reload_observed(self, result: SettingsReloadResult) -> None:
         if self._closed:
             return
         if not result.applied:
+            if self._settings_window is not None:
+                self._settings_window.set_snapshot(result.snapshot)
+                self._settings_window.set_diagnostics(
+                    result.diagnostics,
+                    context=(
+                        "The configuration file was rejected; current values "
+                        "remain active."
+                    ),
+                )
             for diagnostic in result.diagnostics:
                 self._window.render_state(
                     self._controller.add_diagnostic(
@@ -246,14 +276,30 @@ class DesktopCoordinator(QObject):
                     )
                 )
             return
-        live_keys = set(result.changed_keys)
+        if self._settings_window is not None:
+            self._settings_window.set_snapshot(result.snapshot)
+            self._settings_window.set_diagnostics(())
+
+    @Slot(object)
+    def _settings_changed(self, value: object) -> None:
+        if self._closed or not isinstance(value, SettingsChange):
+            return
+        self._apply_settings_snapshot(value.current, value.changed_keys)
+
+    def _apply_settings_snapshot(
+        self, snapshot: SettingsSnapshot, changed_keys: tuple[str, ...]
+    ) -> None:
+        if self._settings_window is not None:
+            self._settings_window.set_snapshot(snapshot)
+            self._settings_window.set_diagnostics(())
+        live_keys = set(changed_keys)
         display_keys = {
             "lyrics.display.original",
             "lyrics.display.romanized",
             "lyrics.display.translated",
         }
         if live_keys & display_keys:
-            display = result.snapshot.representation_display
+            display = snapshot.representation_display
             self._controller.set_representation_settings(display)
             self._window.set_representation_settings(display)
             bundle = self._bundle
@@ -269,7 +315,7 @@ class DesktopCoordinator(QObject):
                     self._controller.accept_snapshot(self._publisher.current)
                 self._window.render_state(self._controller.state)
         if "desktop.lyrics.selectable" in live_keys:
-            self._window.set_interaction_settings(result.snapshot.desktop_interaction)
+            self._window.set_interaction_settings(snapshot.desktop_interaction)
         if live_keys & {"players.preferred", "players.ignored"}:
             self._refresh_selection()
 
@@ -536,54 +582,87 @@ class DesktopCoordinator(QObject):
         self._selection_serial += 1
         self._selection_timer.start()
 
-    def _save_display_settings(self, value: Any) -> None:
-        if not isinstance(value, DesktopSettingsUpdate):
+    @Slot()
+    def _open_settings_window(self) -> None:
+        service = self._settings_service
+        path = (
+            service.path
+            if service is not None
+            else (self._config_path or default_config_path())
+        )
+        if self._settings_window is None:
+            settings_window = SettingsWindow(path, self._window)
+            settings_window.change_requested.connect(self._change_setting)
+            settings_window.reset_requested.connect(self._reset_setting)
+            self._settings_window = settings_window
+        if service is not None:
+            self._settings_window.set_snapshot(service.current)
+            self._settings_window.set_diagnostics(service.diagnostics)
+        else:
+            self._settings_window.set_loading()
+        self._settings_window.show()
+        self._settings_window.raise_()
+        self._settings_window.activateWindow()
+
+    @Slot(str, object)
+    def _change_setting(self, key: str, value: object) -> None:
+        service = self._settings_service
+        settings_window = self._settings_window
+        if service is None or settings_window is None:
             return
-        representations = value.representations
-        interactions = value.interactions
-        self._controller.set_representation_settings(representations)
-        self._window.set_representation_settings(representations)
-        self._window.set_interaction_settings(interactions)
-        bundle = self._bundle
-        token = self._controller.current_token
-        if bundle is not None and token is not None:
-            self._controller.accept_resolution(
-                token,
-                bundle.resolution,
-                bundle.representations,
-                representations,
-            )
-            if self._publisher is not None and self._publisher.current is not None:
-                self._controller.accept_snapshot(self._publisher.current)
-            self._window.render_state(self._controller.state)
-        frontend = self._frontend
-        if frontend is None:
+        if not settings_window.mark_pending(key):
             return
         self._start_job(
-            lambda: self._persist_display_settings(
-                frontend, representations, interactions
-            ),
-            self._settings_saved,
+            lambda: service.set(key, cast(SettingValue, value)),
+            self._settings_operation_finished,
         )
 
-    @staticmethod
-    def _persist_display_settings(
-        frontend: FrontendSessionPort,
-        representations: RepresentationDisplaySettings,
-        interactions: DesktopInteractionSettings,
-    ) -> None:
-        frontend.put_display_settings(representations)
-        frontend.put_interaction_settings(interactions)
+    @Slot(str)
+    def _reset_setting(self, key: str) -> None:
+        service = self._settings_service
+        settings_window = self._settings_window
+        if service is None or settings_window is None:
+            return
+        if not settings_window.mark_pending(key):
+            return
+        self._start_job(
+            lambda: service.reset(key),
+            self._settings_operation_finished,
+        )
 
-    def _settings_saved(
+    def _settings_operation_finished(
         self, result: object | None, error: BaseException | None
     ) -> None:
-        del result
-        if error is not None and not self._closed:
-            self._window.render_state(
-                self._controller.add_diagnostic(
-                    f"display settings could not be saved: {error}"
-                )
+        if self._closed:
+            return
+        settings_window = self._settings_window
+        service = self._settings_service
+        if settings_window is None or service is None:
+            return
+        settings_window.set_snapshot(service.current)
+        if error is None and isinstance(result, SettingsReloadResult):
+            settings_window.set_snapshot(result.snapshot)
+            settings_window.set_diagnostics(())
+            return
+        if isinstance(error, SettingsValidationError):
+            settings_window.set_diagnostics(
+                error.diagnostics,
+                context=(
+                    "The proposed value was rejected; the previous value remains "
+                    "active."
+                ),
+            )
+        elif isinstance(error, SettingsFileError):
+            settings_window.set_diagnostics(
+                (error.diagnostic,),
+                context=(
+                    "The setting could not be saved; the previous value remains active."
+                ),
+            )
+        else:
+            settings_window.set_operation_error(
+                "The setting could not be saved; the previous value remains active."
+                + (f"\n{error}" if error is not None else "")
             )
 
     def _load_review(self) -> None:
@@ -808,6 +887,12 @@ class DesktopCoordinator(QObject):
         if self._settings_watcher is not None:
             self._settings_watcher.close()
             self._settings_watcher = None
+        if self._settings_subscription is not None:
+            self._settings_subscription.close()
+            self._settings_subscription = None
+        if self._settings_window is not None:
+            self._settings_window.close()
+            self._settings_window = None
         if self._frontend is not None:
             self._frontend.cancel_inflight()
         if self._library_cancellation is not None:

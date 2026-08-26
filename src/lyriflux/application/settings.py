@@ -37,6 +37,15 @@ class SettingScope(Enum):
     DESKTOP = "desktop"
 
 
+class SettingCategory(Enum):
+    """Stable semantic grouping shared by settings frontends."""
+
+    PLAYERS = "Players"
+    LYRICS = "Lyrics"
+    DESKTOP = "Desktop"
+    LIBRARY = "Library"
+
+
 class ReloadBehavior(Enum):
     """When a validated setting can affect a running consumer."""
 
@@ -65,6 +74,8 @@ class SettingDefinition:
     default: SettingValue
     scope: SettingScope
     reload: ReloadBehavior
+    title: str
+    category: SettingCategory
     description: str
     minimum: int | None = None
     maximum: int | None = None
@@ -79,6 +90,8 @@ SETTINGS_SCHEMA: tuple[SettingDefinition, ...] = (
         (),
         SettingScope.GLOBAL,
         ReloadBehavior.LIVE,
+        "Preferred players",
+        SettingCategory.PLAYERS,
         "Ordered MPRIS player selectors preferred after playback state.",
     ),
     SettingDefinition(
@@ -87,6 +100,8 @@ SETTINGS_SCHEMA: tuple[SettingDefinition, ...] = (
         (),
         SettingScope.GLOBAL,
         ReloadBehavior.LIVE,
+        "Ignored players",
+        SettingCategory.PLAYERS,
         "MPRIS player selectors excluded before selection scoring.",
     ),
     SettingDefinition(
@@ -95,6 +110,8 @@ SETTINGS_SCHEMA: tuple[SettingDefinition, ...] = (
         True,
         SettingScope.GLOBAL,
         ReloadBehavior.LIVE,
+        "Show original lyrics",
+        SettingCategory.LYRICS,
         "Show the canonical original lyric representation.",
     ),
     SettingDefinition(
@@ -103,6 +120,8 @@ SETTINGS_SCHEMA: tuple[SettingDefinition, ...] = (
         True,
         SettingScope.GLOBAL,
         ReloadBehavior.LIVE,
+        "Show romanization or transliteration",
+        SettingCategory.LYRICS,
         "Show available romanized or transliterated lyric representations.",
     ),
     SettingDefinition(
@@ -111,6 +130,8 @@ SETTINGS_SCHEMA: tuple[SettingDefinition, ...] = (
         False,
         SettingScope.GLOBAL,
         ReloadBehavior.LIVE,
+        "Show translation",
+        SettingCategory.LYRICS,
         "Show an available aligned translated lyric representation.",
     ),
     SettingDefinition(
@@ -119,6 +140,8 @@ SETTINGS_SCHEMA: tuple[SettingDefinition, ...] = (
         False,
         SettingScope.DESKTOP,
         ReloadBehavior.LIVE,
+        "Allow lyric text selection",
+        SettingCategory.DESKTOP,
         "Allow mouse and keyboard selection of lyric text in the desktop.",
     ),
     SettingDefinition(
@@ -127,6 +150,8 @@ SETTINGS_SCHEMA: tuple[SettingDefinition, ...] = (
         (),
         SettingScope.GLOBAL,
         ReloadBehavior.NEXT_OPERATION,
+        "Music library folders",
+        SettingCategory.LIBRARY,
         "Absolute non-overlapping directories included in a library scan.",
     ),
     SettingDefinition(
@@ -135,6 +160,8 @@ SETTINGS_SCHEMA: tuple[SettingDefinition, ...] = (
         False,
         SettingScope.GLOBAL,
         ReloadBehavior.NEXT_OPERATION,
+        "Download high-confidence lyrics",
+        SettingCategory.LIBRARY,
         "Allow policy-approved High/Approved lyric downloads during a scan.",
     ),
     SettingDefinition(
@@ -143,6 +170,8 @@ SETTINGS_SCHEMA: tuple[SettingDefinition, ...] = (
         4,
         SettingScope.GLOBAL,
         ReloadBehavior.NEXT_OPERATION,
+        "Metadata workers",
+        SettingCategory.LIBRARY,
         "Bounded metadata workers used by the next library scan.",
         minimum=1,
         maximum=8,

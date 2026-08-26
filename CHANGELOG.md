@@ -7,6 +7,27 @@ unreleased.
 
 ### Changed
 
+- Selected and activated Stage 12 — GUI Settings Frontend from the existing
+  settings GUI counterpart backlog item after a complete remaining-work
+  dependency analysis. Stage 13+ remains unnumbered and unauthorized.
+- Added stable schema-owned setting titles and Players/Lyrics/Desktop/Library
+  categories, then replaced the small lyric-only modal with one reusable,
+  resizable, non-modal PySide6 settings window exposing all nine canonical
+  settings through typed boolean, bounded-integer, and ordered-list controls.
+- Added deterministic search over title/description/key, descriptions,
+  canonical-key discovery, origin/default/reload/scope indicators, individual
+  reset, config-path copy/open actions, accessible names, and inline
+  last-known-good validation/reload diagnostics.
+- Routed GUI set/reset through `CanonicalSettingsService` on the existing
+  bounded desktop worker pool. Successful changes use leak-free service
+  subscriptions to update controls and live desktop consumers; watcher results
+  retain invalid-file diagnostics without adopting stale/invalid values.
+- Added Stage 12 headless widget/coordinator/service/file/CLI regressions,
+  including all-key/category/type mapping, search, reset, external valid/invalid
+  reload, comment-preserving symlink writes, single-window reopen, subscription
+  cleanup, and installed-artifact lifecycle evidence. The local gate passes 591
+  tests; real KDE verification remains pending.
+
 - Defined and activated Stage 11 from the existing canonical-settings and
   dotfile backlog items. Added one versioned typed schema/service over the nine
   actual Stage 1–10 preferences, explicit scope/reload/origin metadata, atomic

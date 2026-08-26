@@ -12,15 +12,19 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 import pytest
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtTest import QTest
-from PySide6.QtWidgets import QApplication
+from PySide6.QtWidgets import QApplication, QCheckBox
 
+from lyriflux import cli
 from lyriflux.application.frontend_session import FrontendLyricsBundle
 from lyriflux.application.playback_clock import PlaybackClock
 from lyriflux.application.settings import (
     DesktopInteractionSettings,
     validate_settings_values,
 )
-from lyriflux.application.settings_service import SettingsReloadResult
+from lyriflux.application.settings_service import (
+    CanonicalSettingsService,
+    SettingsChange,
+)
 from lyriflux.application.sync_session import PlaybackSyncSession
 from lyriflux.domain.library import LibraryScanSummary
 from lyriflux.domain.lyrics import LyricsResolutionResult, LyricsResolutionStatus
@@ -36,8 +40,9 @@ from lyriflux.domain.tracks import (
     PlayerSelectionResult,
     ResolvedTrack,
 )
+from lyriflux.infrastructure.configuration.toml_file import TomlSettingsFile
 from lyriflux.presentation.desktop.coordinator import DesktopCoordinator
-from lyriflux.presentation.desktop.main_window import DesktopSettingsUpdate, MainWindow
+from lyriflux.presentation.desktop.main_window import MainWindow
 from lyriflux.presentation.desktop.review_dialog import (
     CorrectionActionKind,
     CorrectionActionRequest,
@@ -221,26 +226,30 @@ class _DeferredCoordinator(_ImmediateCoordinator):
         callback(result, error)
 
 
-def test_settings_update_applies_and_persists_opt_in_selection(
+def test_settings_update_uses_canonical_service_and_applies_live_selection(
     qt_app: QApplication,
+    tmp_path: Path,
 ) -> None:
     window = MainWindow()
     coordinator = _ImmediateCoordinator(qt_app, window)
-    frontend = _Frontend(None)
-    coordinator._frontend = frontend
-    display = RepresentationDisplaySettings(False, True, True)
-    interactions = DesktopInteractionSettings(True)
+    config_path = tmp_path / "config.toml"
+    service = CanonicalSettingsService(TomlSettingsFile(config_path))
+    assert service.initialize().applied
+    coordinator._settings_service = service
+    coordinator._settings_subscription = service.subscribe(
+        lambda change: coordinator.settings_change_observed.emit(change)
+    )
+    window.settings_button.click()
 
-    coordinator._save_display_settings(DesktopSettingsUpdate(display, interactions))
+    coordinator._change_setting("desktop.lyrics.selectable", True)
 
-    assert window.representation_settings == display
-    assert window.interaction_settings == interactions
+    assert service.get("desktop.lyrics.selectable") is True
+    assert "selectable = true" in config_path.read_text(encoding="utf-8")
+    assert window.interaction_settings == DesktopInteractionSettings(True)
     assert (
         window.active_band.textInteractionFlags()
         & Qt.TextInteractionFlag.TextSelectableByMouse
     )
-    assert frontend.display_settings == display
-    assert frontend.interaction_settings == interactions
     coordinator.close()
     window.close()
 
@@ -255,9 +264,12 @@ def test_hot_reload_applies_live_desktop_interaction_setting(
         explicit_keys=frozenset({"desktop.lyrics.selectable"}),
     )
 
-    coordinator._settings_reloaded(
-        SettingsReloadResult(
-            True, snapshot, changed_keys=("desktop.lyrics.selectable",)
+    previous = validate_settings_values({})
+    coordinator._settings_changed(
+        SettingsChange(
+            previous,
+            snapshot,
+            ("desktop.lyrics.selectable",),
         )
     )
 
@@ -267,6 +279,98 @@ def test_hot_reload_applies_live_desktop_interaction_setting(
         & Qt.TextInteractionFlag.TextSelectableByMouse
     )
     coordinator.close()
+    window.close()
+
+
+def test_settings_window_reuses_one_instance_and_round_trips_gui_file_cli(
+    qt_app: QApplication,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    target = tmp_path / "dotfiles" / "lyriflux.toml"
+    target.parent.mkdir()
+    target.write_text("# retained comment\nschema_version = 1\n", encoding="utf-8")
+    path = tmp_path / "config.toml"
+    path.symlink_to(target)
+    service = CanonicalSettingsService(TomlSettingsFile(path))
+    assert service.initialize().applied
+
+    window = MainWindow()
+    window.show()
+    qt_app.processEvents()
+    coordinator = _ImmediateCoordinator(qt_app, window)
+    coordinator._settings_service = service
+    coordinator._settings_subscription = service.subscribe(
+        lambda change: coordinator.settings_change_observed.emit(change)
+    )
+    coordinator._open_settings_window()
+    settings_window = coordinator._settings_window
+    assert settings_window is not None
+    assert settings_window.isVisible()
+    settings_window.close()
+    assert window.isVisible()
+    window.settings_button.click()
+    assert coordinator._settings_window is settings_window
+    assert len(service._subscriptions) == 1
+
+    target.write_text(
+        "# retained comment\nschema_version = 1\n[lyrics.display]\ntranslated = true\n",
+        encoding="utf-8",
+    )
+    coordinator._settings_reload_observed(service.reload())
+    translated = settings_window.rows["lyrics.display.translated"].editor
+    assert isinstance(translated, QCheckBox)
+    assert translated.isChecked()
+
+    target.write_text(
+        "# retained comment\nschema_version = 1\n"
+        '[lyrics.display]\ntranslated = "invalid"\n',
+        encoding="utf-8",
+    )
+    coordinator._settings_reload_observed(service.reload())
+    assert translated.isChecked()
+    assert "rejected" in settings_window.error_banner.text()
+
+    target.write_text(
+        "# retained comment\nschema_version = 1\n[lyrics.display]\ntranslated = true\n",
+        encoding="utf-8",
+    )
+    coordinator._settings_reload_observed(service.reload())
+    selectable = settings_window.rows["desktop.lyrics.selectable"].editor
+    assert isinstance(selectable, QCheckBox)
+    selectable.click()
+
+    content = target.read_text(encoding="utf-8")
+    assert path.is_symlink()
+    assert "# retained comment" in content
+    assert "translated = true" in content
+    assert "selectable = true" in content
+    assert (
+        cli.main(
+            ["config", "get", "desktop.lyrics.selectable"],
+            database_path=tmp_path / "state.sqlite3",
+            config_path=path,
+        )
+        == 0
+    )
+    output = capsys.readouterr().out
+    assert "desktop.lyrics.selectable = true" in output
+    assert "origin: config-file" in output
+
+    settings_window.rows["desktop.lyrics.selectable"].reset_button.click()
+    assert service.get("desktop.lyrics.selectable") is False
+    assert "selectable" not in target.read_text(encoding="utf-8")
+    assert not settings_window.rows[
+        "desktop.lyrics.selectable"
+    ].reset_button.isEnabled()
+
+    coordinator._change_setting("library.metadata_workers", 99)
+    assert service.get("library.metadata_workers") == 4
+    assert "previous value remains active" in settings_window.error_banner.text()
+
+    coordinator.close()
+    assert len(service._subscriptions) == 0
+    assert QApplication.instance() is qt_app
     window.close()
 
 

@@ -16,6 +16,7 @@ from lyriflux.application.settings import (
     SETTINGS_BY_KEY,
     SETTINGS_SCHEMA,
     ReloadBehavior,
+    SettingCategory,
     SettingOrigin,
     SettingScope,
     SettingsValidationError,
@@ -63,6 +64,8 @@ def test_schema_has_stable_complete_metadata() -> None:
         ReloadBehavior.NEXT_OPERATION,
     }
     assert all(item.description.endswith(".") for item in SETTINGS_SCHEMA)
+    assert all(item.title for item in SETTINGS_SCHEMA)
+    assert {item.category for item in SETTINGS_SCHEMA} == set(SettingCategory)
     assert set(SETTINGS_BY_KEY) == {
         "players.preferred",
         "players.ignored",

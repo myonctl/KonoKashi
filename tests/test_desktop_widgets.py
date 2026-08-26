@@ -22,7 +22,10 @@ from lyriflux.application.review_corrections import (
     ReviewCorrectionSnapshot,
     TrackAuditEvidence,
 )
-from lyriflux.application.settings import DesktopInteractionSettings
+from lyriflux.application.settings import (
+    DesktopInteractionSettings,
+    default_settings_snapshot,
+)
 from lyriflux.domain.identity import YouTubeIdentity
 from lyriflux.domain.lyrics import (
     LyricsAlternative,
@@ -35,12 +38,12 @@ from lyriflux.presentation.desktop.app import run_desktop
 from lyriflux.presentation.desktop.main_window import (
     DiagnosticsDialog,
     MainWindow,
-    RepresentationSettingsDialog,
 )
 from lyriflux.presentation.desktop.review_dialog import (
     CorrectionActionKind,
     ReviewCorrectionDialog,
 )
+from lyriflux.presentation.desktop.settings_window import SettingsWindow
 
 
 @pytest.fixture(scope="module")
@@ -340,6 +343,7 @@ def test_system_palette_remains_the_theme_authority(
 
 def test_keyboard_focus_order_and_escape_dialog_behavior(
     qt_app: QApplication,
+    tmp_path,
 ) -> None:
     window = MainWindow()
     window.render_state(_state())
@@ -354,9 +358,10 @@ def test_keyboard_focus_order_and_escape_dialog_behavior(
     assert qt_app.focusWidget() is window.details_button
 
     dialogs = (
-        RepresentationSettingsDialog(window.representation_settings, window),
+        SettingsWindow(tmp_path / "config.toml", window),
         DiagnosticsDialog(window.state, window),
     )
+    dialogs[0].set_snapshot(default_settings_snapshot())
     for dialog in dialogs:
         dialog.show()
         qt_app.processEvents()

@@ -15,10 +15,12 @@ version is 1.0.0.
 Stages 1 through 11 and the post-Stage-5 Chinese/Pinyin repair are **Completed**.
 Stage 11 — Canonical Settings & Configuration Foundation passed its 579-test
 automated gate, exact-SHA implementation CI, and bounded real KDE/configuration/
-daily-use/restart/legacy-safety matrix on 2026-08-26. No implementation stage
-is Active.
+daily-use/restart/legacy-safety matrix on 2026-08-26. Stage 12 — GUI Settings
+Frontend is Active; its local implementation and 591-test automated/package
+gate pass, while publication, exact-SHA CI, and real KDE verification remain
+pending.
 The installed private v1 is launchable from KDE's application menu; its
-remaining cosmetic placeholder icon is explicitly deferred. Stage 12+ remains
+remaining cosmetic placeholder icon is explicitly deferred. Stage 13+ remains
 Proposed / unauthorized. Stage 8 —
 Review and correction workflow
 passed its automated gate and accepted real Strawberry/desktop correction,
@@ -157,6 +159,9 @@ Supporting authorities:
 - `docs/STAGE_11_COMPLETION.md` — completed canonical settings/configuration
   foundation, migration, real KDE hot-reload, daily-use, publication, and CI
   evidence.
+- `docs/STAGE_12_DECISION.md` — complete remaining-backlog dependency analysis
+  and the authoritative reason the existing GUI settings counterpart follows
+  Stage 11.
 - `docs/PRODUCT_GAP_RESEARCH.md` — bounded public product-feedback findings and
   Stage 7/future/rejected scope decisions.
 - `docs/adr/0010-stage4-lyrics-resolution.md` — accepted Stage 4 precedence,
@@ -367,6 +372,15 @@ Scan library starts the configured Stage 9 service on the bounded worker pool,
 remains responsive during large fixtures, and becomes a cooperative Cancel scan
 action until completion. Root/download/worker configuration and uncertain-item
 review use the shared CLI model rather than Qt-owned settings.
+
+Settings opens one reusable non-modal PySide6 preferences window over the
+canonical Stage 11 service. Players, Lyrics, Desktop, and Library pages expose
+all nine current settings with schema-owned titles/descriptions, typed controls,
+search, origins/defaults, individual reset, reload timing, canonical keys, and
+the config path. GUI mutations run off the UI thread through canonical
+set/reset; valid direct file edits update open controls and live desktop
+consumers through subscriptions, while invalid edits retain last-known-good
+values and show an actionable notice. No separate Qt settings store exists.
 
 `players list` returns 0 whenever service enumeration itself succeeds, including
 when individual players or fields are unavailable; their diagnostics remain in

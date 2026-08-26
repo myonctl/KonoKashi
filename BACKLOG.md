@@ -56,10 +56,11 @@ authorize implementation. Staged v1 ordering lives in `docs/ROADMAP.md`.
 - **First-class interactive settings TUI and GUI counterpart** — Provide a
   polished keyboard-first Textual candidate with categories, search, validated
   controls, reset, scope/origin, and preview, plus equivalent desktop
-  capability over the same schema. Status: Planned; Textual must receive a
-  current upstream/license/terminal/CJK/test/packaging/resource review before
-  adoption. Prerequisites: canonical settings service. Related: ADRs 0013 and
-  0014.
+  capability over the same schema. Status: GUI counterpart is Active in Stage
+  12 with local implementation complete and verification pending; the separate
+  Textual TUI remains Planned / unauthorized and must receive a current
+  upstream/license/terminal/CJK/test/packaging/resource review before adoption.
+  Prerequisites: canonical settings service. Related: ADRs 0013 and 0014.
 - **Traditional dotfile/ricing configuration** — Support safe declarative,
   XDG-compliant, version-control/symlink/Stow-friendly files, deterministic
   config commands, documented layering, and hot reload where safe. Preserve
@@ -168,7 +169,8 @@ authorize implementation. Staged v1 ordering lives in `docs/ROADMAP.md`.
   stable. Prerequisites: player port and platform ADR. Related: ADR 0002.
 - **Firefox/KDE duplicate policy** — Recognize duplicate native Firefox and
   Plasma Browser Integration observations without discarding diagnostics.
-  Why: one video can appear as multiple players. Status: Planned.
+  Why: one video can appear as multiple players. Status: Completed and accepted
+  in Stage 2 with deterministic and real browser evidence.
   Prerequisites: Stage 1 raw observations. Related: Roadmap Stage 2.
 
 ## Multilingual lyrics
@@ -268,9 +270,10 @@ authorize implementation. Staged v1 ordering lives in `docs/ROADMAP.md`.
 ## Packaging
 
 - **Linux release packaging** — Select and document a reproducible Linux
-  packaging format, upgrades, backup, and uninstall behavior. Status: Planned.
-  Prerequisites: stable v1 application and migration strategy. Related:
-  Roadmap Stage 10.
+  packaging format, upgrades, backup, and uninstall behavior. Status: Completed
+  and accepted in Stage 10 for private source/wheel artifacts and explicit
+  user-local desktop integration. Public publication remains separately
+  blocked below. Related: Roadmap Stage 10.
 
 ## Public release readiness
 

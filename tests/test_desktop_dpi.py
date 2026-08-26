@@ -12,6 +12,7 @@ import pytest
 @pytest.mark.parametrize("scale", ("1", "1.25", "1.5", "2"))
 def test_desktop_uses_logical_geometry_at_qt_scale_factors(scale: str) -> None:
     script = """
+from pathlib import Path
 from PySide6.QtWidgets import QApplication
 from lyriflux.application.desktop_state import (
     DesktopLyricGroup,
@@ -19,6 +20,8 @@ from lyriflux.application.desktop_state import (
     DesktopViewState,
 )
 from lyriflux.presentation.desktop.main_window import MainWindow
+from lyriflux.application.settings import default_settings_snapshot
+from lyriflux.presentation.desktop.settings_window import SettingsWindow
 
 app = QApplication(["dpi-test"])
 window = MainWindow()
@@ -39,6 +42,17 @@ assert window.active_band.width() > 0
 assert window.active_band.height() > 0
 assert app.primaryScreen() is not None
 assert app.primaryScreen().devicePixelRatio() >= 1.0
+settings = SettingsWindow(Path("/tmp/lyriflux-dpi-config.toml"), window)
+settings.set_snapshot(default_settings_snapshot())
+settings.set_diagnostics(())
+settings.resize(880, 640)
+settings.show()
+app.processEvents()
+assert settings.width() == 880
+assert settings.height() == 640
+assert settings.categories.isVisible()
+assert settings.path_display.isVisible()
+settings.close()
 window.close()
 """
     environment = os.environ.copy()

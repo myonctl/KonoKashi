@@ -2,14 +2,12 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from html import escape
 from math import sqrt
 
 from PySide6.QtCore import QEvent, QSize, Qt, QTimer, Signal
 from PySide6.QtGui import QFont, QFontMetrics, QPainter, QPalette, QResizeEvent
 from PySide6.QtWidgets import (
-    QCheckBox,
     QDialog,
     QDialogButtonBox,
     QFrame,
@@ -271,70 +269,6 @@ class LyricBand(QWidget):
         self.setVisible(bool(_group_text(visible_groups)))
 
 
-@dataclass(frozen=True, slots=True)
-class DesktopSettingsUpdate:
-    """One settings-dialog result spanning content and interaction policy."""
-
-    representations: RepresentationDisplaySettings
-    interactions: DesktopInteractionSettings
-
-
-class RepresentationSettingsDialog(QDialog):
-    """Small semantic editor for the existing shared display settings."""
-
-    def __init__(
-        self,
-        settings: RepresentationDisplaySettings,
-        parent: QWidget | None = None,
-        *,
-        interaction_settings: DesktopInteractionSettings | None = None,
-    ) -> None:
-        super().__init__(parent)
-        self.setWindowTitle("Lyric display")
-        self.setModal(True)
-        layout = QVBoxLayout(self)
-        explanation = _plain_label(
-            "Choose which aligned lyric layers are visible. Original lyrics are "
-            "kept unchanged in storage."
-        )
-        explanation.setWordWrap(True)
-        layout.addWidget(explanation)
-        self.original = QCheckBox("Show original lyrics")
-        self.romanized = QCheckBox("Show romanization or transliteration")
-        self.translated = QCheckBox("Show translation when available")
-        self.original.setChecked(settings.show_original)
-        self.romanized.setChecked(settings.show_romanized)
-        self.translated.setChecked(settings.show_translated)
-        layout.addWidget(self.original)
-        layout.addWidget(self.romanized)
-        layout.addWidget(self.translated)
-        self.lyric_selection = QCheckBox("Allow lyric text selection")
-        self.lyric_selection.setChecked(
-            (interaction_settings or DesktopInteractionSettings()).allow_lyric_selection
-        )
-        self.lyric_selection.setToolTip(
-            "When enabled, lyric lines use an I-beam cursor and can be selected."
-        )
-        layout.addWidget(self.lyric_selection)
-        buttons = QDialogButtonBox(
-            QDialogButtonBox.StandardButton.Save
-            | QDialogButtonBox.StandardButton.Cancel
-        )
-        buttons.accepted.connect(self.accept)
-        buttons.rejected.connect(self.reject)
-        layout.addWidget(buttons)
-
-    def value(self) -> RepresentationDisplaySettings:
-        return RepresentationDisplaySettings(
-            self.original.isChecked(),
-            self.romanized.isChecked(),
-            self.translated.isChecked(),
-        )
-
-    def interaction_value(self) -> DesktopInteractionSettings:
-        return DesktopInteractionSettings(self.lyric_selection.isChecked())
-
-
 class DiagnosticsDialog(QDialog):
     """Bounded details surface that keeps diagnostics out of the lyric view."""
 
@@ -371,7 +305,7 @@ class DiagnosticsDialog(QDialog):
 class MainWindow(QMainWindow):
     """Responsive, palette-aware main window driven only by application state."""
 
-    settings_requested = Signal(object)
+    settings_requested = Signal()
     review_requested = Signal()
     correction_requested = Signal(object)
     library_scan_requested = Signal()
@@ -417,7 +351,7 @@ class MainWindow(QMainWindow):
         metadata.addWidget(self.artist_label)
         header.addLayout(metadata, 1)
         self.settings_button = QPushButton("Settings")
-        self.settings_button.setAccessibleName("Lyric display settings")
+        self.settings_button.setAccessibleName("LyriFlux settings")
         self.settings_button.clicked.connect(self._open_settings)
         self.review_button = QPushButton("Review")
         self.review_button.setAccessibleName("Review and correct this track and lyrics")
@@ -679,18 +613,7 @@ class MainWindow(QMainWindow):
         )
 
     def _open_settings(self) -> None:
-        dialog = RepresentationSettingsDialog(
-            self._settings,
-            self,
-            interaction_settings=self._interaction_settings,
-        )
-        if dialog.exec() == QDialog.DialogCode.Accepted:
-            self._settings = dialog.value()
-            self._interaction_settings = dialog.interaction_value()
-            self._apply_interaction_settings()
-            self.settings_requested.emit(
-                DesktopSettingsUpdate(self._settings, self._interaction_settings)
-            )
+        self.settings_requested.emit()
 
     def _open_details(self) -> None:
         DiagnosticsDialog(self._state, self).exec()
