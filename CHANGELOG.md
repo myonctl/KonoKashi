@@ -20,6 +20,13 @@ unreleased.
   explicit TOML; and retained SQLite for documents, corrections, caches,
   timing/calibration, and indexed state. Append-only schema 10 records only the
   successful handoff.
+- Accepted the real Stage 11 matrix on Artix/KDE: schema-9 state migrated to a
+  mode-0600 canonical TOML file and schema 10 without data loss; direct valid,
+  invalid, and repaired edits exercised last-known-good reload; CLI set/get/
+  reset and restart preserved semantics; Plasma's real application menu
+  launched the installed entry; and a known Cyrillic song retained offline
+  high-confidence timed lyrics, synchronized line transitions, generated
+  transliteration, and clean restart behavior. Stage 12+ remains unauthorized.
 
 - Renamed the current product from LyricFlow to LyriFlux: display/application
   name, CLI (`lyriflux`), Python namespace and distribution (`lyriflux`), XDG

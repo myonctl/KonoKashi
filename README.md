@@ -12,15 +12,14 @@ version is 1.0.0.
 
 ## Current status
 
-Stages 1 through 10 and the post-Stage-5 Chinese/Pinyin repair are **Completed**.
-Stage 11 — Canonical Settings & Configuration Foundation is **Active** after a
-deliberate dependency-first selection from the existing post-v1 backlog. Its
-implementation and 579-test automated gate are complete; real verification is
-pending, so the stage is not yet Completed.
+Stages 1 through 11 and the post-Stage-5 Chinese/Pinyin repair are **Completed**.
+Stage 11 — Canonical Settings & Configuration Foundation passed its 579-test
+automated gate, exact-SHA implementation CI, and bounded real KDE/configuration/
+daily-use/restart/legacy-safety matrix on 2026-08-26. No implementation stage
+is Active.
 The installed private v1 is launchable from KDE's application menu; its
-remaining cosmetic placeholder icon is explicitly deferred. Stage 11 and later
-work no longer share one unordered bucket; Stage 12+ remains Proposed /
-unauthorized. Stage 8 —
+remaining cosmetic placeholder icon is explicitly deferred. Stage 12+ remains
+Proposed / unauthorized. Stage 8 —
 Review and correction workflow
 passed its automated gate and accepted real Strawberry/desktop correction,
 restart, preservation, and cleanup matrix on 2026-08-23. Stage 9 —
@@ -155,6 +154,9 @@ Supporting authorities:
   evidence.
 - `docs/STAGE_10_COMPLETION.md` — Stage 10 packaging, artifact, data-safety,
   installed-desktop, publication, and CI evidence.
+- `docs/STAGE_11_COMPLETION.md` — completed canonical settings/configuration
+  foundation, migration, real KDE hot-reload, daily-use, publication, and CI
+  evidence.
 - `docs/PRODUCT_GAP_RESEARCH.md` — bounded public product-feedback findings and
   Stage 7/future/rejected scope decisions.
 - `docs/adr/0010-stage4-lyrics-resolution.md` — accepted Stage 4 precedence,

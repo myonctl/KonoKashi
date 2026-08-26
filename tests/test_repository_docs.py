@@ -39,6 +39,7 @@ REQUIRED_DOCUMENTS = (
     "docs/STAGE_8_COMPLETION.md",
     "docs/STAGE_9_COMPLETION.md",
     "docs/STAGE_10_COMPLETION.md",
+    "docs/STAGE_11_COMPLETION.md",
     "docs/PRODUCT_GAP_RESEARCH.md",
     "docs/adr/0011-offline-romanization-routing.md",
     "docs/adr/0010-stage4-lyrics-resolution.md",
@@ -175,16 +176,16 @@ def test_project_state_contains_the_continuation_contract() -> None:
     assert "docs/PROJECT_RENAME_LYRIFLUX.md" in content
 
 
-def test_agent_todo_authorizes_only_stage_11() -> None:
+def test_agent_todo_authorizes_no_implementation_stage_after_stage_11() -> None:
     content = (REPOSITORY_ROOT / "AGENT_TODO.md").read_text(encoding="utf-8")
 
-    assert content.startswith(
-        "# Stage 11 — Canonical Settings & Configuration Foundation\n"
-    )
-    assert "Status: **Active**" in content
-    assert "one typed, versioned schema over existing real settings" in content
-    assert "Stage 12 and every remaining post-v1 backlog item" in content
-    assert "Do not begin them automatically." in content
+    assert content.startswith("# No Active Implementation Stage\n")
+    assert "Status: **No implementation stage Active**" in content
+    assert (
+        "Stage 11 — Canonical Settings & Configuration Foundation is **Completed**"
+    ) in content
+    assert "Stage 12+ and every remaining post-v1 backlog item" in content
+    assert "Do not select, define, activate, or implement another stage" in content
 
 
 def test_manifest_is_inventory_not_authority() -> None:
@@ -193,9 +194,7 @@ def test_manifest_is_inventory_not_authority() -> None:
     )
 
     assert manifest["implementation_authority"] == "AGENT_TODO.md"
-    assert manifest["authorized_stage"] == (
-        "Stage 11 — Canonical Settings & Configuration Foundation"
-    )
+    assert manifest["authorized_stage"] is None
     assert manifest["proposed_stage"] == "Stage 12+ — Remaining post-v1 backlog"
     assert all((REPOSITORY_ROOT / path).is_file() for path in manifest["files"])
 
