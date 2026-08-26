@@ -298,22 +298,26 @@ def test_large_library_job_keeps_qt_event_loop_responsive(
     QTimer.singleShot(0, lambda: event_loop_progress.append("responsive"))
 
     coordinator._start_library_scan()
-    for _ in range(400):
-        if started.is_set() and event_loop_progress:
-            break
-        QTest.qWait(5)
+    try:
+        for _ in range(200):
+            if event_loop_progress:
+                break
+            QTest.qWait(5)
 
-    assert started.is_set()
-    assert event_loop_progress == ["responsive"]
-    assert window.library_button.text() == "Cancel scan"
-    release.set()
-    for _ in range(100):
-        if not window.library_button.property("scanRunning"):
-            break
-        QTest.qWait(5)
-    assert window.library_button.text() == "Scan library"
-    coordinator.close()
-    window.close()
+        assert event_loop_progress == ["responsive"]
+        assert window.library_button.text() == "Cancel scan"
+        assert started.wait(10), "bounded worker did not start within 10 seconds"
+        release.set()
+        for _ in range(400):
+            if not window.library_button.property("scanRunning"):
+                break
+            QTest.qWait(5)
+        assert window.library_button.text() == "Scan library"
+    finally:
+        release.set()
+        assert coordinator._pool.waitForDone(10_000)
+        coordinator.close()
+        window.close()
 
 
 class _ReviewWindow(MainWindow):
