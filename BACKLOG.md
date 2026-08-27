@@ -56,9 +56,10 @@ authorize implementation. Staged v1 ordering lives in `docs/ROADMAP.md`.
 - **First-class interactive settings TUI and GUI counterpart** — Provide a
   polished keyboard-first Textual candidate with categories, search, validated
   controls, reset, scope/origin, and preview, plus equivalent desktop
-  capability over the same schema. Status: GUI counterpart is Active in Stage
-  12 with local implementation complete and verification pending; the separate
-  Textual TUI remains Planned / unauthorized and must receive a current
+  capability over the same schema. Status: GUI counterpart is Completed and
+  accepted in Stage 12 after automated, exact-SHA CI, and real KDE/config/file/
+  CLI/multilingual/playback/restart verification; the separate Textual TUI
+  remains Planned / unauthorized and must receive a current
   upstream/license/terminal/CJK/test/packaging/resource review before adoption.
   Prerequisites: canonical settings service. Related: ADRs 0013 and 0014.
 - **Traditional dotfile/ricing configuration** — Support safe declarative,

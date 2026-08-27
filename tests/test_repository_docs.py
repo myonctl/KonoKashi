@@ -40,6 +40,7 @@ REQUIRED_DOCUMENTS = (
     "docs/STAGE_9_COMPLETION.md",
     "docs/STAGE_10_COMPLETION.md",
     "docs/STAGE_11_COMPLETION.md",
+    "docs/STAGE_12_COMPLETION.md",
     "docs/PRODUCT_GAP_RESEARCH.md",
     "docs/adr/0011-offline-romanization-routing.md",
     "docs/adr/0010-stage4-lyrics-resolution.md",
@@ -176,12 +177,13 @@ def test_project_state_contains_the_continuation_contract() -> None:
     assert "docs/PROJECT_RENAME_LYRIFLUX.md" in content
 
 
-def test_agent_todo_authorizes_only_stage_12() -> None:
+def test_agent_todo_closes_stage_12_without_authorizing_stage_13() -> None:
     content = (REPOSITORY_ROOT / "AGENT_TODO.md").read_text(encoding="utf-8")
 
-    assert content.startswith("# Stage 12 — GUI Settings Frontend\n")
-    assert "Status: **Active / authorized**" in content
-    assert "Stage 13+ and every other post-v1 item" in content
+    assert content.startswith("# No Active Implementation Stage\n")
+    assert "Status: **No implementation stage Active**" in content
+    assert "Stage 12 — GUI Settings Frontend is **Completed**" in content
+    assert "Stage 13+ and every remaining post-v1 backlog item" in content
     assert "settings TUI" in content
 
 
@@ -191,7 +193,7 @@ def test_manifest_is_inventory_not_authority() -> None:
     )
 
     assert manifest["implementation_authority"] == "AGENT_TODO.md"
-    assert manifest["authorized_stage"] == "Stage 12 — GUI Settings Frontend"
+    assert manifest["authorized_stage"] is None
     assert manifest["proposed_stage"] == "Stage 13+ — Remaining post-v1 backlog"
     assert all((REPOSITORY_ROOT / path).is_file() for path in manifest["files"])
 

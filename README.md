@@ -16,12 +16,12 @@ Stages 1 through 11 and the post-Stage-5 Chinese/Pinyin repair are **Completed**
 Stage 11 — Canonical Settings & Configuration Foundation passed its 579-test
 automated gate, exact-SHA implementation CI, and bounded real KDE/configuration/
 daily-use/restart/legacy-safety matrix on 2026-08-26. Stage 12 — GUI Settings
-Frontend is Active; its local implementation and 591-test automated/package
-gate pass, while publication, exact-SHA CI, and real KDE verification remain
-pending.
+Frontend is **Completed** after its 591-test automated/package gate, exact-SHA
+implementation CI, and real KDE/configuration/file/CLI/multilingual/playback/
+restart/legacy-safety matrix on 2026-08-27.
 The installed private v1 is launchable from KDE's application menu; its
-remaining cosmetic placeholder icon is explicitly deferred. Stage 13+ remains
-Proposed / unauthorized. Stage 8 —
+remaining cosmetic placeholder icon is explicitly deferred. No implementation
+stage is Active; Stage 13+ remains Proposed / unauthorized. Stage 8 —
 Review and correction workflow
 passed its automated gate and accepted real Strawberry/desktop correction,
 restart, preservation, and cleanup matrix on 2026-08-23. Stage 9 —
@@ -162,6 +162,9 @@ Supporting authorities:
 - `docs/STAGE_12_DECISION.md` — complete remaining-backlog dependency analysis
   and the authoritative reason the existing GUI settings counterpart follows
   Stage 11.
+- `docs/STAGE_12_COMPLETION.md` — completed GUI settings frontend, automated,
+  real KDE/configuration/multilingual/playback, restoration, publication, and
+  CI evidence.
 - `docs/PRODUCT_GAP_RESEARCH.md` — bounded public product-feedback findings and
   Stage 7/future/rejected scope decisions.
 - `docs/adr/0010-stage4-lyrics-resolution.md` — accepted Stage 4 precedence,

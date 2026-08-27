@@ -25,8 +25,21 @@ unreleased.
 - Added Stage 12 headless widget/coordinator/service/file/CLI regressions,
   including all-key/category/type mapping, search, reset, external valid/invalid
   reload, comment-preserving symlink writes, single-window reopen, subscription
-  cleanup, and installed-artifact lifecycle evidence. The local gate passes 591
-  tests; real KDE verification remains pending.
+  cleanup, and installed-artifact lifecycle evidence. The gate passes 591
+  tests with two unchanged upstream pypinyin warnings.
+- Published implementation checkpoint
+  `cce4cb6c911bc2b97cdc773f6bac19fb6c31faa7`; exact-SHA Actions run
+  `33015495635` passed quality job `98332518289` and release-artifact job
+  `98332518011`.
+- Accepted the real Stage 12 Artix/KDE matrix: Plasma-menu launch, native dark
+  and light palettes, keyboard search/Escape, live resize/reflow, singleton
+  reopen, GUI/TOML/CLI round trips, valid/invalid/repaired external edits,
+  visible last-known-good diagnostics, GUI reset, config-path copy, restart,
+  schema-10 integrity, and exact real/legacy-state restoration all passed. A
+  known Cyrillic song visibly removed/restored transliteration through the GUI
+  and crossed a timed lyric boundary with aligned original/transliteration
+  rows. Stage 12 is Completed; no implementation stage is Active and Stage 13+
+  remains Proposed / unauthorized.
 
 - Defined and activated Stage 11 from the existing canonical-settings and
   dotfile backlog items. Added one versioned typed schema/service over the nine
