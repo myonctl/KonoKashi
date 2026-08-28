@@ -1,0 +1,592 @@
+"""Schema-driven Textual application for canonical LyriFlux settings."""
+
+from __future__ import annotations
+
+import asyncio
+from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor
+from functools import partial
+from pathlib import Path
+from typing import ClassVar, cast
+
+from textual import events, on
+from textual.app import App, ComposeResult
+from textual.binding import Binding, BindingType
+from textual.widgets import (
+    Button,
+    Footer,
+    Header,
+    Input,
+    OptionList,
+    Static,
+    Switch,
+)
+from textual.widgets.option_list import Option
+
+from lyriflux.application.settings import (
+    SETTINGS_SCHEMA,
+    SettingCategory,
+    SettingDefinition,
+    SettingsDiagnostic,
+    SettingsValidationError,
+    SettingType,
+    SettingValue,
+    default_settings_snapshot,
+)
+from lyriflux.application.settings_service import (
+    CanonicalSettingsService,
+    SettingsChange,
+    SettingsFileError,
+    SettingsSubscription,
+)
+from lyriflux.presentation.tui.settings_messages import (
+    DiskObserved,
+    MutationFinished,
+    ServiceReady,
+    SnapshotObserved,
+)
+from lyriflux.presentation.tui.settings_runtime import (
+    ConfigSignature,
+    config_signature,
+    open_settings_service,
+)
+from lyriflux.presentation.tui.settings_screens import (
+    OrderedListEditorScreen,
+    SettingsHelpScreen,
+)
+from lyriflux.presentation.tui.settings_view import (
+    APP_CSS,
+    SettingsWorkspace,
+    format_value,
+)
+
+SettingsServiceFactory = Callable[[], CanonicalSettingsService]
+
+
+class SettingsApp(App[int]):
+    """Full-screen terminal settings frontend over one canonical service."""
+
+    TITLE = "LyriFlux Settings"
+    SUB_TITLE = "Canonical configuration"
+    HORIZONTAL_BREAKPOINTS = [  # noqa: RUF012
+        (0, "-narrow"),
+        (75, "-normal"),
+        (115, "-wide"),
+    ]
+    BINDINGS: ClassVar[list[BindingType]] = [
+        Binding("q", "quit_settings", "Quit"),
+        Binding("question_mark", "show_help", "Help"),
+        Binding("slash", "focus_search", "Search"),
+        Binding("escape", "escape", "Back", show=False),
+        Binding("r", "reset_selected", "Reset"),
+        Binding("j", "next_setting", "Next", show=False),
+        Binding("k", "previous_setting", "Previous", show=False),
+        Binding("1", "category(0)", "Players", show=False),
+        Binding("2", "category(1)", "Lyrics", show=False),
+        Binding("3", "category(2)", "Desktop", show=False),
+        Binding("4", "category(3)", "Library", show=False),
+    ]
+    CSS = APP_CSS
+
+    def __init__(
+        self,
+        *,
+        service: CanonicalSettingsService | None = None,
+        service_factory: SettingsServiceFactory | None = None,
+        watch_interval: float = 0.75,
+    ) -> None:
+        super().__init__()
+        self._service = service
+        self._service_factory = service_factory
+        self._watch_interval = watch_interval
+        self._subscription: SettingsSubscription | None = None
+        self._snapshot = service.current if service else default_settings_snapshot()
+        self._category = SettingCategory.PLAYERS
+        self._visible_definitions: tuple[SettingDefinition, ...] = ()
+        self._selected_key = SETTINGS_SCHEMA[0].key
+        self._signature: ConfigSignature | None = None
+        self._watch_busy = False
+        self._mutation_busy = False
+        self._startup_failed = False
+        self._closed = False
+        self._ui_ready = False
+
+    def compose(self) -> ComposeResult:
+        yield Header(show_clock=False)
+        yield SettingsWorkspace(id="shell")
+        yield Static(
+            "Terminal is too small. Resize to at least 50 x 14 cells.",
+            id="too-small",
+            markup=False,
+        )
+        yield Footer()
+
+    def on_mount(self) -> None:
+        self._ui_ready = True
+        self.query_one("#categories", OptionList).highlighted = 0
+        self._refresh_setting_list()
+        self._render_detail()
+        self.query_one("#settings-list", OptionList).focus()
+        if self._service is not None:
+            self._accept_service(self._service)
+        else:
+            factory = self._service_factory
+            if factory is None:
+                self.post_message(ServiceReady(None, "No settings service factory."))
+            else:
+                self.run_worker(
+                    partial(self._open_service, factory),
+                    name="open canonical settings",
+                    group="settings-open",
+                    thread=True,
+                    exclusive=True,
+                    exit_on_error=False,
+                )
+
+    def on_unmount(self) -> None:
+        self._closed = True
+        self._ui_ready = False
+        if self._subscription is not None:
+            self._subscription.close()
+            self._subscription = None
+
+    def on_resize(self, event: events.Resize) -> None:
+        self.screen.set_class(
+            event.size.width < 50 or event.size.height < 14,
+            "too-small",
+        )
+
+    @on(Input.Changed, "#search")
+    def _search_changed(self, _event: Input.Changed) -> None:
+        self._refresh_setting_list()
+
+    @on(OptionList.OptionHighlighted, "#categories")
+    def _category_highlighted(self, event: OptionList.OptionHighlighted) -> None:
+        self._select_category(event.option.id)
+
+    @on(OptionList.OptionSelected, "#categories")
+    def _category_selected(self, event: OptionList.OptionSelected) -> None:
+        self._select_category(event.option.id, focus_settings=True)
+
+    @on(OptionList.OptionHighlighted, "#settings-list")
+    def _setting_highlighted(self, event: OptionList.OptionHighlighted) -> None:
+        if 0 <= event.option_index < len(self._visible_definitions):
+            self._selected_key = self._visible_definitions[event.option_index].key
+            self._render_detail()
+
+    @on(OptionList.OptionSelected, "#settings-list")
+    def _setting_selected(self, _event: OptionList.OptionSelected) -> None:
+        self._focus_editor()
+
+    @on(Switch.Changed, "#boolean-value")
+    def _boolean_changed(self, event: Switch.Changed) -> None:
+        current = self._snapshot.get(self._selected_key) if self._selected_key else None
+        if event.value != current:
+            self._start_mutation(self._selected_key, event.value)
+
+    @on(Input.Submitted, "#integer-value")
+    def _integer_submitted(self, _event: Input.Submitted) -> None:
+        self._apply_integer()
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        button_id = event.button.id
+        if button_id == "integer-minus":
+            self._adjust_integer(-1)
+        elif button_id == "integer-plus":
+            self._adjust_integer(1)
+        elif button_id == "integer-apply":
+            self._apply_integer()
+        elif button_id == "edit-list":
+            self._open_list_editor()
+        elif button_id == "reset-setting":
+            self.action_reset_selected()
+        elif button_id == "show-help":
+            self.action_show_help()
+
+    def on_service_ready(self, message: ServiceReady) -> None:
+        if message.service is None:
+            self._startup_failed = True
+            detail = message.error or "unknown error"
+            self._set_status(
+                f"Unable to open canonical settings: {detail}",
+                error=True,
+            )
+            return
+        self._accept_service(message.service)
+
+    def on_snapshot_observed(self, message: SnapshotObserved) -> None:
+        self._snapshot = message.change.current
+        self._refresh_setting_list()
+        self._render_detail()
+        changed = ", ".join(message.change.changed_keys)
+        self._set_status(f"Canonical settings updated: {changed}", success=True)
+
+    def on_mutation_finished(self, message: MutationFinished) -> None:
+        self._mutation_busy = False
+        self._set_editing_enabled(True)
+        if message.error is not None or message.result is None:
+            self._set_status(
+                f"Could not update {message.key}: {message.error or 'unknown error'}",
+                error=True,
+            )
+            self._render_detail()
+            return
+        self._snapshot = message.result.snapshot
+        self._refresh_setting_list()
+        self._render_detail()
+        self._set_status(f"Saved {message.key}.", success=True)
+
+    def on_disk_observed(self, message: DiskObserved) -> None:
+        self._watch_busy = False
+        self._signature = message.signature
+        if message.result is None:
+            return
+        self._snapshot = message.result.snapshot
+        self._refresh_setting_list()
+        self._render_detail()
+        if message.result.applied:
+            self._set_status("External configuration change loaded.", success=True)
+        else:
+            self._show_diagnostics(message.result.diagnostics, "External file rejected")
+
+    def action_quit_settings(self) -> None:
+        self.exit(1 if self._startup_failed else 0)
+
+    def action_show_help(self) -> None:
+        self.push_screen(SettingsHelpScreen())
+
+    def action_focus_search(self) -> None:
+        self.query_one("#search", Input).focus()
+
+    def action_escape(self) -> None:
+        search = self.query_one("#search", Input)
+        if search.value:
+            search.value = ""
+            search.focus()
+        else:
+            self.query_one("#settings-list", OptionList).focus()
+
+    def action_reset_selected(self) -> None:
+        if self._service is not None:
+            self._start_mutation(self._selected_key, None, reset=True)
+
+    def action_next_setting(self) -> None:
+        options = self.query_one("#settings-list", OptionList)
+        options.focus()
+        options.action_cursor_down()
+
+    def action_previous_setting(self) -> None:
+        options = self.query_one("#settings-list", OptionList)
+        options.focus()
+        options.action_cursor_up()
+
+    def action_category(self, index: int) -> None:
+        categories = tuple(SettingCategory)
+        if not 0 <= index < len(categories):
+            return
+        self._category = categories[index]
+        self.query_one("#categories", OptionList).highlighted = index
+        self._refresh_setting_list()
+        self.query_one("#settings-list", OptionList).focus()
+
+    def _open_service(self, factory: SettingsServiceFactory) -> None:
+        try:
+            service = factory()
+        except (OSError, RuntimeError, ValueError) as error:
+            self.post_message(
+                ServiceReady(None, f"{error.__class__.__name__}: {error}")
+            )
+        else:
+            self.post_message(ServiceReady(service))
+
+    def _accept_service(self, service: CanonicalSettingsService) -> None:
+        if self._subscription is not None:
+            self._subscription.close()
+        self._service = service
+        self._snapshot = service.current
+        self._subscription = service.subscribe(self._service_changed)
+        self._refresh_setting_list()
+        self._render_detail()
+        if service.diagnostics:
+            self._show_diagnostics(service.diagnostics, "Configuration rejected")
+        else:
+            self._set_status(f"Canonical file: {service.path}", success=True)
+        if self._watch_interval > 0:
+            self.set_interval(self._watch_interval, self._schedule_disk_check)
+            self._schedule_disk_check()
+
+    def _service_changed(self, change: SettingsChange) -> None:
+        if not self._closed:
+            self.post_message(SnapshotObserved(change))
+
+    def _schedule_disk_check(self) -> None:
+        if self._watch_busy or self._service is None or self._closed:
+            return
+        self._watch_busy = True
+        self.run_worker(
+            self._observe_disk,
+            name="observe canonical settings file",
+            group="settings-watch",
+            thread=True,
+            exit_on_error=False,
+        )
+
+    def _observe_disk(self) -> None:
+        service = self._service
+        if service is None:
+            return
+        signature = config_signature(service.path)
+        result = (
+            None
+            if self._signature is None or signature == self._signature
+            else service.reload()
+        )
+        self.post_message(DiskObserved(signature, result))
+
+    def _start_mutation(
+        self, key: str, value: SettingValue | None, *, reset: bool = False
+    ) -> None:
+        if self._service is None or self._mutation_busy:
+            return
+        self._mutation_busy = True
+        self._set_editing_enabled(False)
+        self._set_status(f"Saving {key}…")
+        self.run_worker(
+            partial(self._mutate, key, value, reset),
+            name=f"update {key}",
+            group="settings-mutation",
+            thread=True,
+            exclusive=True,
+            exit_on_error=False,
+        )
+
+    def _mutate(self, key: str, value: SettingValue | None, reset: bool) -> None:
+        service = self._service
+        if service is None:
+            self.post_message(MutationFinished(key, None, "service unavailable"))
+            return
+        try:
+            if reset:
+                result = service.reset(key)
+            elif value is None:
+                raise ValueError("a setting value is required")
+            else:
+                result = service.set(key, value)
+        except (
+            SettingsFileError,
+            SettingsValidationError,
+            OSError,
+            RuntimeError,
+            ValueError,
+        ) as error:
+            self.post_message(MutationFinished(key, None, str(error)))
+        else:
+            self.post_message(MutationFinished(key, result))
+
+    def _select_category(
+        self, option_id: str | None, *, focus_settings: bool = False
+    ) -> None:
+        if option_id is None:
+            return
+        for category in SettingCategory:
+            if category.name.lower() == option_id:
+                if category is self._category:
+                    if focus_settings:
+                        self.query_one("#settings-list", OptionList).focus()
+                    return
+                self._category = category
+                self._refresh_setting_list()
+                if focus_settings:
+                    self.query_one("#settings-list", OptionList).focus()
+                return
+
+    def _refresh_setting_list(self) -> None:
+        if not self._ui_ready:
+            return
+        query = self.query_one("#search", Input).value.casefold().strip()
+        definitions = tuple(
+            definition
+            for definition in SETTINGS_SCHEMA
+            if (
+                (not query and definition.category is self._category)
+                or (
+                    query
+                    and query
+                    in " ".join(
+                        (definition.title, definition.description, definition.key)
+                    ).casefold()
+                )
+            )
+        )
+        self._visible_definitions = definitions
+        options = self.query_one("#settings-list", OptionList)
+        options.clear_options()
+        options.add_options(
+            Option(
+                f"{definition.title}\n"
+                f"  {format_value(self._snapshot.get(definition.key))}",
+                id=f"setting-{index}",
+            )
+            for index, definition in enumerate(definitions)
+        )
+        if not definitions:
+            self._selected_key = ""
+            self._render_empty_detail("No settings match this search.")
+            return
+        selected_index = next(
+            (
+                index
+                for index, definition in enumerate(definitions)
+                if definition.key == self._selected_key
+            ),
+            0,
+        )
+        self._selected_key = definitions[selected_index].key
+        options.highlighted = selected_index
+        self._render_detail()
+
+    def _render_detail(self) -> None:
+        if not self._ui_ready or not self._selected_key:
+            return
+        self.query_one(SettingsWorkspace).show_setting(
+            self._snapshot.resolved(self._selected_key)
+        )
+
+    def _render_empty_detail(self, text: str) -> None:
+        self.query_one(SettingsWorkspace).show_empty(text)
+
+    def _focus_editor(self) -> None:
+        if not self._selected_key:
+            return
+        value_type = self._snapshot.resolved(self._selected_key).definition.value_type
+        selector = {
+            SettingType.BOOLEAN: "#boolean-value",
+            SettingType.INTEGER: "#integer-value",
+            SettingType.STRING_LIST: "#edit-list",
+        }[value_type]
+        self.query_one(selector).focus()
+
+    def _apply_integer(self) -> None:
+        if not self._selected_key:
+            return
+        definition = self._snapshot.resolved(self._selected_key).definition
+        raw = self.query_one("#integer-value", Input).value.strip()
+        try:
+            value = int(raw)
+        except ValueError:
+            self._set_status("Enter a whole integer before applying.", error=True)
+            return
+        if definition.minimum is not None and value < definition.minimum:
+            self._set_status(
+                f"Minimum for {definition.key} is {definition.minimum}.", error=True
+            )
+            return
+        if definition.maximum is not None and value > definition.maximum:
+            self._set_status(
+                f"Maximum for {definition.key} is {definition.maximum}.", error=True
+            )
+            return
+        self._start_mutation(definition.key, value)
+
+    def _adjust_integer(self, offset: int) -> None:
+        editor = self.query_one("#integer-value", Input)
+        try:
+            value = int(editor.value)
+        except ValueError:
+            value = cast(int, self._snapshot.get(self._selected_key))
+        definition = self._snapshot.resolved(self._selected_key).definition
+        minimum = (
+            definition.minimum if definition.minimum is not None else value + offset
+        )
+        maximum = (
+            definition.maximum if definition.maximum is not None else value + offset
+        )
+        editor.value = str(min(maximum, max(minimum, value + offset)))
+
+    def _open_list_editor(self) -> None:
+        if not self._selected_key:
+            return
+        resolved = self._snapshot.resolved(self._selected_key)
+        baseline = resolved.value
+        if not isinstance(baseline, tuple):
+            return
+        screen = OrderedListEditorScreen(
+            resolved.definition.title,
+            baseline,
+            path_values=resolved.definition.key == "library.roots",
+        )
+        self.push_screen(
+            screen,
+            partial(self._list_editor_closed, resolved.definition.key, baseline),
+        )
+
+    def _list_editor_closed(
+        self,
+        key: str,
+        baseline: tuple[str, ...],
+        result: tuple[str, ...] | None,
+    ) -> None:
+        if result is None or self._service is None:
+            self._set_status("List edit cancelled.")
+            return
+        if self._service.current.get(key) != baseline:
+            self._set_status(
+                f"{key} changed externally while the draft was open; review and retry.",
+                error=True,
+            )
+            self._snapshot = self._service.current
+            self._refresh_setting_list()
+            self._render_detail()
+            return
+        self._start_mutation(key, result)
+
+    def _set_editing_enabled(self, enabled: bool) -> None:
+        self.query_one(SettingsWorkspace).set_editing_enabled(enabled)
+
+    def _show_diagnostics(
+        self, diagnostics: tuple[SettingsDiagnostic, ...], context: str
+    ) -> None:
+        rendered = "; ".join(item.render() for item in diagnostics)
+        self._set_status(f"{context}: {rendered}", error=True)
+
+    def _set_status(
+        self, text: str, *, error: bool = False, success: bool = False
+    ) -> None:
+        self.query_one(SettingsWorkspace).set_status(
+            text,
+            error=error,
+            success=success,
+        )
+
+
+def run_settings_tui(
+    *,
+    database_path: Path | None = None,
+    config_path: Path | None = None,
+) -> int:
+    """Run the interactive settings app with controlled top-level failures."""
+
+    try:
+        app = SettingsApp(
+            service_factory=partial(open_settings_service, database_path, config_path)
+        )
+        loop = asyncio.new_event_loop()
+        executor = ThreadPoolExecutor(
+            max_workers=2,
+            thread_name_prefix="lyriflux-settings",
+        )
+        loop.set_default_executor(executor)
+        try:
+            result = app.run(loop=loop)
+        finally:
+            executor.shutdown(wait=False, cancel_futures=True)
+            loop.close()
+        return 0 if result is None else result
+    except (ImportError, OSError, RuntimeError, ValueError) as error:
+        import sys
+
+        print(
+            f"Unable to start LyriFlux settings: {error.__class__.__name__}: {error}",
+            file=sys.stderr,
+        )
+        return 1

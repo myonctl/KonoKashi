@@ -18,10 +18,15 @@ automated gate, exact-SHA implementation CI, and bounded real KDE/configuration/
 daily-use/restart/legacy-safety matrix on 2026-08-26. Stage 12 — GUI Settings
 Frontend is **Completed** after its 591-test automated/package gate, exact-SHA
 implementation CI, and real KDE/configuration/file/CLI/multilingual/playback/
-restart/legacy-safety matrix on 2026-08-27.
+restart/legacy-safety matrix on 2026-08-27. Stage 13 — Interactive Settings TUI
+is **Active**, deliberately selected from the unfinished Textual half of the
+existing settings-frontend backlog item after a complete remaining-candidate
+and current dependency review. Its 611-test local implementation/package gate
+passes; publication, exact-SHA CI, and the real interoperability matrix remain
+pending before completion.
 The installed private v1 is launchable from KDE's application menu; its
-remaining cosmetic placeholder icon is explicitly deferred. No implementation
-stage is Active; Stage 13+ remains Proposed / unauthorized. Stage 8 —
+remaining cosmetic placeholder icon is explicitly deferred. Stage 14+ remains
+Proposed / unauthorized. Stage 8 —
 Review and correction workflow
 passed its automated gate and accepted real Strawberry/desktop correction,
 restart, preservation, and cleanup matrix on 2026-08-23. Stage 9 —
@@ -98,7 +103,7 @@ authority.
 - Keep LyriFlux Python-first. Native Rust is available only for a coherent
   subsystem with measured benefit; there is no whole-project rewrite or daemon.
 - Evolve settings and safe declarative themes through one frontend-neutral
-  validated model shared by desktop, future TUI, files, and automation.
+  validated model shared by desktop, the settings TUI, files, and automation.
 
 The complete behavioral authority is `docs/PRODUCT_SPEC.md`.
 
@@ -165,6 +170,8 @@ Supporting authorities:
 - `docs/STAGE_12_COMPLETION.md` — completed GUI settings frontend, automated,
   real KDE/configuration/multilingual/playback, restoration, publication, and
   CI evidence.
+- `docs/STAGE_13_DECISION.md` — complete remaining-backlog dependency analysis,
+  current Textual review, and the authoritative bounded settings-TUI selection.
 - `docs/PRODUCT_GAP_RESEARCH.md` — bounded public product-feedback findings and
   Stage 7/future/rejected scope decisions.
 - `docs/adr/0010-stage4-lyrics-resolution.md` — accepted Stage 4 precedence,
@@ -172,7 +179,8 @@ Supporting authorities:
 - `docs/adr/0011-offline-romanization-routing.md` — accepted Stage 5 script
   routing, offline engine, style, ambiguity, and replacement policy.
 - `docs/adr/0013-python-first-hybrid-architecture.md` — accepted Python-first,
-  selective native-module, retained desktop, future TUI, and no-daemon policy.
+  selective native-module, retained desktop, Textual direction, and no-daemon
+  policy.
 - `docs/adr/0014-frontend-neutral-settings-and-themes.md` — accepted canonical
   settings, dotfile, safe semantic theme, and frontend adapter policy.
 - `docs/adr/0015-incremental-library-scanner.md` — accepted Stage 9 incremental,
@@ -208,6 +216,7 @@ Rationale, licensing cautions, and usage boundaries are recorded in
 .venv/bin/lyriflux --version
 .venv/bin/lyriflux doctor
 .venv/bin/lyriflux desktop
+.venv/bin/lyriflux settings
 .venv/bin/lyriflux config path
 .venv/bin/lyriflux config validate
 .venv/bin/lyriflux config get lyrics.display.translated
@@ -268,7 +277,10 @@ Canonical settings use UTF-8 TOML at
 than explicit file values, and `config get` reports the origin, scope, type,
 and reload behavior. Direct edits, Git, symlinks, and Stow are supported;
 invalid complete saves are rejected while a running desktop retains its last
-known-good snapshot. LyriFlux writes through validated, comment-preserving,
+known-good snapshot. `lyriflux settings` opens the full-screen terminal peer
+with the same four categories, nine settings, typed controls, search, metadata,
+individual reset, help, external-file refresh, and last-known-good diagnostics.
+LyriFlux writes through validated, comment-preserving,
 atomic replacement and never executes configuration. The existing `storage
 settings`/`storage display` and `library settings` commands are compatibility
 adapters over this same service.

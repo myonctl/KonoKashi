@@ -54,3 +54,30 @@ def test_pyside_imports_are_confined_to_qt_adapters() -> None:
                 violations.append(f"{path.relative_to(source_root)}: {imported}")
 
     assert violations == []
+
+
+def test_textual_imports_are_confined_to_tui_presentation() -> None:
+    source_root = Path(__file__).parents[1] / "src" / "lyriflux"
+    violations: list[str] = []
+
+    for path in source_root.rglob("*.py"):
+        relative_parts = path.relative_to(source_root).parts
+        if relative_parts[:2] == ("presentation", "tui"):
+            continue
+        for imported in _imports(path):
+            if imported == "textual" or imported.startswith("textual."):
+                violations.append(f"{path.relative_to(source_root)}: {imported}")
+
+    assert violations == []
+
+
+def test_tui_presentation_does_not_import_qt() -> None:
+    source_root = Path(__file__).parents[1] / "src" / "lyriflux"
+    violations: list[str] = []
+
+    for path in (source_root / "presentation" / "tui").rglob("*.py"):
+        for imported in _imports(path):
+            if imported == "PySide6" or imported.startswith("PySide6."):
+                violations.append(f"{path.relative_to(source_root)}: {imported}")
+
+    assert violations == []

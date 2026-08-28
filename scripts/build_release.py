@@ -21,6 +21,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 APP_ID = "io.github.myonctl.LyriFlux"
 REQUIRED_WHEEL_SUFFIXES = (
     "lyriflux/cli.py",
+    "lyriflux/presentation/tui/settings_app.py",
     f"lyriflux/resources/{APP_ID}.desktop.in",
     f"lyriflux/resources/{APP_ID}.svg",
 )

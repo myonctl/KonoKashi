@@ -7,6 +7,34 @@ unreleased.
 
 ### Changed
 
+- Selected and activated Stage 13 — Interactive Settings TUI from the
+  unfinished Textual half of the existing settings-frontend backlog item after
+  a complete remaining-candidate analysis. Accepted Textual 8.2.8 under a
+  bounded-major, presentation-only replacement boundary after reviewing
+  maintenance, MIT licensing, Python/terminal/input behavior, Unicode/CJK,
+  headless testing, concurrency, packaging, resource use, and alternatives.
+  Stage 14+ remains unnumbered and unauthorized.
+- Added canonical `lyriflux settings` dispatch and a full-screen responsive
+  Textual frontend generated from all nine schema entries across Players,
+  Lyrics, Desktop, and Library. It provides deterministic search, current/
+  default/origin/scope/reload details, keyboard and mouse navigation, typed
+  booleans and bounded integers, ordered list/path drafts, individual reset,
+  help, narrow/wide/too-small states, and controlled startup errors.
+- Kept open/reload/set/reset filesystem work on bounded Textual thread workers.
+  Service messages refresh successful changes; a bounded link/target signature
+  detects cross-process writes, atomic replacement, removal/recreation, and
+  symlink-target changes while invalid candidates retain visible last-known-
+  good values. No Qt import, daemon, IPC, TOML parser/writer, SQL, new setting,
+  theme model, or lyrics TUI was added.
+- Added composed headless regressions for schema/category/type coverage,
+  keyboard/mouse/help/resize, typed edits and reset, Apply/Cancel/stale drafts,
+  validation, subscriptions, external valid/invalid/repair, atomic and symlink
+  behavior, comments/mode, multiple instances, Unicode/long values, controlled
+  failure, CLI dispatch, and clean shutdown. Release required-content checks
+  now include the packaged TUI, and Textual is a declared direct dependency.
+  The complete local gate passes 613 tests with only the two unchanged upstream
+  pypinyin warnings, Ruff, format, strict mypy, reproducible artifacts, and a
+  dependency-complete installed-wheel TUI/config/uninstall/data-retention smoke.
 - Selected and activated Stage 12 — GUI Settings Frontend from the existing
   settings GUI counterpart backlog item after a complete remaining-work
   dependency analysis. Stage 13+ remains unnumbered and unauthorized.

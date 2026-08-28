@@ -173,6 +173,10 @@ def _parser() -> argparse.ArgumentParser:
         "desktop",
         help="open the PySide6 synchronized-lyrics desktop application",
     )
+    subparsers.add_parser(
+        "settings",
+        help="open the interactive terminal settings application",
+    )
     config = subparsers.add_parser(
         "config", help="inspect and edit canonical LyriFlux configuration"
     )
@@ -2130,6 +2134,21 @@ def main(
             )
             print(
                 "Run `lyriflux diagnostics export` for a privacy-bounded report.",
+                file=sys.stderr,
+            )
+            return 1
+    if arguments.command == "settings":
+        try:
+            from lyriflux.presentation.tui.settings_app import run_settings_tui
+
+            return run_settings_tui(
+                database_path=database_path,
+                config_path=config_path,
+            )
+        except (ImportError, OSError, RuntimeError, ValueError) as error:
+            print(
+                "Unable to start LyriFlux settings: "
+                f"{error.__class__.__name__}: {error}",
                 file=sys.stderr,
             )
             return 1
