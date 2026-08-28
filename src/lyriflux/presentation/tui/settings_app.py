@@ -75,6 +75,7 @@ class SettingsApp(App[int]):
     ]
     BINDINGS: ClassVar[list[BindingType]] = [
         Binding("q", "quit_settings", "Quit"),
+        Binding("ctrl+c", "quit_settings", "Quit", show=False),
         Binding("question_mark", "show_help", "Help"),
         Binding("slash", "focus_search", "Search"),
         Binding("escape", "escape", "Back", show=False),

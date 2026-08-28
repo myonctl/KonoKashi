@@ -448,6 +448,18 @@ def test_resize_help_mouse_and_clean_subscription_shutdown(tmp_path: Path) -> No
     assert service._subscriptions == {}
 
 
+def test_ctrl_c_exits_cleanly_and_unsubscribes(tmp_path: Path) -> None:
+    service = _service(tmp_path / "config.toml")
+    app = SettingsApp(service=service, watch_interval=0)
+
+    async def scenario(_app: SettingsApp, pilot: Pilot[int]) -> None:
+        await pilot.press("ctrl+c")
+
+    _run_app(app, scenario)
+    assert app.return_value == 0
+    assert service._subscriptions == {}
+
+
 def test_unicode_and_long_values_remain_visible_and_searchable(tmp_path: Path) -> None:
     path = tmp_path / "config.toml"
     service = _service(path)

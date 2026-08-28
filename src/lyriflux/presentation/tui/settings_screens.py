@@ -141,7 +141,7 @@ class SettingsHelpScreen(ModalScreen[None]):
                 "r            Reset the selected setting\n"
                 "Esc          Clear search, cancel, or return to navigation\n"
                 "?            Toggle this help\n"
-                "q            Quit when not editing text\n\n"
+                "q / Ctrl+C   Quit cleanly\n\n"
                 "All writes use the canonical validated TOML service. Invalid "
                 "external files keep the last-known-good values visible.",
                 id="help-content",

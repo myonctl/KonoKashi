@@ -32,7 +32,10 @@ unreleased.
   behavior, comments/mode, multiple instances, Unicode/long values, controlled
   failure, CLI dispatch, and clean shutdown. Release required-content checks
   now include the packaged TUI, and Textual is a declared direct dependency.
-  The complete local gate passes 613 tests with only the two unchanged upstream
+  Live terminal verification exposed and corrected a missing Ctrl+C quit
+  binding; Ctrl+C now follows the same clean lifecycle as q and has a focused
+  subscription-cleanup regression. The complete local gate passes 614 tests
+  with only the two unchanged upstream
   pypinyin warnings, Ruff, format, strict mypy, reproducible artifacts, and a
   dependency-complete installed-wheel TUI/config/uninstall/data-retention smoke.
 - Selected and activated Stage 12 — GUI Settings Frontend from the existing
