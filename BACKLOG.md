@@ -59,9 +59,10 @@ authorize implementation. Staged v1 ordering lives in `docs/ROADMAP.md`.
   capability over the same schema. Status: GUI counterpart is Completed and
   accepted in Stage 12 after automated, exact-SHA CI, and real KDE/config/file/
   CLI/multilingual/playback/restart verification. The separate Textual TUI is
-  Active as Stage 13 after the current upstream/license/terminal/CJK/test/
-  packaging/resource review in `docs/STAGE_13_DECISION.md`; its scope remains
-  limited to `lyriflux settings`.
+  Completed and accepted in Stage 13 after its current upstream/license/
+  terminal/CJK/test/packaging/resource review, automated and exact-SHA CI
+  gates, and real terminal/KDE/configuration/file/CLI/multilingual/playback/
+  restart matrix; its scope remains limited to `lyriflux settings`.
   Prerequisites: canonical settings service. Related: ADRs 0013 and 0014.
 - **Traditional dotfile/ricing configuration** — Support safe declarative,
   XDG-compliant, version-control/symlink/Stow-friendly files, deterministic

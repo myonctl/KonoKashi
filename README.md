@@ -12,18 +12,16 @@ version is 1.0.0.
 
 ## Current status
 
-Stages 1 through 11 and the post-Stage-5 Chinese/Pinyin repair are **Completed**.
+Stages 1 through 13 and the post-Stage-5 Chinese/Pinyin repair are **Completed**.
 Stage 11 — Canonical Settings & Configuration Foundation passed its 579-test
 automated gate, exact-SHA implementation CI, and bounded real KDE/configuration/
 daily-use/restart/legacy-safety matrix on 2026-08-26. Stage 12 — GUI Settings
 Frontend is **Completed** after its 591-test automated/package gate, exact-SHA
 implementation CI, and real KDE/configuration/file/CLI/multilingual/playback/
 restart/legacy-safety matrix on 2026-08-27. Stage 13 — Interactive Settings TUI
-is **Active**, deliberately selected from the unfinished Textual half of the
-existing settings-frontend backlog item after a complete remaining-candidate
-and current dependency review. Its 611-test local implementation/package gate
-passes; publication, exact-SHA CI, and the real interoperability matrix remain
-pending before completion.
+is **Completed** after its 614-test automated/package gate, implementation and
+Ctrl+C-correction exact-SHA CI, and accepted real Konsole/Kitty/KDE/GUI/CLI/
+TOML/file/multilingual/playback/restart/cleanup matrix on 2026-08-29.
 The installed private v1 is launchable from KDE's application menu; its
 remaining cosmetic placeholder icon is explicitly deferred. Stage 14+ remains
 Proposed / unauthorized. Stage 8 —
@@ -172,6 +170,9 @@ Supporting authorities:
   CI evidence.
 - `docs/STAGE_13_DECISION.md` — complete remaining-backlog dependency analysis,
   current Textual review, and the authoritative bounded settings-TUI selection.
+- `docs/STAGE_13_COMPLETION.md` — completed Textual settings frontend,
+  automated, real terminal/KDE/configuration/file/CLI/multilingual/playback,
+  restoration, publication, and CI evidence.
 - `docs/PRODUCT_GAP_RESEARCH.md` — bounded public product-feedback findings and
   Stage 7/future/rejected scope decisions.
 - `docs/adr/0010-stage4-lyrics-resolution.md` — accepted Stage 4 precedence,

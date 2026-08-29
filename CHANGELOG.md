@@ -38,6 +38,27 @@ unreleased.
   with only the two unchanged upstream
   pypinyin warnings, Ruff, format, strict mypy, reproducible artifacts, and a
   dependency-complete installed-wheel TUI/config/uninstall/data-retention smoke.
+- Published implementation checkpoint `a4742dc764709e18d340625350d42d9fc2c38308`;
+  exact-SHA Actions run `33203733776` passed quality and release-artifact jobs.
+  Published the live-found Ctrl+C lifecycle correction at
+  `315add764f4b27ea6f8d10b174d6920687a61c05`; exact-SHA run `33216390714`
+  passed both jobs, and the corrected installed wheel exited cleanly on Ctrl+C.
+- Accepted the real Stage 13 matrix on Artix/KDE: exact installed-wheel Konsole
+  and Kitty launch, all-category/all-setting inspection, title/key search,
+  keyboard and portal mouse operation, help/q/Ctrl+C, live resize and explicit
+  too-small state, boolean/integer/path edits and reset, GUI/CLI/TOML parity,
+  valid/invalid/repaired/atomic/missing/recreated/symlink file behavior,
+  Unicode/long values, comment/mode preservation, Plasma-menu desktop launch,
+  Cyrillic synchronized playback and transliteration grouping/toggle, both
+  frontend restarts, exact config restoration, schema-10 integrity, legacy
+  preservation, and temporary-state cleanup. Stage 13 is Completed; no
+  implementation stage is Active and Stage 14+ remains Proposed / unauthorized.
+- Repeated the closure gate: 614 tests passed in 54.30 seconds with the two
+  unchanged warnings, Ruff lint and 225-file format passed, strict mypy passed
+  106 source files, real version/doctor/config/storage checks passed, artifacts
+  were reproducible with required contents, and a clean dependency-complete
+  wheel lifecycle passed migration, config, desktop integration, backup,
+  diagnostics, uninstall, data retention, and integrity.
 - Selected and activated Stage 12 — GUI Settings Frontend from the existing
   settings GUI counterpart backlog item after a complete remaining-work
   dependency analysis. Stage 13+ remains unnumbered and unauthorized.
