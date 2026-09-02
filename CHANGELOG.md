@@ -7,6 +7,22 @@ unreleased.
 
 ### Changed
 
+- Repaired the post-Stage-13 daily-use latency defect in `lyriflux settings`.
+  Hot navigation/search now avoid layout work and duplicate queued projection;
+  value changes update only affected prompts/details; Textual uses a faster
+  sleeping repaint cadence; and help is opaque, reusable, and lazily mounted.
+  A persistent 150 ms external signature observer replaces recurring worker
+  creation, remains idle on unchanged files, excludes in-flight local writes,
+  captures exact self-write signatures, and clears repaired diagnostics without
+  weakening canonical validation, atomic mode-0600 TOML, symlink, comment, or
+  last-known-good semantics.
+- Added five deterministic latency-root regressions and append-only real
+  Konsole/Kitty measurement evidence. The gate now passes 619 tests; real
+  target-compliant Konsole navigation measured 13.0 ms median/18.5 ms p95 and
+  search 15.2/16.6 ms, while Kitty raw results remain explicitly separated
+  from its roughly 70 ms remote `get-text` observer cost. Stage 13 remains
+  Completed and Stage 14+ remains Proposed / unauthorized.
+
 - Selected and activated Stage 13 — Interactive Settings TUI from the
   unfinished Textual half of the existing settings-frontend backlog item after
   a complete remaining-candidate analysis. Accepted Textual 8.2.8 under a

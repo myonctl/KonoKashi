@@ -4,22 +4,103 @@ from __future__ import annotations
 
 import asyncio
 import os
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Mapping
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+from threading import Event
 
 import pytest
 from textual.pilot import Pilot
 from textual.widgets import Button, Input, Label, OptionList, Static
 
 from lyriflux import cli
-from lyriflux.application.settings import SETTINGS_SCHEMA, SettingCategory, SettingType
-from lyriflux.application.settings_service import CanonicalSettingsService
+from lyriflux.application.settings import (
+    SETTINGS_SCHEMA,
+    SettingCategory,
+    SettingType,
+    SettingValue,
+)
+from lyriflux.application.settings_service import (
+    CanonicalSettingsService,
+    SettingsReloadResult,
+)
 from lyriflux.infrastructure.configuration.toml_file import TomlSettingsFile
 from lyriflux.presentation.tui.settings_app import SettingsApp
 from lyriflux.presentation.tui.settings_runtime import config_signature
 
 Scenario = Callable[[SettingsApp, Pilot[int]], Awaitable[None]]
+
+
+class CountingSettingsFile(TomlSettingsFile):
+    """File port proving presentation-only actions remain I/O-free."""
+
+    def __init__(self, path: Path) -> None:
+        super().__init__(path)
+        self.reads = 0
+        self.updates = 0
+        self.resets = 0
+
+    def read(self) -> Mapping[str, object]:
+        self.reads += 1
+        return super().read()
+
+    def update_many(self, values: Mapping[str, SettingValue]) -> bool:
+        self.updates += 1
+        return super().update_many(values)
+
+    def reset(self, key: str) -> bool:
+        self.resets += 1
+        return super().reset(key)
+
+
+class CountingSettingsService(CanonicalSettingsService):
+    """Canonical service with an observable reload boundary."""
+
+    def __init__(self, config: TomlSettingsFile) -> None:
+        super().__init__(config)
+        self.reloads = 0
+
+    def reload(self) -> SettingsReloadResult:
+        self.reloads += 1
+        return super().reload()
+
+
+class WriteBarrierSettingsFile(CountingSettingsFile):
+    """Expose the interval after a safe write but before the service reload."""
+
+    def __init__(self, path: Path) -> None:
+        super().__init__(path)
+        self.write_completed = Event()
+        self.release_write = Event()
+
+    def update_many(self, values: Mapping[str, SettingValue]) -> bool:
+        changed = super().update_many(values)
+        self.write_completed.set()
+        if not self.release_write.wait(2):
+            raise RuntimeError("test write barrier timed out")
+        return changed
+
+
+class CountingSettingsApp(SettingsApp):
+    """Composed app with observable projection/render boundaries."""
+
+    def __init__(
+        self,
+        *,
+        service: CanonicalSettingsService,
+        watch_interval: float = 0,
+    ) -> None:
+        super().__init__(service=service, watch_interval=watch_interval)
+        self.list_refreshes = 0
+        self.detail_renders = 0
+
+    def _refresh_setting_list(self) -> None:
+        self.list_refreshes += 1
+        super()._refresh_setting_list()
+
+    def _render_detail(self) -> None:
+        self.detail_renders += 1
+        super()._render_detail()
 
 
 def _service(path: Path) -> CanonicalSettingsService:
@@ -137,6 +218,70 @@ def test_category_shortcuts_and_text_input_keep_printable_keys(tmp_path: Path) -
     _run_app(app, scenario)
 
 
+def test_hot_presentation_actions_do_not_reflow_or_touch_persistence(
+    tmp_path: Path,
+) -> None:
+    config = CountingSettingsFile(tmp_path / "config.toml")
+    service = CountingSettingsService(config)
+    assert service.initialize().applied
+    app = CountingSettingsApp(service=service)
+
+    async def scenario(app: SettingsApp, pilot: Pilot[int]) -> None:
+        measured = app
+        assert isinstance(measured, CountingSettingsApp)
+        await pilot.pause()
+        config.reads = config.updates = config.resets = 0
+        service.reloads = 0
+        measured.list_refreshes = measured.detail_renders = 0
+        layout_updates = measured.screen._layout_updates
+
+        await pilot.press("j")
+        assert measured._selected_key == "players.ignored"
+        assert measured.screen._layout_updates == layout_updates
+        await pilot.press("2", "j")
+        assert measured._selected_key == "lyrics.display.romanized"
+        await pilot.press("/")
+        layout_updates = measured.screen._layout_updates
+        await pilot.press("z")
+        assert measured.query_one("#settings-list", OptionList).option_count == 1
+        assert measured.screen._layout_updates == layout_updates
+        await pilot.press("escape", "escape")
+        measured.list_refreshes = measured.detail_renders = 0
+        await pilot.press("3")
+        assert measured._selected_key == "desktop.lyrics.selectable"
+
+        assert (config.reads, config.updates, config.resets) == (0, 0, 0)
+        assert service.reloads == 0
+        assert measured.list_refreshes == 1
+        assert measured.detail_renders == 1
+
+    _run_app(app, scenario, size=(165, 60))
+
+
+def test_rapid_filtered_navigation_stays_bounded_and_scrollable(
+    tmp_path: Path,
+) -> None:
+    config = CountingSettingsFile(tmp_path / "config.toml")
+    service = CountingSettingsService(config)
+    assert service.initialize().applied
+    app = SettingsApp(service=service, watch_interval=0)
+
+    async def scenario(app: SettingsApp, pilot: Pilot[int]) -> None:
+        config.reads = config.updates = config.resets = 0
+        await pilot.press("/", ".")
+        options = app.query_one("#settings-list", OptionList)
+        assert options.option_count == len(SETTINGS_SCHEMA)
+        options.focus()
+        await pilot.press(*(["down"] * 20))
+        expected_index = 20 % len(SETTINGS_SCHEMA)
+        assert options.highlighted == expected_index
+        assert app._selected_key == SETTINGS_SCHEMA[expected_index].key
+        assert options.scroll_y > 0
+        assert (config.reads, config.updates, config.resets) == (0, 0, 0)
+
+    _run_app(app, scenario, size=(55, 22))
+
+
 def test_boolean_keyboard_change_and_individual_reset(tmp_path: Path) -> None:
     path = tmp_path / "config.toml"
     service = _service(path)
@@ -152,6 +297,7 @@ def test_boolean_keyboard_change_and_individual_reset(tmp_path: Path) -> None:
         await pilot.press("r")
         await _wait_until(lambda: service.get("lyrics.display.original") is True)
         assert "original" not in path.read_text(encoding="utf-8")
+        assert app.query_one("#reset-setting", Button).disabled
 
     _run_app(app, scenario)
 
@@ -287,7 +433,123 @@ def test_external_valid_invalid_repair_keeps_last_known_good(tmp_path: Path) -> 
         assert service.get("library.metadata_workers") == 6
         assert "loaded" in _text(app.query_one("#status", Static)).casefold()
 
+        repaired = path.read_text(encoding="utf-8")
+        path.write_text(
+            "schema_version = 1\n[library]\nmetadata_workers = 99\n",
+            encoding="utf-8",
+        )
+        await observe(app)
+        assert "rejected" in _text(app.query_one("#status", Static)).casefold()
+        path.write_text(repaired, encoding="utf-8")
+        await observe(app)
+        assert service.get("library.metadata_workers") == 6
+        assert "valid" in _text(app.query_one("#status", Static)).casefold()
+
     _run_app(app, scenario)
+
+
+def test_local_mutation_has_one_targeted_render_and_no_disk_echo(
+    tmp_path: Path,
+) -> None:
+    config = CountingSettingsFile(tmp_path / "config.toml")
+    service = CountingSettingsService(config)
+    assert service.initialize().applied
+    app = CountingSettingsApp(service=service)
+
+    async def scenario(app: SettingsApp, pilot: Pilot[int]) -> None:
+        measured = app
+        assert isinstance(measured, CountingSettingsApp)
+        measured._schedule_disk_check()
+        await _wait_until(lambda: not measured._watch_busy)
+        await pilot.press("2", "enter")
+        service.reloads = 0
+        measured.list_refreshes = measured.detail_renders = 0
+
+        await pilot.press("space")
+        await _wait_until(
+            lambda: (
+                service.get("lyrics.display.original") is False
+                and not measured._mutation_busy
+            )
+        )
+        assert service.reloads == 1
+        assert measured.list_refreshes == 0
+        assert measured.detail_renders == 1
+        assert "Saved lyrics.display.original" in _text(
+            measured.query_one("#status", Static)
+        )
+        assert "Current: Off" in _text(measured.query_one("#detail-value", Static))
+
+        measured._schedule_disk_check()
+        await _wait_until(lambda: not measured._watch_busy)
+        assert service.reloads == 1
+        assert measured.list_refreshes == 0
+        assert measured.detail_renders == 1
+
+    _run_app(app, scenario)
+
+
+def test_observer_cannot_race_a_local_write_before_signature_capture(
+    tmp_path: Path,
+) -> None:
+    config = WriteBarrierSettingsFile(tmp_path / "config.toml")
+    service = CountingSettingsService(config)
+    assert service.initialize().applied
+    service.reloads = 0
+    app = SettingsApp(service=service, watch_interval=0.005)
+
+    async def scenario(app: SettingsApp, pilot: Pilot[int]) -> None:
+        await pilot.press("2", "enter", "space")
+        await _wait_until(config.write_completed.is_set)
+        await asyncio.sleep(0.03)
+        assert service.reloads == 0
+
+        config.release_write.set()
+        await _wait_until(lambda: not app._mutation_busy)
+        assert service.reloads == 1
+        await asyncio.sleep(0.03)
+        assert service.reloads == 1
+
+    try:
+        _run_app(app, scenario)
+    finally:
+        config.release_write.set()
+
+
+def test_persistent_observer_is_idle_until_one_external_semantic_change(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "config.toml"
+    service = CountingSettingsService(TomlSettingsFile(path))
+    assert service.initialize().applied
+    service.reloads = 0
+    app = CountingSettingsApp(service=service, watch_interval=0.02)
+
+    async def scenario(app: SettingsApp, _pilot: Pilot[int]) -> None:
+        measured = app
+        assert isinstance(measured, CountingSettingsApp)
+        await asyncio.sleep(0.08)
+        assert service.reloads == 0
+        measured.list_refreshes = measured.detail_renders = 0
+
+        replacement = tmp_path / "replacement.toml"
+        replacement.write_text(
+            "schema_version = 1\n[lyrics.display]\ntranslated = true\n",
+            encoding="utf-8",
+        )
+        os.replace(replacement, path)
+        await _wait_until(lambda: service.get("lyrics.display.translated") is True)
+        await asyncio.sleep(0.08)
+
+        assert service.reloads == 1
+        assert measured.list_refreshes == 0
+        assert measured.detail_renders == 0
+        assert "External configuration change loaded" in _text(
+            measured.query_one("#status", Static)
+        )
+
+    _run_app(app, scenario)
+    assert service._subscriptions == {}
 
 
 def test_signature_detects_atomic_replace_symlink_target_and_removal(
@@ -430,6 +692,7 @@ def test_resize_help_mouse_and_clean_subscription_shutdown(tmp_path: Path) -> No
 
     async def scenario(app: SettingsApp, pilot: Pilot[int]) -> None:
         assert len(service._subscriptions) == 1
+        installed_help = app.get_screen("help")
         await pilot.resize_terminal(49, 13)
         assert app.screen.has_class("too-small")
         await pilot.resize_terminal(70, 24)
@@ -442,6 +705,11 @@ def test_resize_help_mouse_and_clean_subscription_shutdown(tmp_path: Path) -> No
         assert "navigate settings" in help_text
         assert "canonical validated toml" in help_text
         await pilot.press("escape")
+        await _wait_until(lambda: len(app.screen_stack) == 1)
+        await pilot.press("question_mark")
+        await _wait_until(lambda: len(app.screen_stack) == 2)
+        assert app.screen is installed_help
+        await pilot.press("question_mark")
         await _wait_until(lambda: len(app.screen_stack) == 1)
 
     _run_app(app, scenario)
@@ -486,6 +754,7 @@ def test_cli_dispatches_canonical_settings_command(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     calls: list[tuple[Path | None, Path | None]] = []
+    monkeypatch.delenv("TEXTUAL_FPS", raising=False)
 
     def fake_run_settings_tui(
         *, database_path: Path | None = None, config_path: Path | None = None
@@ -501,6 +770,7 @@ def test_cli_dispatches_canonical_settings_command(
     config = tmp_path / "config.toml"
     assert cli.main(["settings"], database_path=database, config_path=config) == 7
     assert calls == [(database, config)]
+    assert os.environ["TEXTUAL_FPS"] == "240"
 
 
 def test_startup_failure_is_controlled_and_quit_returns_failure() -> None:

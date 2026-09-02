@@ -7,6 +7,7 @@ from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from functools import partial
 from pathlib import Path
+from threading import Event
 from typing import ClassVar, cast
 
 from textual import events, on
@@ -61,6 +62,7 @@ from lyriflux.presentation.tui.settings_view import (
 )
 
 SettingsServiceFactory = Callable[[], CanonicalSettingsService]
+DEFAULT_DISK_OBSERVE_INTERVAL = 0.15
 
 
 class SettingsApp(App[int]):
@@ -94,7 +96,7 @@ class SettingsApp(App[int]):
         *,
         service: CanonicalSettingsService | None = None,
         service_factory: SettingsServiceFactory | None = None,
-        watch_interval: float = 0.75,
+        watch_interval: float = DEFAULT_DISK_OBSERVE_INTERVAL,
     ) -> None:
         super().__init__()
         self._service = service
@@ -107,6 +109,8 @@ class SettingsApp(App[int]):
         self._selected_key = SETTINGS_SCHEMA[0].key
         self._signature: ConfigSignature | None = None
         self._watch_busy = False
+        self._watch_started = False
+        self._watch_stop = Event()
         self._mutation_busy = False
         self._startup_failed = False
         self._closed = False
@@ -124,10 +128,26 @@ class SettingsApp(App[int]):
 
     def on_mount(self) -> None:
         self._ui_ready = True
-        self.query_one("#categories", OptionList).highlighted = 0
+        self.install_screen(SettingsHelpScreen(), "help")
+        categories = self.query_one("#categories", OptionList)
+        settings = self.query_one("#settings-list", OptionList)
+        search = self.query_one("#search", Input)
+        self.watch(
+            categories,
+            "highlighted",
+            self._category_index_changed,
+            init=False,
+        )
+        self.watch(
+            settings,
+            "highlighted",
+            self._setting_index_changed,
+            init=False,
+        )
+        self.watch(search, "value", self._search_value_changed, init=False)
+        categories.highlighted = 0
         self._refresh_setting_list()
-        self._render_detail()
-        self.query_one("#settings-list", OptionList).focus()
+        settings.focus()
         if self._service is not None:
             self._accept_service(self._service)
         else:
@@ -147,6 +167,7 @@ class SettingsApp(App[int]):
     def on_unmount(self) -> None:
         self._closed = True
         self._ui_ready = False
+        self._watch_stop.set()
         if self._subscription is not None:
             self._subscription.close()
             self._subscription = None
@@ -157,23 +178,30 @@ class SettingsApp(App[int]):
             "too-small",
         )
 
-    @on(Input.Changed, "#search")
-    def _search_changed(self, _event: Input.Changed) -> None:
+    def _search_value_changed(self, _value: str) -> None:
         self._refresh_setting_list()
 
-    @on(OptionList.OptionHighlighted, "#categories")
-    def _category_highlighted(self, event: OptionList.OptionHighlighted) -> None:
-        self._select_category(event.option.id)
+    def _category_index_changed(self, index: int | None) -> None:
+        if index is None:
+            return
+        categories = tuple(SettingCategory)
+        if not 0 <= index < len(categories) or categories[index] is self._category:
+            return
+        self._category = categories[index]
+        self._refresh_setting_list()
 
     @on(OptionList.OptionSelected, "#categories")
     def _category_selected(self, event: OptionList.OptionSelected) -> None:
         self._select_category(event.option.id, focus_settings=True)
 
-    @on(OptionList.OptionHighlighted, "#settings-list")
-    def _setting_highlighted(self, event: OptionList.OptionHighlighted) -> None:
-        if 0 <= event.option_index < len(self._visible_definitions):
-            self._selected_key = self._visible_definitions[event.option_index].key
-            self._render_detail()
+    def _setting_index_changed(self, index: int | None) -> None:
+        if index is None or not 0 <= index < len(self._visible_definitions):
+            return
+        key = self._visible_definitions[index].key
+        if key == self._selected_key:
+            return
+        self._selected_key = key
+        self._render_detail()
 
     @on(OptionList.OptionSelected, "#settings-list")
     def _setting_selected(self, _event: OptionList.OptionSelected) -> None:
@@ -216,11 +244,13 @@ class SettingsApp(App[int]):
         self._accept_service(message.service)
 
     def on_snapshot_observed(self, message: SnapshotObserved) -> None:
+        if message.change.current == self._snapshot:
+            return
         self._snapshot = message.change.current
-        self._refresh_setting_list()
-        self._render_detail()
-        changed = ", ".join(message.change.changed_keys)
-        self._set_status(f"Canonical settings updated: {changed}", success=True)
+        self._refresh_changed_values(message.change.changed_keys)
+        if not self._mutation_busy:
+            changed = ", ".join(message.change.changed_keys)
+            self._set_status(f"Canonical settings updated: {changed}", success=True)
 
     def on_mutation_finished(self, message: MutationFinished) -> None:
         self._mutation_busy = False
@@ -232,9 +262,12 @@ class SettingsApp(App[int]):
             )
             self._render_detail()
             return
-        self._snapshot = message.result.snapshot
-        self._refresh_setting_list()
-        self._render_detail()
+        if message.signature is not None:
+            self._signature = message.signature
+        if message.result.snapshot != self._snapshot:
+            changed_keys = message.result.changed_keys
+            self._snapshot = message.result.snapshot
+            self._refresh_changed_values(changed_keys)
         self._set_status(f"Saved {message.key}.", success=True)
 
     def on_disk_observed(self, message: DiskObserved) -> None:
@@ -242,11 +275,11 @@ class SettingsApp(App[int]):
         self._signature = message.signature
         if message.result is None:
             return
-        self._snapshot = message.result.snapshot
-        self._refresh_setting_list()
-        self._render_detail()
         if message.result.applied:
-            self._set_status("External configuration change loaded.", success=True)
+            if message.result.changed_keys:
+                self._set_status("External configuration change loaded.", success=True)
+            else:
+                self._set_status("External configuration is valid.", success=True)
         else:
             self._show_diagnostics(message.result.diagnostics, "External file rejected")
 
@@ -254,7 +287,7 @@ class SettingsApp(App[int]):
         self.exit(1 if self._startup_failed else 0)
 
     def action_show_help(self) -> None:
-        self.push_screen(SettingsHelpScreen())
+        self.push_screen("help")
 
     def action_focus_search(self) -> None:
         self.query_one("#search", Input).focus()
@@ -285,9 +318,7 @@ class SettingsApp(App[int]):
         categories = tuple(SettingCategory)
         if not 0 <= index < len(categories):
             return
-        self._category = categories[index]
         self.query_one("#categories", OptionList).highlighted = index
-        self._refresh_setting_list()
         self.query_one("#settings-list", OptionList).focus()
 
     def _open_service(self, factory: SettingsServiceFactory) -> None:
@@ -307,14 +338,13 @@ class SettingsApp(App[int]):
         self._snapshot = service.current
         self._subscription = service.subscribe(self._service_changed)
         self._refresh_setting_list()
-        self._render_detail()
         if service.diagnostics:
             self._show_diagnostics(service.diagnostics, "Configuration rejected")
         else:
             self._set_status(f"Canonical file: {service.path}", success=True)
         if self._watch_interval > 0:
-            self.set_interval(self._watch_interval, self._schedule_disk_check)
-            self._schedule_disk_check()
+            self._signature = config_signature(service.path)
+            self._start_disk_watcher()
 
     def _service_changed(self, change: SettingsChange) -> None:
         if not self._closed:
@@ -331,6 +361,34 @@ class SettingsApp(App[int]):
             thread=True,
             exit_on_error=False,
         )
+
+    def _start_disk_watcher(self) -> None:
+        if self._watch_started or self._service is None or self._closed:
+            return
+        self._watch_started = True
+        self._watch_stop.clear()
+        self.run_worker(
+            self._watch_disk,
+            name="watch canonical settings file",
+            group="settings-watch-loop",
+            thread=True,
+            exclusive=True,
+            exit_on_error=False,
+        )
+
+    def _watch_disk(self) -> None:
+        while not self._watch_stop.wait(self._watch_interval):
+            service = self._service
+            if service is None or self._closed:
+                return
+            if self._mutation_busy:
+                continue
+            signature = config_signature(service.path)
+            if signature == self._signature:
+                continue
+            self._signature = signature
+            result = service.reload()
+            self.post_message(DiskObserved(signature, result))
 
     def _observe_disk(self) -> None:
         service = self._service
@@ -382,7 +440,9 @@ class SettingsApp(App[int]):
         ) as error:
             self.post_message(MutationFinished(key, None, str(error)))
         else:
-            self.post_message(MutationFinished(key, result))
+            signature = config_signature(service.path)
+            self._signature = signature
+            self.post_message(MutationFinished(key, result, signature=signature))
 
     def _select_category(
         self, option_id: str | None, *, focus_settings: bool = False
@@ -424,8 +484,7 @@ class SettingsApp(App[int]):
         options.clear_options()
         options.add_options(
             Option(
-                f"{definition.title}\n"
-                f"  {format_value(self._snapshot.get(definition.key))}",
+                self._setting_prompt(definition),
                 id=f"setting-{index}",
             )
             for index, definition in enumerate(definitions)
@@ -445,6 +504,25 @@ class SettingsApp(App[int]):
         self._selected_key = definitions[selected_index].key
         options.highlighted = selected_index
         self._render_detail()
+
+    def _refresh_changed_values(self, changed_keys: tuple[str, ...]) -> None:
+        if not self._ui_ready or not changed_keys:
+            return
+        changed = frozenset(changed_keys)
+        options = self.query_one("#settings-list", OptionList)
+        for index, definition in enumerate(self._visible_definitions):
+            if definition.key in changed:
+                options.replace_option_prompt_at_index(
+                    index,
+                    self._setting_prompt(definition),
+                )
+        if self._selected_key in changed:
+            self._render_detail()
+
+    def _setting_prompt(self, definition: SettingDefinition) -> str:
+        return (
+            f"{definition.title}\n  {format_value(self._snapshot.get(definition.key))}"
+        )
 
     def _render_detail(self) -> None:
         if not self._ui_ready or not self._selected_key:
@@ -537,7 +615,6 @@ class SettingsApp(App[int]):
             )
             self._snapshot = self._service.current
             self._refresh_setting_list()
-            self._render_detail()
             return
         self._start_mutation(key, result)
 

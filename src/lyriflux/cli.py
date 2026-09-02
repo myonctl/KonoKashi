@@ -2139,6 +2139,10 @@ def main(
             return 1
     if arguments.command == "settings":
         try:
+            # Textual reads this documented environment setting at import time. Its
+            # update timer sleeps while the screen is clean, so a faster repaint
+            # cadence reduces interactive latency without creating an idle loop.
+            os.environ.setdefault("TEXTUAL_FPS", "240")
             from lyriflux.presentation.tui.settings_app import run_settings_tui
 
             return run_settings_tui(

@@ -33,11 +33,13 @@ class MutationFinished(Message):
         key: str,
         result: SettingsReloadResult | None,
         error: str | None = None,
+        signature: ConfigSignature | None = None,
     ) -> None:
         super().__init__()
         self.key = key
         self.result = result
         self.error = error
+        self.signature = signature
 
 
 class DiskObserved(Message):
