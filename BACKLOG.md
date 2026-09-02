@@ -33,6 +33,16 @@ authorize implementation. Staged v1 ordering lives in `docs/ROADMAP.md`.
 
 ## UX improvements
 
+- **LyriFlux Web / remote display and home karaoke** — A future browser-based
+  remote lyric display may support a home-karaoke use case while a portable
+  phone-host concept could eventually provide a small local host. Status:
+  Deferred until the existing desktop and terminal/settings experiences are
+  accepted as mature. This is not Stage 14 scope and does not authorize a web
+  server, browser frontend, Android application, phone hosting, or remote
+  control. Prerequisites: an explicit later product/security/network boundary,
+  local-network privacy design, lifecycle/packaging plan, and separate stage
+  authorization.
+
 - **Final LyriFlux identity design** — Refine an original minimalist vector
   mark built from stacked lyric lines and a synchronization/playhead motif.
   Preferred accent direction is cyan, but the exact palette and logo are not

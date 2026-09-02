@@ -43,6 +43,7 @@ REQUIRED_DOCUMENTS = (
     "docs/STAGE_12_COMPLETION.md",
     "docs/STAGE_13_DECISION.md",
     "docs/STAGE_13_COMPLETION.md",
+    "docs/STAGE_14_POLISH_INVENTORY.md",
     "docs/PRODUCT_GAP_RESEARCH.md",
     "docs/adr/0011-offline-romanization-routing.md",
     "docs/adr/0010-stage4-lyrics-resolution.md",
@@ -179,15 +180,14 @@ def test_project_state_contains_the_continuation_contract() -> None:
     assert "docs/PROJECT_RENAME_LYRIFLUX.md" in content
 
 
-def test_agent_todo_has_no_active_stage_after_stage_13() -> None:
+def test_agent_todo_authorizes_only_stage_14() -> None:
     content = (REPOSITORY_ROOT / "AGENT_TODO.md").read_text(encoding="utf-8")
 
-    assert content.startswith("# No Active Implementation Stage\n")
-    assert "Status: **No implementation stage Active**" in content
-    assert "Stage 13 — Interactive Settings TUI is **Completed**" in content
-    assert "`lyriflux settings`" in content
-    assert "full-screen synchronized-lyrics TUI" in content
-    assert "Stage 14+" in content
+    assert content.startswith("# Stage 14 — Desktop UX & Daily-Use Polish\n")
+    assert "Status: **Active / authorized**" in content
+    assert "Do not implement Stage 15" in content
+    assert "full `lyriflux tui`" in content
+    assert "LyriFlux Web" in content
 
 
 def test_manifest_is_inventory_not_authority() -> None:
@@ -196,8 +196,8 @@ def test_manifest_is_inventory_not_authority() -> None:
     )
 
     assert manifest["implementation_authority"] == "AGENT_TODO.md"
-    assert manifest["authorized_stage"] is None
-    assert manifest["proposed_stage"] == "Stage 14+ — Remaining post-v1 backlog"
+    assert manifest["authorized_stage"] == ("Stage 14 — Desktop UX & Daily-Use Polish")
+    assert manifest["proposed_stage"] == "Stage 15+ — Remaining post-v1 backlog"
     assert all((REPOSITORY_ROOT / path).is_file() for path in manifest["files"])
 
 

@@ -11,7 +11,7 @@ import pytest
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QColor, QFontMetrics, QPalette
 from PySide6.QtTest import QTest
-from PySide6.QtWidgets import QApplication, QLabel, QPlainTextEdit, QWidget
+from PySide6.QtWidgets import QApplication, QBoxLayout, QLabel, QPlainTextEdit, QWidget
 
 from lyriflux.application.desktop_state import (
     DesktopLyricGroup,
@@ -108,6 +108,89 @@ def test_main_window_launches_and_renders_plain_multilingual_text(
     assert window.active_band.accessibleName() == "Current lyric"
     assert window.progress.value() == 420
     assert window.title_label.toolTip() == state.title
+    window.close()
+
+
+def test_waiting_state_is_calm_and_does_not_show_false_playback_progress(
+    qt_app: QApplication,
+) -> None:
+    window = MainWindow()
+    window.show()
+    qt_app.processEvents()
+
+    assert window.content_stack.currentWidget() is window._state_page
+    assert window.status_label.text() == "Waiting for media…"
+    assert not window.playback_widget.isVisible()
+    assert not window.progress.isVisible()
+    assert window.progress.maximum() == 1000
+    window.close()
+
+
+def test_untimed_lyrics_use_a_readable_bounded_content_page(
+    qt_app: QApplication,
+) -> None:
+    state = replace(
+        _state(),
+        state=DesktopLyricsState.UNTIMED,
+        status_message="Untimed lyrics",
+        previous=(),
+        active=(),
+        next=(),
+        static_lines=tuple(
+            DesktopLyricGroup(f"line-{index}", f"Readable lyric line {index}")
+            for index in range(30)
+        ),
+    )
+    window = MainWindow()
+    window.render_state(state)
+    window.resize(1_440, 900)
+    window.show()
+    qt_app.processEvents()
+
+    assert window.content_stack.currentWidget() is window._static_page
+    assert window.static_lyrics.isVisible()
+    assert window.static_lyrics.maximumWidth() == 920
+    assert window.static_lyrics.height() > 300
+    assert (
+        window.static_lyrics.font().pointSizeF()
+        > window.previous_band.font().pointSizeF()
+    )
+    window.close()
+
+
+def test_normal_status_uses_human_readable_source_confidence_and_sync_copy(
+    qt_app: QApplication,
+) -> None:
+    window = MainWindow()
+    window.render_state(replace(_state(), lyrics_source="local-sidecar"))
+    window.show()
+    qt_app.processEvents()
+
+    assert window.source_label.text() == (
+        "Local lyrics · High-confidence match · In sync"
+    )
+    window.close()
+
+
+def test_main_actions_have_hierarchy_tooltips_and_settings_shortcut(
+    qt_app: QApplication,
+) -> None:
+    window = MainWindow()
+    requests: list[str] = []
+    window.settings_requested.connect(lambda: requests.append("settings"))
+    window.show()
+    window.activateWindow()
+    qt_app.processEvents()
+
+    assert not window.settings_button.isFlat()
+    assert window.review_button.isFlat()
+    assert window.details_button.isFlat()
+    assert window.library_button.isFlat()
+    assert "track and lyrics match" in window.review_button.toolTip()
+    assert "synchronization" in window.details_button.toolTip()
+    QTest.keyClick(window, Qt.Key.Key_Comma, Qt.KeyboardModifier.ControlModifier)
+    qt_app.processEvents()
+    assert requests == ["settings"]
     window.close()
 
 
@@ -232,6 +315,25 @@ def test_representative_logical_sizes_keep_current_lyric_valid_and_visible(
     window.close()
 
 
+def test_compact_header_preserves_track_metadata_above_actions(
+    qt_app: QApplication,
+) -> None:
+    window = MainWindow()
+    window.render_state(_state())
+    window.resize(420, 420)
+    window.show()
+    qt_app.processEvents()
+
+    assert window._header_layout.direction() is QBoxLayout.Direction.TopToBottom
+    assert window.title_label.isVisible()
+    assert window.title_label.width() >= 200
+
+    window.resize(760, 720)
+    qt_app.processEvents()
+    assert window._header_layout.direction() is QBoxLayout.Direction.LeftToRight
+    window.close()
+
+
 def test_lyric_typography_scales_with_logical_window_area(
     qt_app: QApplication,
 ) -> None:
@@ -258,6 +360,24 @@ def test_lyric_typography_scales_with_logical_window_area(
     window.close()
 
 
+def test_ultrawide_width_does_not_run_away_with_typography_or_line_length(
+    qt_app: QApplication,
+) -> None:
+    window = MainWindow()
+    window.render_state(_state(original="A long active lyric line " * 12))
+    window.resize(2_560, 720)
+    window.show()
+    qt_app.processEvents()
+    QTest.qWait(100)
+
+    assert window._responsive_scale(2_560, 720) == 1.0
+    assert window._responsive_scale(3_440, 1_440) == 1.65
+    assert window._lyric_column.maximumWidth() == 1_040
+    assert window._lyric_column.width() <= 1_040
+    assert window.active_band.font().pointSizeF() <= window._base_point_size * 1.75
+    window.close()
+
+
 def test_resize_burst_bounds_expensive_lyric_relayout(
     qt_app: QApplication, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -280,7 +400,7 @@ def test_resize_burst_bounds_expensive_lyric_relayout(
     QTest.qWait(100)
 
     assert resize_calls <= 1
-    assert window.active_band.font().pointSizeF() > 18
+    assert 15 <= window.active_band.font().pointSizeF() <= 18
     window.close()
 
 
@@ -338,7 +458,37 @@ def test_system_palette_remains_the_theme_authority(
     assert labels
     assert all(label.styleSheet() == "" for label in labels)
     assert window.active_band.palette().color(QPalette.ColorRole.WindowText).isValid()
+    assert window.previous_band.foregroundRole() is QPalette.ColorRole.PlaceholderText
+    assert window.source_label.foregroundRole() is QPalette.ColorRole.PlaceholderText
     window.close()
+
+
+def test_open_window_follows_runtime_application_palette_change(
+    qt_app: QApplication,
+) -> None:
+    original_palette = qt_app.palette()
+    window = MainWindow()
+    window.render_state(_state())
+    window.show()
+    qt_app.processEvents()
+
+    changed_palette = QPalette(original_palette)
+    changed_palette.setColor(QPalette.ColorRole.Window, QColor("#f4f1ea"))
+    changed_palette.setColor(QPalette.ColorRole.WindowText, QColor("#241f1a"))
+    changed_palette.setColor(QPalette.ColorRole.PlaceholderText, QColor("#6d655e"))
+    qt_app.setPalette(changed_palette)
+    qt_app.processEvents()
+
+    assert window.palette().color(QPalette.ColorRole.Window) == QColor("#f4f1ea")
+    assert window.title_label.palette().color(QPalette.ColorRole.WindowText) == QColor(
+        "#241f1a"
+    )
+    assert window.previous_band.palette().color(
+        QPalette.ColorRole.PlaceholderText
+    ) == QColor("#6d655e")
+
+    window.close()
+    qt_app.setPalette(original_palette)
 
 
 def test_keyboard_focus_order_and_escape_dialog_behavior(

@@ -3,11 +3,19 @@
 from __future__ import annotations
 
 from html import escape
-from math import sqrt
 
 from PySide6.QtCore import QEvent, QSize, Qt, QTimer, Signal
-from PySide6.QtGui import QFont, QFontMetrics, QPainter, QPalette, QResizeEvent
+from PySide6.QtGui import (
+    QAction,
+    QFont,
+    QFontMetrics,
+    QKeySequence,
+    QPainter,
+    QPalette,
+    QResizeEvent,
+)
 from PySide6.QtWidgets import (
+    QBoxLayout,
     QDialog,
     QDialogButtonBox,
     QFrame,
@@ -18,6 +26,7 @@ from PySide6.QtWidgets import (
     QProgressBar,
     QPushButton,
     QSizePolicy,
+    QStackedWidget,
     QVBoxLayout,
     QWidget,
 )
@@ -30,6 +39,7 @@ from lyriflux.application.desktop_state import (
 from lyriflux.application.review_corrections import ReviewCorrectionSnapshot
 from lyriflux.application.settings import DesktopInteractionSettings
 from lyriflux.domain.representations import RepresentationDisplaySettings
+from lyriflux.domain.synchronization import ClockHealth, PlaybackState
 from lyriflux.presentation.desktop.review_dialog import (
     CorrectionActionRequest,
     ReviewCorrectionDialog,
@@ -193,12 +203,7 @@ class LyricBand(QWidget):
             self.setAccessibleName("Current lyric")
         else:
             self.setAccessibleName("Nearby lyric")
-            palette = self.palette()
-            palette.setColor(
-                QPalette.ColorRole.WindowText,
-                palette.color(QPalette.ColorRole.PlaceholderText),
-            )
-            self.setPalette(palette)
+            self.setForegroundRole(QPalette.ColorRole.PlaceholderText)
 
     def set_responsive_size(self, point_size: float, minimum_height: int) -> None:
         """Apply one logical-size typography update without changing content."""
@@ -341,31 +346,45 @@ class MainWindow(QMainWindow):
         layout = QVBoxLayout(root)
         self._root_layout = layout
 
-        header = QHBoxLayout()
-        metadata = QVBoxLayout()
+        header = QBoxLayout(QBoxLayout.Direction.LeftToRight)
+        self._header_layout = header
+        metadata_widget = QWidget()
+        metadata = QVBoxLayout(metadata_widget)
+        metadata.setContentsMargins(0, 0, 0, 0)
         self.title_label = ElidingLabel("LyriFlux")
         self.title_label.setAccessibleName("Track title")
         self.artist_label = ElidingLabel("")
         self.artist_label.setAccessibleName("Track artist")
         metadata.addWidget(self.title_label)
         metadata.addWidget(self.artist_label)
-        header.addLayout(metadata, 1)
+        header.addWidget(metadata_widget, 1)
+        actions_widget = QWidget()
+        actions = QHBoxLayout(actions_widget)
+        actions.setContentsMargins(0, 0, 0, 0)
+        actions.addStretch(1)
         self.settings_button = QPushButton("Settings")
         self.settings_button.setAccessibleName("LyriFlux settings")
+        self.settings_button.setToolTip("Open LyriFlux settings (Ctrl+,)")
         self.settings_button.clicked.connect(self._open_settings)
         self.review_button = QPushButton("Review")
         self.review_button.setAccessibleName("Review and correct this track and lyrics")
+        self.review_button.setToolTip("Review the detected track and lyrics match")
         self.review_button.clicked.connect(self.review_requested)
         self.details_button = QPushButton("Details")
         self.details_button.setAccessibleName("Synchronization and source details")
+        self.details_button.setToolTip("Show source and synchronization details")
         self.details_button.clicked.connect(self._open_details)
         self.library_button = QPushButton("Scan library")
         self.library_button.setAccessibleName("Scan configured music library")
+        self.library_button.setToolTip("Scan the configured music folders")
         self.library_button.clicked.connect(self._toggle_library_scan)
-        header.addWidget(self.settings_button)
-        header.addWidget(self.review_button)
-        header.addWidget(self.details_button)
-        header.addWidget(self.library_button)
+        for button in (self.review_button, self.details_button, self.library_button):
+            button.setFlat(True)
+        actions.addWidget(self.settings_button)
+        actions.addWidget(self.review_button)
+        actions.addWidget(self.details_button)
+        actions.addWidget(self.library_button)
+        header.addWidget(actions_widget)
         layout.addLayout(header)
 
         rule = QFrame()
@@ -376,26 +395,69 @@ class MainWindow(QMainWindow):
         self.status_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.status_label.setWordWrap(True)
         self.status_label.setAccessibleName("Lyrics status")
-        layout.addWidget(self.status_label)
+
+        self.content_stack = QStackedWidget()
+        self.content_stack.setAccessibleName("Lyrics content")
+        state_page = QWidget()
+        state_layout = QVBoxLayout(state_page)
+        state_layout.setContentsMargins(0, 0, 0, 0)
+        state_layout.addStretch(1)
+        state_layout.addWidget(self.status_label)
+        state_layout.addStretch(1)
+        self.content_stack.addWidget(state_page)
+        self._state_page = state_page
 
         self.previous_band = LyricBand()
         self.active_band = LyricBand(active=True)
         self.next_band = LyricBand()
-        layout.addStretch(1)
-        layout.addWidget(self.previous_band)
-        layout.addWidget(self.active_band)
-        layout.addWidget(self.next_band)
+        timed_page = QWidget()
+        timed_page_layout = QHBoxLayout(timed_page)
+        timed_page_layout.setContentsMargins(0, 0, 0, 0)
+        timed_page_layout.addStretch(1)
+        lyric_column = QWidget()
+        lyric_column.setMaximumWidth(1_040)
+        lyric_column.setSizePolicy(
+            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding
+        )
+        lyric_layout = QVBoxLayout(lyric_column)
+        lyric_layout.setContentsMargins(0, 0, 0, 0)
+        lyric_layout.addStretch(1)
+        lyric_layout.addWidget(self.previous_band)
+        lyric_layout.addWidget(self.active_band)
+        lyric_layout.addWidget(self.next_band)
+        lyric_layout.addStretch(1)
+        timed_page_layout.addWidget(lyric_column, 1)
+        timed_page_layout.addStretch(1)
+        self.content_stack.addWidget(timed_page)
+        self._timed_page = timed_page
+        self._lyric_column = lyric_column
 
         self.static_lyrics = QPlainTextEdit()
         self.static_lyrics.setReadOnly(True)
         self.static_lyrics.setLineWrapMode(QPlainTextEdit.LineWrapMode.WidgetWidth)
         self.static_lyrics.setAccessibleName("Untimed lyrics")
-        self.static_lyrics.setVisible(False)
+        self.static_lyrics.setFrameShape(QFrame.Shape.NoFrame)
         self._apply_interaction_settings()
-        layout.addWidget(self.static_lyrics, 1)
-        layout.addStretch(1)
+        static_page = QWidget()
+        static_page_layout = QVBoxLayout(static_page)
+        static_page_layout.setContentsMargins(0, 0, 0, 0)
+        self.static_status_label = _plain_label("Lyrics without timing")
+        self.static_status_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.static_status_label.setAccessibleName("Untimed lyrics status")
+        static_page_layout.addWidget(self.static_status_label)
+        static_row = QHBoxLayout()
+        static_row.addStretch(1)
+        self.static_lyrics.setMaximumWidth(920)
+        static_row.addWidget(self.static_lyrics, 1)
+        static_row.addStretch(1)
+        static_page_layout.addLayout(static_row, 1)
+        self.content_stack.addWidget(static_page)
+        self._static_page = static_page
+        layout.addWidget(self.content_stack, 1)
 
-        progress_row = QHBoxLayout()
+        self.playback_widget = QWidget()
+        progress_row = QHBoxLayout(self.playback_widget)
+        progress_row.setContentsMargins(0, 0, 0, 0)
         self.playback_label = _plain_label("Unknown")
         self.playback_label.setAccessibleName("Playback state")
         self.progress = QProgressBar()
@@ -407,19 +469,20 @@ class MainWindow(QMainWindow):
         progress_row.addWidget(self.playback_label)
         progress_row.addWidget(self.progress, 1)
         progress_row.addWidget(self.time_label)
-        layout.addLayout(progress_row)
+        layout.addWidget(self.playback_widget)
 
         self.source_label = _plain_label("")
         self.source_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.source_label.setWordWrap(True)
         self.source_label.setAccessibleName("Lyrics source and synchronization health")
-        source_palette = self.source_label.palette()
-        source_palette.setColor(
-            QPalette.ColorRole.WindowText,
-            source_palette.color(QPalette.ColorRole.PlaceholderText),
-        )
-        self.source_label.setPalette(source_palette)
+        self.source_label.setForegroundRole(QPalette.ColorRole.PlaceholderText)
         layout.addWidget(self.source_label)
+
+        self.settings_action = QAction("Settings", self)
+        self.settings_action.setShortcut(QKeySequence("Ctrl+,"))
+        self.settings_action.setShortcutContext(Qt.ShortcutContext.WindowShortcut)
+        self.settings_action.triggered.connect(self._open_settings)
+        self.addAction(self.settings_action)
 
         self.setCentralWidget(root)
         self._apply_responsive_typography(
@@ -431,16 +494,27 @@ class MainWindow(QMainWindow):
         """Scale lyric presentation with logical window area, not device pixels."""
 
         super().resizeEvent(event)
+        self._set_header_direction(event.size().width())
         self._pending_typography_size = event.size()
         self._resize_typography_timer.start()
 
+    def _set_header_direction(self, width: int) -> None:
+        """Preserve track metadata when compact width cannot hold one row."""
+
+        direction = (
+            QBoxLayout.Direction.TopToBottom
+            if width < 600
+            else QBoxLayout.Direction.LeftToRight
+        )
+        if self._header_layout.direction() is not direction:
+            self._header_layout.setDirection(direction)
+
     @staticmethod
     def _responsive_scale(width: int, height: int) -> float:
-        # The geometric mean responds to either useful width or height while
-        # avoiding runaway sizes on an ultrawide or very tall window. Qt maps
-        # these point sizes to the current screen's device-pixel ratio.
-        area_ratio = max(1, width * height) / (760 * 720)
-        return min(2.2, max(0.8, sqrt(area_ratio)))
+        # Both dimensions must provide useful room before text grows. Extreme
+        # width alone improves neither reading distance nor line wrapping.
+        useful_ratio = min(width / 760, height / 720)
+        return min(1.65, max(0.82, useful_ratio))
 
     def _finish_resize_typography(self) -> None:
         size = self._pending_typography_size
@@ -463,6 +537,7 @@ class MainWindow(QMainWindow):
         for label in (
             self.artist_label,
             self.status_label,
+            self.static_status_label,
             self.playback_label,
             self.time_label,
             self.source_label,
@@ -482,18 +557,18 @@ class MainWindow(QMainWindow):
             button.setFont(font)
 
         static_font = self.static_lyrics.font()
-        static_font.setPointSizeF(max(9.0, self._base_point_size * 1.1 * scale))
+        static_font.setPointSizeF(max(11.0, self._base_point_size * 1.28 * scale))
         self.static_lyrics.setFont(static_font)
         self.previous_band.set_responsive_size(
-            max(9.0, self._base_point_size * 1.1 * scale),
+            max(9.0, self._base_point_size * 1.05 * scale),
             round(54 * scale),
         )
         self.active_band.set_responsive_size(
-            max(15.0, self._base_point_size * 1.8 * scale),
+            max(15.0, self._base_point_size * 1.75 * scale),
             round(100 * scale),
         )
         self.next_band.set_responsive_size(
-            max(9.0, self._base_point_size * 1.1 * scale),
+            max(9.0, self._base_point_size * 1.05 * scale),
             round(54 * scale),
         )
         margin_x = round(28 * min(1.6, scale))
@@ -550,20 +625,29 @@ class MainWindow(QMainWindow):
         self.artist_label.setText(" · ".join(state.artists))
         self.artist_label.setVisible(bool(state.artists))
         self.status_label.setText(state.status_message)
+        self.static_status_label.setText(state.status_message)
         self.previous_band.set_groups(state.previous)
         self.active_band.set_groups(state.active)
         self.next_band.set_groups(state.next)
         self.static_lyrics.setPlainText(_group_text(state.static_lines))
-        self.static_lyrics.setVisible(bool(state.static_lines))
         has_lyric_bands = bool(state.previous or state.active or state.next)
         self.previous_band.setVisible(bool(state.previous) and has_lyric_bands)
         self.active_band.setVisible(bool(state.active) and has_lyric_bands)
         self.next_band.setVisible(bool(state.next) and has_lyric_bands)
+        if state.state is DesktopLyricsState.UNTIMED and state.static_lines:
+            self.content_stack.setCurrentWidget(self._static_page)
+        elif state.state is DesktopLyricsState.TIMED and has_lyric_bands:
+            self.content_stack.setCurrentWidget(self._timed_page)
+        else:
+            self.content_stack.setCurrentWidget(self._state_page)
         self.playback_label.setText(state.playback_state.value)
         if state.progress_fraction is None:
-            self.progress.setRange(0, 0)
+            self.progress.setRange(0, 1000)
+            self.progress.setValue(0)
+            self.progress.setVisible(False)
             self.progress.setAccessibleDescription("Playback duration is unavailable")
         else:
+            self.progress.setVisible(True)
             self.progress.setRange(0, 1000)
             self.progress.setValue(round(state.progress_fraction * 1000))
             self.progress.setAccessibleDescription(
@@ -572,13 +656,12 @@ class MainWindow(QMainWindow):
         self.time_label.setText(
             f"{_time_text(state.position_us)} / {_time_text(state.duration_us)}"
         )
-        source_parts = []
-        if state.lyrics_source:
-            source_parts.append(state.lyrics_source)
-        if state.match_confidence:
-            source_parts.append(state.match_confidence)
-        if state.sync_health:
-            source_parts.append(state.sync_health.value)
+        self.playback_widget.setVisible(
+            state.player is not None
+            or state.playback_state is not PlaybackState.UNKNOWN
+            or state.position_us is not None
+        )
+        source_parts = _normal_status_parts(state)
         self.source_label.setText(" · ".join(source_parts))
         self.source_label.setVisible(bool(source_parts))
         self.details_button.setEnabled(
@@ -600,9 +683,12 @@ class MainWindow(QMainWindow):
         self._state = state
         self.playback_label.setText(state.playback_state.value)
         if state.progress_fraction is None:
-            self.progress.setRange(0, 0)
+            self.progress.setRange(0, 1000)
+            self.progress.setValue(0)
+            self.progress.setVisible(False)
             self.progress.setAccessibleDescription("Playback duration is unavailable")
         else:
+            self.progress.setVisible(True)
             self.progress.setRange(0, 1000)
             self.progress.setValue(round(state.progress_fraction * 1000))
             self.progress.setAccessibleDescription(
@@ -651,3 +737,43 @@ def _time_text(value_us: int | None) -> str:
     if hours:
         return f"{hours:d}:{minutes:02d}:{seconds:02d}"
     return f"{minutes:d}:{seconds:02d}"
+
+
+def _normal_status_parts(state: DesktopViewState) -> tuple[str, ...]:
+    parts: list[str] = []
+    source = state.lyrics_source
+    if source:
+        normalized_source = source.casefold()
+        if "local" in normalized_source or "sidecar" in normalized_source:
+            parts.append("Local lyrics")
+        elif "lrclib" in normalized_source:
+            parts.append("Lyrics from LRCLIB")
+        elif "embedded" in normalized_source:
+            parts.append("Embedded lyrics")
+        else:
+            parts.append(source)
+    confidence = state.match_confidence
+    if confidence:
+        parts.append(
+            {
+                "Approved": "Approved match",
+                "High": "High-confidence match",
+                "Medium": "Review suggested",
+                "Low": "Uncertain match",
+                "Rejected": "Rejected match",
+            }.get(confidence, confidence)
+        )
+    health = state.sync_health
+    if health:
+        parts.append(
+            {
+                ClockHealth.LOCKED: "In sync",
+                ClockHealth.CONVERGING: "Syncing",
+                ClockHealth.DEGRADED: "Sync needs attention",
+                ClockHealth.STALE: "Sync is stale",
+                ClockHealth.UNAVAILABLE: "Sync unavailable",
+                ClockHealth.DISCONTINUITY: "Resynchronizing",
+                ClockHealth.PAUSED: "Paused",
+            }[health]
+        )
+    return tuple(parts)

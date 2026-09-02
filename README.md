@@ -13,6 +13,9 @@ version is 1.0.0.
 ## Current status
 
 Stages 1 through 13 and the post-Stage-5 Chinese/Pinyin repair are **Completed**.
+**Stage 14 — Desktop UX & Daily-Use Polish is Active and authorized.** It is a
+bounded evidence-led maturity pass over the existing PySide6 desktop, not a
+new-feature stage; Stage 15+ remains Proposed / unauthorized.
 Stage 11 — Canonical Settings & Configuration Foundation passed its 579-test
 automated gate, exact-SHA implementation CI, and bounded real KDE/configuration/
 daily-use/restart/legacy-safety matrix on 2026-08-26. Stage 12 — GUI Settings
@@ -23,8 +26,7 @@ is **Completed** after its 614-test automated/package gate, implementation and
 Ctrl+C-correction exact-SHA CI, and accepted real Konsole/Kitty/KDE/GUI/CLI/
 TOML/file/multilingual/playback/restart/cleanup matrix on 2026-08-29.
 The installed private v1 is launchable from KDE's application menu; its
-remaining cosmetic placeholder icon is explicitly deferred. Stage 14+ remains
-Proposed / unauthorized. Stage 8 —
+remaining cosmetic placeholder icon is explicitly deferred. Stage 8 —
 Review and correction workflow
 passed its automated gate and accepted real Strawberry/desktop correction,
 restart, preservation, and cleanup matrix on 2026-08-23. Stage 9 —
@@ -173,6 +175,8 @@ Supporting authorities:
 - `docs/STAGE_13_COMPLETION.md` — completed Textual settings frontend,
   automated, real terminal/KDE/configuration/file/CLI/multilingual/playback,
   restoration, publication, and CI evidence.
+- `docs/STAGE_14_POLISH_INVENTORY.md` — active evidence-backed desktop polish
+  findings, severity, reproduction, verification needs, and disposition.
 - `docs/PRODUCT_GAP_RESEARCH.md` — bounded public product-feedback findings and
   Stage 7/future/rejected scope decisions.
 - `docs/adr/0010-stage4-lyrics-resolution.md` — accepted Stage 4 precedence,

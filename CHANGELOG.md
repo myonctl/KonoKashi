@@ -7,6 +7,33 @@ unreleased.
 
 ### Changed
 
+- Defined and activated exactly **Stage 14 — Desktop UX & Daily-Use Polish**
+  from the user's explicit roadmap priority. The stage is bounded to observed
+  friction in the existing PySide6 desktop and requires real KDE daily-use,
+  resize, palette, multilingual, lifecycle, settings, TUI-regression, soak,
+  packaging, and exact-SHA CI acceptance before closure. Stage 15+ remains
+  Proposed / unauthorized.
+- Added the Stage 14 working inventory with an initial installed-app/source
+  audit: P0 0 / P1 0 / P2 6 / P3 2. Evidence covers no-player, real Strawberry
+  untimed lyrics, timed Japanese original/romaji, responsive typography,
+  action/status hierarchy, and keyboard entry. Existing multilingual grouping
+  and stale-source safety are explicit preservation constraints.
+- Polished the existing desktop around the observed inventory: calm no-player
+  and normal no-lyrics pages, a readable bounded untimed page, useful-dimension
+  typography with bounded lyric width, quiet normal timed presentation,
+  human-readable source/match/sync status, dynamic system-palette roles,
+  primary/secondary action hierarchy, action tooltips, and conventional
+  `Ctrl+,` Settings access. A real 420×420 retest exposed and then verified a
+  seventh P2: compact actions no longer squeeze track metadata out of view.
+- Added deterministic regressions for those states, ultrawide typography and
+  line width, the compact header breakpoint, runtime palette changes, action
+  hierarchy/tooltips, and Settings shortcut dispatch. The implementation gate
+  passes 626 tests with two known third-party deprecation warnings, Ruff lint/
+  format, strict mypy, reproducible required-content artifacts, and the clean
+  dependency-complete installed-wheel lifecycle.
+- Preserved LyriFlux Web / remote display, home karaoke, and a possible future
+  portable host as Deferred backlog ideas. Stage 14 implements none of them.
+
 - Repaired the post-Stage-13 daily-use latency defect in `lyriflux settings`.
   Hot navigation/search now avoid layout work and duplicate queued projection;
   value changes update only affected prompts/details; Textual uses a faster
