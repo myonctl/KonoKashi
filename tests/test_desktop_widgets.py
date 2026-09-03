@@ -172,6 +172,25 @@ def test_normal_status_uses_human_readable_source_confidence_and_sync_copy(
     window.close()
 
 
+def test_paused_state_is_not_repeated_in_source_status(
+    qt_app: QApplication,
+) -> None:
+    window = MainWindow()
+    window.render_state(
+        replace(
+            _state(),
+            playback_state=PlaybackState.PAUSED,
+            sync_health=ClockHealth.PAUSED,
+        )
+    )
+    window.show()
+    qt_app.processEvents()
+
+    assert window.playback_label.text() == "Paused"
+    assert window.source_label.text() == "Lyrics from LRCLIB · High-confidence match"
+    window.close()
+
+
 def test_main_actions_have_hierarchy_tooltips_and_settings_shortcut(
     qt_app: QApplication,
 ) -> None:

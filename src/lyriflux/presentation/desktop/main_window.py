@@ -764,7 +764,7 @@ def _normal_status_parts(state: DesktopViewState) -> tuple[str, ...]:
             }.get(confidence, confidence)
         )
     health = state.sync_health
-    if health:
+    if health and health is not ClockHealth.PAUSED:
         parts.append(
             {
                 ClockHealth.LOCKED: "In sync",
@@ -773,7 +773,6 @@ def _normal_status_parts(state: DesktopViewState) -> tuple[str, ...]:
                 ClockHealth.STALE: "Sync is stale",
                 ClockHealth.UNAVAILABLE: "Sync unavailable",
                 ClockHealth.DISCONTINUITY: "Resynchronizing",
-                ClockHealth.PAUSED: "Paused",
             }[health]
         )
     return tuple(parts)
