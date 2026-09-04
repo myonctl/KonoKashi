@@ -27,10 +27,18 @@ unreleased.
   seventh P2: compact actions no longer squeeze track metadata out of view.
 - Added deterministic regressions for those states, ultrawide typography and
   line width, the compact header breakpoint, runtime palette changes, action
-  hierarchy/tooltips, and Settings shortcut dispatch. The implementation gate
-  passes 626 tests with two known third-party deprecation warnings, Ruff lint/
+  hierarchy/tooltips, and Settings shortcut dispatch. The accepted gate passes
+  627 tests with two known third-party deprecation warnings, Ruff lint/
   format, strict mypy, reproducible required-content artifacts, and the clean
   dependency-complete installed-wheel lifecycle.
+- Completed Stage 14 after exact-SHA checkpoint CI, a real Plasma-menu launch,
+  timed/untimed/instrumental/no-result playback, pause/resume/seek and rapid
+  transitions, Japanese and Cyrillic alternate representations, six window
+  geometries, dark/light palettes, GUI/CLI/TOML recovery, Settings TUI smoke,
+  restart, cleanup, and a 29m41s (roughly 30-minute) soak. The real compact
+  audit found and fixed hidden metadata; the acceptance run also found and
+  corrected duplicate paused wording at `6741d56`, with exact-SHA CI run
+  `33747539769` green. No implementation stage remains Active.
 - Preserved LyriFlux Web / remote display, home karaoke, and a possible future
   portable host as Deferred backlog ideas. Stage 14 implements none of them.
 
