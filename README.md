@@ -16,7 +16,8 @@ Stages 1 through 14 and the post-Stage-5 Chinese/Pinyin repair are **Completed**
 Stage 14 — Desktop UX & Daily-Use Polish closed after its 627-test automated/
 package gate, exact-SHA implementation and correction CI, and accepted real
 KDE/playback/resize/palette/multilingual/settings/TUI/soak/restart matrix.
-No implementation stage is Active; Stage 15+ remains Proposed / unauthorized.
+Stage 15 — Settings TUI UX & Daily-Use Polish is Active for the existing
+`lyriflux settings`; Stage 16+ remains Proposed / unauthorized.
 Stage 11 — Canonical Settings & Configuration Foundation passed its 579-test
 automated gate, exact-SHA implementation CI, and bounded real KDE/configuration/
 daily-use/restart/legacy-safety matrix on 2026-08-26. Stage 12 — GUI Settings

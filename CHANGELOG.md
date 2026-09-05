@@ -7,6 +7,22 @@ unreleased.
 
 ### Changed
 
+- Authorized exactly **Stage 15 — Settings TUI UX & Daily-Use Polish** for the
+  existing nine-setting terminal frontend. Its implementation-first workflow
+  requires an installed-terminal inventory, coherent main implementation,
+  functional gates, real use and a second polish pass before final terminal,
+  latency, CPU, soak, desktop, artifact and exact-SHA CI acceptance. Stage 16+
+  and every new major feature remain Proposed / unauthorized.
+
+- Implemented the Stage 15 main polish pass: compact bounded terminal layout,
+  editor-first details, default/customized rows, clearer search/focus/help,
+  fitted list drafts, canonical validation that retains invalid drafts,
+  persistent last-known-good diagnostics and restrained cyan. Fixed a real
+  rapid-navigation defect where rendered toggle changes could attempt to save
+  another selected setting. First automated/release gate passes 638 tests with
+  two unchanged warnings. Real use, second polish and final acceptance remain
+  pending; Stage 15 is not Completed.
+
 - Defined and activated exactly **Stage 14 — Desktop UX & Daily-Use Polish**
   from the user's explicit roadmap priority. The stage is bounded to observed
   friction in the existing PySide6 desktop and requires real KDE daily-use,

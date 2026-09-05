@@ -7,16 +7,28 @@ from typing import ClassVar
 
 from textual.app import ComposeResult
 from textual.binding import Binding, BindingType
-from textual.containers import Horizontal, Vertical
+from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.screen import ModalScreen
 from textual.widgets import Button, Input, Label, OptionList, Static
 from textual.widgets.option_list import Option
+
+from lyriflux.presentation.tui.settings_bindings import help_text
+from lyriflux.presentation.tui.settings_controls import FixedSurfaceOptionList
 
 
 class OrderedListEditorScreen(ModalScreen[tuple[str, ...] | None]):
     """Explicit draft editor for ordered string and path settings."""
 
-    BINDINGS: ClassVar[list[BindingType]] = [Binding("escape", "cancel", "Cancel")]
+    BINDINGS: ClassVar[list[BindingType]] = [
+        Binding("escape", "cancel", "Cancel"),
+        Binding("q", "cancel", "Cancel", show=False),
+        Binding("ctrl+s", "apply", "Apply"),
+        Binding("delete", "remove", "Remove", show=False),
+        Binding("alt+up", "move(-1)", "Move up", show=False),
+        Binding("alt+down", "move(1)", "Move down", show=False),
+        Binding("j", "next_item", "Next", show=False),
+        Binding("k", "previous_item", "Previous", show=False),
+    ]
 
     def __init__(
         self,
@@ -24,23 +36,38 @@ class OrderedListEditorScreen(ModalScreen[tuple[str, ...] | None]):
         values: tuple[str, ...],
         *,
         path_values: bool = False,
+        preferred: bool = True,
+        validate: Callable[[tuple[str, ...]], str | None] | None = None,
     ) -> None:
         super().__init__()
         self._title = title
         self._values = list(values)
         self._path_values = path_values
+        self._preferred = preferred and not path_values
+        self._validate = validate
 
     def compose(self) -> ComposeResult:
         placeholder = (
-            "Add one absolute folder path" if self._path_values else "Add value"
+            "Absolute folder path (spaces are fine)"
+            if self._path_values
+            else "Player, e.g. strawberry"
+        )
+        yield Static(
+            "Resize to at least 50 x 20 cells. Esc cancels the draft.",
+            id="modal-too-small",
         )
         with Vertical(id="list-dialog"):
             yield Label(self._title, id="list-dialog-title")
             yield Static(
-                "Ordering is significant. Changes are a draft until Apply.",
+                ("First player has highest preference. " if self._preferred else "")
+                + "Changes are a draft until Apply.\n"
+                "Esc cancels · Ctrl+S applies · Alt+↑/↓ moves an item",
                 id="list-dialog-hint",
             )
-            yield OptionList(id="draft-values", markup=False)
+            yield Static("", id="draft-empty", markup=False)
+            yield FixedSurfaceOptionList(id="draft-values", markup=False)
+            yield Static("", id="draft-selected", markup=False)
+            yield Static("", id="draft-feedback", markup=False)
             with Horizontal(classes="input-row"):
                 yield Input(placeholder=placeholder, id="new-value")
                 yield Button("Add", id="add-value", variant="primary")
@@ -53,6 +80,11 @@ class OrderedListEditorScreen(ModalScreen[tuple[str, ...] | None]):
                 yield Button("Apply", id="apply-list", variant="success")
 
     def on_mount(self) -> None:
+        self.watch(
+            self.query_one("#draft-values", OptionList),
+            "highlighted",
+            self._selection_changed,
+        )
         self._refresh()
         self.query_one("#new-value", Input).focus()
 
@@ -67,7 +99,7 @@ class OrderedListEditorScreen(ModalScreen[tuple[str, ...] | None]):
             "move-value-up": lambda: self._move(-1),
             "move-value-down": lambda: self._move(1),
             "cancel-list": self.action_cancel,
-            "apply-list": lambda: self.dismiss(tuple(self._values)),
+            "apply-list": self.action_apply,
         }
         action = actions.get(event.button.id or "")
         if action is not None:
@@ -76,25 +108,69 @@ class OrderedListEditorScreen(ModalScreen[tuple[str, ...] | None]):
     def action_cancel(self) -> None:
         self.dismiss(None)
 
+    def action_apply(self) -> None:
+        if self.query_one("#new-value", Input).value.strip():
+            self._add()
+            return
+        values = tuple(self._values)
+        diagnostic = self._validate(values) if self._validate else None
+        if diagnostic:
+            self.query_one("#draft-feedback", Static).update(diagnostic)
+            return
+        self.dismiss(values)
+
+    def action_remove(self) -> None:
+        if self.focused is self.query_one("#draft-values", OptionList):
+            self._remove()
+
+    def action_move(self, offset: int) -> None:
+        self._move(offset)
+
+    def action_next_item(self) -> None:
+        options = self.query_one("#draft-values", OptionList)
+        options.focus()
+        options.action_cursor_down()
+
+    def action_previous_item(self) -> None:
+        options = self.query_one("#draft-values", OptionList)
+        options.focus()
+        options.action_cursor_up()
+
     def _add(self) -> None:
         editor = self.query_one("#new-value", Input)
         value = editor.value.strip()
         if not value:
-            self.notify("Enter a non-empty value.", severity="warning")
+            self.query_one("#draft-feedback", Static).update("Enter an item first.")
+            editor.focus()
+            return
+        if value in self._values:
+            self.query_one(
+                "#draft-values", OptionList
+            ).highlighted = self._values.index(value)
+            self.query_one("#draft-feedback", Static).update(
+                "That item is already in the list."
+            )
+            editor.focus()
             return
         self._values.append(value)
         editor.value = ""
         self._refresh(highlight=len(self._values) - 1)
+        self.query_one("#draft-feedback", Static).update(
+            "Added to draft · Apply to save"
+        )
         editor.focus()
 
     def _remove(self) -> None:
         options = self.query_one("#draft-values", OptionList)
         index = options.highlighted
         if index is None or not 0 <= index < len(self._values):
-            self.notify("Select a value to remove.", severity="warning")
             return
         self._values.pop(index)
         self._refresh(highlight=min(index, len(self._values) - 1))
+        if self._values:
+            options.focus()
+        else:
+            self.query_one("#new-value", Input).focus()
 
     def _move(self, offset: int) -> None:
         options = self.query_one("#draft-values", OptionList)
@@ -109,6 +185,7 @@ class OrderedListEditorScreen(ModalScreen[tuple[str, ...] | None]):
             self._values[index],
         )
         self._refresh(highlight=target)
+        options.focus()
 
     def _refresh(self, *, highlight: int | None = None) -> None:
         options = self.query_one("#draft-values", OptionList)
@@ -119,6 +196,28 @@ class OrderedListEditorScreen(ModalScreen[tuple[str, ...] | None]):
         )
         if self._values:
             options.highlighted = 0 if highlight is None else max(0, highlight)
+        options.border_title = f"{len(self._values)} items"
+        empty = self.query_one("#draft-empty", Static)
+        empty.display = not self._values
+        empty.update(
+            "No folders yet. Add a folder below."
+            if self._path_values
+            else "No players listed. Add a player below."
+        )
+        self.query_one("#draft-feedback", Static).update("")
+        self._selection_changed(options.highlighted)
+
+    def _selection_changed(self, index: int | None) -> None:
+        selected = index is not None and 0 <= index < len(self._values)
+        self.query_one("#remove-value", Button).disabled = not selected
+        self.query_one("#move-value-up", Button).disabled = not selected or index == 0
+        self.query_one("#move-value-down", Button).disabled = (
+            not selected or index == len(self._values) - 1
+        )
+        text = (
+            f"Selected: {self._values[index]}" if selected and index is not None else ""
+        )
+        self.query_one("#draft-selected", Static).update(text)
 
 
 class SettingsHelpScreen(ModalScreen[None]):
@@ -130,22 +229,13 @@ class SettingsHelpScreen(ModalScreen[None]):
     ]
 
     def compose(self) -> ComposeResult:
+        yield Static(
+            "Resize to at least 50 x 20 cells. Esc closes help.", id="modal-too-small"
+        )
         with Vertical(id="help-dialog"):
             yield Label("LyriFlux settings help", id="help-title")
-            yield Static(
-                "↑/↓ or j/k  Navigate settings\n"
-                "1-4          Select Players, Lyrics, Desktop, Library\n"
-                "/            Search title, description, or canonical key\n"
-                "Enter/Space  Activate the focused control\n"
-                "Tab/Shift-Tab Move focus\n"
-                "r            Reset the selected setting\n"
-                "Esc          Clear search, cancel, or return to navigation\n"
-                "?            Toggle this help\n"
-                "q / Ctrl+C   Quit cleanly\n\n"
-                "All writes use the canonical validated TOML service. Invalid "
-                "external files keep the last-known-good values visible.",
-                id="help-content",
-            )
+            with VerticalScroll(id="help-scroll"):
+                yield Static(help_text(), id="help-content", markup=False)
             yield Button("Close", id="close-help", variant="primary")
 
     def on_button_pressed(self, event: Button.Pressed) -> None:

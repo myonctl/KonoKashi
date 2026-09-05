@@ -4,9 +4,7 @@ from __future__ import annotations
 
 from textual.app import ComposeResult
 from textual.containers import Container, Horizontal, Vertical, VerticalScroll
-from textual.geometry import Size
-from textual.reactive import Reactive
-from textual.widgets import Button, Input, Label, OptionList, Static, Switch
+from textual.widgets import Button, Input, Label, OptionList, Static
 from textual.widgets.option_list import Option
 
 from lyriflux.application.settings import (
@@ -17,77 +15,90 @@ from lyriflux.application.settings import (
     SettingType,
     SettingValue,
 )
+from lyriflux.presentation.tui.settings_controls import (
+    FixedSurfaceInput,
+    FixedSurfaceOptionList,
+    SettingSwitch,
+)
 
 APP_CSS = """
-Screen { background: $surface; }
-#shell { height: 1fr; padding: 0 1; }
-#brand { height: 3; padding: 0 1; color: $text; background: $boost; }
-#search { width: 1fr; height: 3; margin: 1 0; }
+Screen { background: $surface; align-horizontal: center; }
+#shell { width: 100%; max-width: 132; height: 1fr; padding: 0 1; }
+#brand { height: 1; padding: 0 1; text-style: bold; color: $primary; }
+#search-row { height: 3; margin: 0 0 1 0; }
+#search { width: 1fr; height: 3; }
+#clear-search { width: 9; min-width: 9; margin-left: 1; }
 #workspace { height: 1fr; layout: horizontal; }
-#navigation { width: 38; min-width: 28; height: 1fr; margin-right: 1; }
-#categories { height: 8; border: round $primary; }
-#settings-list { height: 1fr; border: round $primary; }
-.section-heading { height: 1; color: $text-muted; margin-top: 1; }
-#detail { width: 1fr; height: 1fr; border: round $secondary; padding: 1 2; }
-#detail-title { width: 1fr; height: 1; text-style: bold; color: $accent;
+#navigation { width: 34; min-width: 26; height: 1fr; margin-right: 1; }
+#categories { height: 6; border: round $border; margin-bottom: 1; }
+#settings-list { height: 1fr; border: round $border; }
+OptionList:focus { border: heavy $primary; }
+OptionList > .option-list--option-highlighted { text-style: bold; }
+#detail { width: 1fr; height: 1fr; border: round $border; padding: 0 1; }
+#detail:focus-within { border: heavy $primary; }
+#detail-title { width: 1fr; height: auto; min-height: 1; text-style: bold;
     margin-bottom: 1; }
 #detail-description { width: 1fr; margin-bottom: 1; }
-#detail-value { width: 1fr; margin: 1 0; text-style: bold; }
+#detail-value { width: 1fr; margin: 1 0; }
 #detail-metadata { width: 1fr; color: $text-muted; margin-bottom: 1; }
-#editor-slot { width: 1fr; height: 4; margin-top: 1;
+#editor-hint { height: auto; min-height: 1; color: $text-muted; }
+#editor-slot { width: 1fr; height: 3;
     layers: boolean integer list; }
 #boolean-row { layer: boolean; }
 #integer-row { layer: integer; }
 #edit-list { layer: list; }
 #boolean-row, #integer-row { width: 1fr; height: 3; }
 #detail-actions { height: 3; margin-top: 1; }
-#integer-value { width: 12; margin: 0 1; }
-#integer-minus, #integer-plus { width: 5; }
+#integer-value { width: 8; margin: 0 1; }
+#integer-minus, #integer-plus { width: 5; min-width: 5; }
 #integer-apply { margin-left: 1; }
-#edit-list { width: auto; }
-#reset-setting { margin-left: 1; }
-#status { height: auto; min-height: 2; padding: 0 1; color: $text-muted; }
+#integer-apply { min-width: 9; width: 9; }
+#boolean-label { padding: 1 1; }
+#edit-list { width: auto; min-width: 20; }
+#reset-setting { min-width: 18; margin-right: 1; }
+#show-help { min-width: 8; width: 8; }
+#context-hint { height: 1; padding: 0 1; color: $text-muted; }
+#status { height: auto; min-height: 1; max-height: 4; padding: 0 1;
+    color: $text-muted; }
 #status.error { color: $error; }
 #status.success { color: $success; }
 .hidden { visibility: hidden; }
 #too-small { display: none; layer: overlay; width: 100%; height: 100%;
     content-align: center middle; background: $surface; color: $warning; }
 Screen.too-small #too-small { display: block; }
-Screen.too-small #shell, Screen.too-small Footer, Screen.too-small Header {
+#modal-too-small { display: none; }
+Screen.too-small #modal-too-small { display: block; width: 100%; height: 100%;
+    content-align: center middle; }
+Screen.too-small #list-dialog, Screen.too-small #help-dialog { display: none; }
+Screen.too-small #shell, Screen.too-small Footer {
     visibility: hidden;
 }
 Screen.-narrow #workspace { layout: vertical; }
-Screen.-narrow #navigation { width: 1fr; height: 15; margin-right: 0; }
-Screen.-narrow #categories { height: 5; }
-Screen.-narrow #detail { width: 1fr; height: 1fr; }
+Screen.-narrow #navigation { width: 1fr; height: 8; min-height: 8;
+    margin-right: 0; layout: horizontal; }
+Screen.-narrow #categories { width: 15; height: 7; margin-right: 1; }
+Screen.-narrow #settings-list { width: 1fr; height: 7; }
+Screen.-narrow #detail { width: 1fr; height: 1fr; min-height: 18; }
 OrderedListEditorScreen, SettingsHelpScreen { align: center middle; }
-OrderedListEditorScreen { background: $background 65%; }
-SettingsHelpScreen { background: $surface; }
+OrderedListEditorScreen, SettingsHelpScreen { background: $surface; }
 #list-dialog, #help-dialog {
-    width: 78; max-width: 92%; height: auto; max-height: 90%;
-    border: thick $primary; background: $surface; padding: 1 2;
+    width: 78; max-width: 100%; height: auto; max-height: 100%;
+    border: round $primary; background: $surface; padding: 0 1;
 }
-#list-dialog-title, #help-title { text-style: bold; color: $accent; }
-#list-dialog-hint { color: $text-muted; margin-bottom: 1; }
-#draft-values { height: 12; border: round $secondary; }
-.input-row, .button-row { height: 3; margin-top: 1; }
-.button-row Button { margin-right: 1; }
+#list-dialog { height: 28; }
+#list-dialog-title, #help-title { text-style: bold; color: $text; }
+#list-dialog-hint { height: 2; color: $text-muted; }
+#draft-values { height: 1fr; min-height: 3; border: round $border; }
+#draft-empty { height: auto; color: $text-muted; }
+#draft-selected { height: 1; }
+#draft-feedback { height: 1; color: $warning; }
+.input-row, .button-row { height: 3; }
+.button-row Button { margin-right: 1; min-width: 10; width: 1fr; }
 #new-value { width: 1fr; }
-#add-value { margin-left: 1; }
+#add-value { margin-left: 1; min-width: 8; width: 8; }
 #help-content { margin: 1 0; }
+#help-scroll { height: auto; max-height: 1fr; }
 """
-
-
-class FixedSurfaceInput(Input):
-    """Input whose fixed CSS box does not request layout for text edits."""
-
-    virtual_size = Reactive(Size(0, 0), layout=False)
-
-
-class FixedSurfaceOptionList(OptionList):
-    """Option list whose fixed CSS box owns scrolling without parent reflow."""
-
-    virtual_size = Reactive(Size(0, 0), layout=False)
 
 
 class SettingsWorkspace(Vertical):
@@ -103,38 +114,31 @@ class SettingsWorkspace(Vertical):
         self._reset_disabled_when_enabled = True
 
     def compose(self) -> ComposeResult:
-        yield Static(
-            "LyriFlux  ·  Settings\nOne schema shared by TUI, desktop, CLI, and TOML",
-            id="brand",
-        )
-        yield FixedSurfaceInput(
-            placeholder="Search title, description, or key  (press /)",
-            id="search",
-        )
-        with Horizontal(id="workspace"):
+        yield Static("LyriFlux  /  Settings", id="brand")
+        with Horizontal(id="search-row"):
+            yield FixedSurfaceInput(placeholder="Search settings  /", id="search")
+            yield Button("Clear", id="clear-search", disabled=True)
+        with VerticalScroll(id="workspace"):
             with Vertical(id="navigation"):
-                yield Label("Categories", classes="section-heading")
                 yield OptionList(
                     *(
-                        Option(category.value, id=category.name.lower())
-                        for category in SettingCategory
+                        Option(f"{index}  {category.value}", id=category.name.lower())
+                        for index, category in enumerate(SettingCategory, 1)
                     ),
                     id="categories",
                     markup=False,
                     compact=True,
                 )
-                yield Label("Settings", classes="section-heading")
                 yield FixedSurfaceOptionList(
                     id="settings-list", markup=False, compact=True
                 )
             with VerticalScroll(id="detail"):
                 yield Label("", id="detail-title")
                 yield Static("", id="detail-description", markup=False)
-                yield Static("", id="detail-value", markup=False)
-                yield Static("", id="detail-metadata", markup=False)
+                yield Static("", id="editor-hint", markup=False)
                 with Container(id="editor-slot"):
                     with Horizontal(id="boolean-row", classes="hidden"):
-                        yield Switch(id="boolean-value")
+                        yield SettingSwitch(id="boolean-value")
                         yield Label("Enabled", id="boolean-label")
                     with Horizontal(id="integer-row", classes="hidden"):
                         yield Button("-", id="integer-minus")
@@ -142,18 +146,20 @@ class SettingsWorkspace(Vertical):
                         yield Button("+", id="integer-plus")
                         yield Button("Apply", id="integer-apply", variant="primary")
                     yield Button(
-                        "Edit ordered values…",
+                        "Edit list…",
                         id="edit-list",
                         classes="hidden",
                     )
                 with Horizontal(id="detail-actions"):
                     yield Button(
-                        "Reset selected",
+                        "Reset to default",
                         id="reset-setting",
-                        variant="warning",
                     )
                     yield Button("Help", id="show-help")
-        yield Static("Loading canonical settings…", id="status", markup=False)
+                yield Static("", id="detail-value", markup=False)
+                yield Static("", id="detail-metadata", markup=False)
+        yield Static("", id="context-hint", markup=False)
+        yield Static("Loading settings…", id="status", markup=False)
 
     def show_setting(self, resolved: ResolvedSetting) -> None:
         definition = resolved.definition
@@ -162,12 +168,13 @@ class SettingsWorkspace(Vertical):
         self._update_text(
             "#detail-value",
             f"Current: {format_value(resolved.value)}\n"
+            f"{origin_text(resolved.origin)} · "
             f"Default: {format_value(definition.default)}",
         )
         self._update_text(
             "#detail-metadata",
             f"Key: {definition.key}\n"
-            f"Origin: {resolved.origin.value}  ·  Scope: {definition.scope.value}\n"
+            f"{origin_text(resolved.origin)}  ·  Scope: {definition.scope.value}\n"
             f"Reload: {reload_text(definition.reload)}",
         )
         self.query_one("#boolean-row", Horizontal).set_class(
@@ -183,15 +190,28 @@ class SettingsWorkspace(Vertical):
             "hidden",
         )
         if definition.value_type is SettingType.BOOLEAN:
-            boolean = self.query_one("#boolean-value", Switch)
+            boolean = self.query_one("#boolean-value", SettingSwitch)
             boolean_value = bool(resolved.value)
-            if boolean.value != boolean_value:
-                boolean.value = boolean_value
+            boolean.project(definition.key, boolean_value)
+            self._update_text("#boolean-label", "On" if boolean_value else "Off")
+            hint = "Enter or Space toggles · Saves immediately"
         elif definition.value_type is SettingType.INTEGER:
             integer = self.query_one("#integer-value", Input)
             integer_value = str(resolved.value)
             if integer.value != integer_value:
                 integer.value = integer_value
+            hint = (
+                f"{definition.minimum}-{definition.maximum} · "
+                "Enter or Apply saves · Esc cancels"
+            )
+        else:
+            hint = "Add or remove items in a draft · Apply saves"
+            self.query_one("#edit-list", Button).label = (
+                "Edit folders…"
+                if definition.key == "library.roots"
+                else "Edit players…"
+            )
+        self._update_text("#editor-hint", hint)
         self._reset_disabled_when_enabled = (
             resolved.value == definition.default
             and resolved.origin is SettingOrigin.DEFAULT
@@ -203,6 +223,8 @@ class SettingsWorkspace(Vertical):
         self._update_text("#detail-description", text)
         self._update_text("#detail-value", " \n ")
         self._update_text("#detail-metadata", " \n \n ")
+        self._update_text("#editor-hint", "Esc or Clear returns to your category")
+        self.query_one("#boolean-value", SettingSwitch).setting_key = ""
         self.query_one("#boolean-row", Horizontal).add_class("hidden")
         self.query_one("#integer-row", Horizontal).add_class("hidden")
         self.query_one("#edit-list", Button).add_class("hidden")
@@ -276,6 +298,14 @@ def format_value(value: SettingValue) -> str:
     if isinstance(value, bool):
         return "On" if value else "Off"
     return str(value)
+
+
+def origin_text(origin: SettingOrigin) -> str:
+    if origin is SettingOrigin.DEFAULT:
+        return "Using default"
+    if origin is SettingOrigin.LEGACY_MIGRATION:
+        return "Migrated preference"
+    return "Customized"
 
 
 def reload_text(behavior: ReloadBehavior) -> str:

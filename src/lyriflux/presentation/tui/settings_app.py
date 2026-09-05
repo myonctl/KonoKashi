@@ -12,15 +12,15 @@ from typing import ClassVar, cast
 
 from textual import events, on
 from textual.app import App, ComposeResult
-from textual.binding import Binding, BindingType
+from textual.binding import BindingType
+from textual.theme import Theme
+from textual.widget import Widget
 from textual.widgets import (
     Button,
     Footer,
-    Header,
     Input,
     OptionList,
     Static,
-    Switch,
 )
 from textual.widgets.option_list import Option
 
@@ -33,6 +33,7 @@ from lyriflux.application.settings import (
     SettingType,
     SettingValue,
     default_settings_snapshot,
+    validate_settings_values,
 )
 from lyriflux.application.settings_service import (
     CanonicalSettingsService,
@@ -40,6 +41,8 @@ from lyriflux.application.settings_service import (
     SettingsFileError,
     SettingsSubscription,
 )
+from lyriflux.presentation.tui.settings_bindings import NAVIGATION_BINDINGS
+from lyriflux.presentation.tui.settings_controls import SettingSwitch
 from lyriflux.presentation.tui.settings_messages import (
     DiskObserved,
     MutationFinished,
@@ -59,6 +62,7 @@ from lyriflux.presentation.tui.settings_view import (
     APP_CSS,
     SettingsWorkspace,
     format_value,
+    origin_text,
 )
 
 SettingsServiceFactory = Callable[[], CanonicalSettingsService]
@@ -69,26 +73,13 @@ class SettingsApp(App[int]):
     """Full-screen terminal settings frontend over one canonical service."""
 
     TITLE = "LyriFlux Settings"
-    SUB_TITLE = "Canonical configuration"
+    ENABLE_COMMAND_PALETTE = False
     HORIZONTAL_BREAKPOINTS = [  # noqa: RUF012
         (0, "-narrow"),
         (75, "-normal"),
         (115, "-wide"),
     ]
-    BINDINGS: ClassVar[list[BindingType]] = [
-        Binding("q", "quit_settings", "Quit"),
-        Binding("ctrl+c", "quit_settings", "Quit", show=False),
-        Binding("question_mark", "show_help", "Help"),
-        Binding("slash", "focus_search", "Search"),
-        Binding("escape", "escape", "Back", show=False),
-        Binding("r", "reset_selected", "Reset"),
-        Binding("j", "next_setting", "Next", show=False),
-        Binding("k", "previous_setting", "Previous", show=False),
-        Binding("1", "category(0)", "Players", show=False),
-        Binding("2", "category(1)", "Lyrics", show=False),
-        Binding("3", "category(2)", "Desktop", show=False),
-        Binding("4", "category(3)", "Library", show=False),
-    ]
+    BINDINGS: ClassVar[list[BindingType]] = list(NAVIGATION_BINDINGS)
     CSS = APP_CSS
 
     def __init__(
@@ -99,6 +90,8 @@ class SettingsApp(App[int]):
         watch_interval: float = DEFAULT_DISK_OBSERVE_INTERVAL,
     ) -> None:
         super().__init__()
+        self.register_theme(Theme(name="lyriflux", primary="#39b9c7", accent="#39b9c7"))
+        self.theme = "lyriflux"
         self._service = service
         self._service_factory = service_factory
         self._watch_interval = watch_interval
@@ -115,12 +108,12 @@ class SettingsApp(App[int]):
         self._startup_failed = False
         self._closed = False
         self._ui_ready = False
+        self._file_diagnostic: str | None = None
 
     def compose(self) -> ComposeResult:
-        yield Header(show_clock=False)
         yield SettingsWorkspace(id="shell")
         yield Static(
-            "Terminal is too small. Resize to at least 50 x 14 cells.",
+            "Resize to at least 50 x 20 cells to use Settings.",
             id="too-small",
             markup=False,
         )
@@ -145,6 +138,9 @@ class SettingsApp(App[int]):
             init=False,
         )
         self.watch(search, "value", self._search_value_changed, init=False)
+        self.watch(self.screen, "focused", self._focus_changed, init=False)
+        categories.border_title = "Categories · 1-4"
+        settings.border_title = "Settings"
         categories.highlighted = 0
         self._refresh_setting_list()
         settings.focus()
@@ -174,7 +170,7 @@ class SettingsApp(App[int]):
 
     def on_resize(self, event: events.Resize) -> None:
         self.screen.set_class(
-            event.size.width < 50 or event.size.height < 14,
+            event.size.width < 50 or event.size.height < 20,
             "too-small",
         )
 
@@ -188,7 +184,7 @@ class SettingsApp(App[int]):
         if not 0 <= index < len(categories) or categories[index] is self._category:
             return
         self._category = categories[index]
-        self._refresh_setting_list()
+        self._clear_search_or_refresh()
 
     @on(OptionList.OptionSelected, "#categories")
     def _category_selected(self, event: OptionList.OptionSelected) -> None:
@@ -207,11 +203,14 @@ class SettingsApp(App[int]):
     def _setting_selected(self, _event: OptionList.OptionSelected) -> None:
         self._focus_editor()
 
-    @on(Switch.Changed, "#boolean-value")
-    def _boolean_changed(self, event: Switch.Changed) -> None:
-        current = self._snapshot.get(self._selected_key) if self._selected_key else None
-        if event.value != current:
-            self._start_mutation(self._selected_key, event.value)
+    def on_setting_switch_edited(self, event: SettingSwitch.Edited) -> None:
+        if event.value != self._snapshot.get(event.key):
+            self._start_mutation(event.key, event.value)
+
+    @on(Input.Submitted, "#search")
+    def _search_submitted(self) -> None:
+        if self._selected_key:
+            self.query_one("#settings-list", OptionList).focus()
 
     @on(Input.Submitted, "#integer-value")
     def _integer_submitted(self, _event: Input.Submitted) -> None:
@@ -231,6 +230,9 @@ class SettingsApp(App[int]):
             self.action_reset_selected()
         elif button_id == "show-help":
             self.action_show_help()
+        elif button_id == "clear-search":
+            self.query_one("#search", Input).value = ""
+            self.query_one("#search", Input).focus()
 
     def on_service_ready(self, message: ServiceReady) -> None:
         if message.service is None:
@@ -264,11 +266,15 @@ class SettingsApp(App[int]):
             return
         if message.signature is not None:
             self._signature = message.signature
+        self._file_diagnostic = None
         if message.result.snapshot != self._snapshot:
             changed_keys = message.result.changed_keys
             self._snapshot = message.result.snapshot
             self._refresh_changed_values(changed_keys)
-        self._set_status(f"Saved {message.key}.", success=True)
+        self._set_status(
+            f"Saved {self._snapshot.resolved(message.key).definition.title}.",
+            success=True,
+        )
 
     def on_disk_observed(self, message: DiskObserved) -> None:
         self._watch_busy = False
@@ -276,6 +282,7 @@ class SettingsApp(App[int]):
         if message.result is None:
             return
         if message.result.applied:
+            self._file_diagnostic = None
             if message.result.changed_keys:
                 self._set_status("External configuration change loaded.", success=True)
             else:
@@ -298,19 +305,20 @@ class SettingsApp(App[int]):
             search.value = ""
             search.focus()
         else:
+            self._render_detail()
             self.query_one("#settings-list", OptionList).focus()
 
     def action_reset_selected(self) -> None:
-        if self._service is not None:
+        if self._service is not None and self._selected_key:
             self._start_mutation(self._selected_key, None, reset=True)
 
     def action_next_setting(self) -> None:
-        options = self.query_one("#settings-list", OptionList)
+        options = self._navigation_target()
         options.focus()
         options.action_cursor_down()
 
     def action_previous_setting(self) -> None:
-        options = self.query_one("#settings-list", OptionList)
+        options = self._navigation_target()
         options.focus()
         options.action_cursor_up()
 
@@ -319,7 +327,40 @@ class SettingsApp(App[int]):
         if not 0 <= index < len(categories):
             return
         self.query_one("#categories", OptionList).highlighted = index
+        if self.query_one("#search", Input).value:
+            self.query_one("#search", Input).value = ""
         self.query_one("#settings-list", OptionList).focus()
+
+    def _navigation_target(self) -> OptionList:
+        if self.focused is self.query_one("#categories", OptionList):
+            return self.query_one("#categories", OptionList)
+        return self.query_one("#settings-list", OptionList)
+
+    def check_action(self, action: str, parameters: tuple[object, ...]) -> bool | None:
+        return len(self.screen_stack) <= 1 or action == "quit_settings"
+
+    def _focus_changed(self, focused: Widget | None) -> None:
+        if not self._ui_ready:
+            return
+        identifier = focused.id if focused else None
+        if identifier == "search":
+            hint = "Enter results · Esc clear / return · Search all categories"
+        elif identifier == "categories":
+            hint = "↑↓ / j k categories · Enter settings · Tab next panel"
+        elif identifier == "integer-value":
+            hint = "Enter saves · Esc discards draft · Tab next control"
+        elif identifier == "boolean-value":
+            hint = "Enter / Space toggles · Esc settings · r reset"
+        else:
+            hint = "↑↓ / j k settings · Enter edit · 1-4 category · r reset"
+        self.query_one("#context-hint", Static).update(hint, layout=False)
+
+    def _clear_search_or_refresh(self) -> None:
+        search = self.query_one("#search", Input)
+        if search.value:
+            search.value = ""
+        else:
+            self._refresh_setting_list()
 
     def _open_service(self, factory: SettingsServiceFactory) -> None:
         try:
@@ -341,7 +382,7 @@ class SettingsApp(App[int]):
         if service.diagnostics:
             self._show_diagnostics(service.diagnostics, "Configuration rejected")
         else:
-            self._set_status(f"Canonical file: {service.path}", success=True)
+            self._set_status(f"Config: {service.path}")
         if self._watch_interval > 0:
             self._signature = config_signature(service.path)
             self._start_disk_watcher()
@@ -409,7 +450,7 @@ class SettingsApp(App[int]):
             return
         self._mutation_busy = True
         self._set_editing_enabled(False)
-        self._set_status(f"Saving {key}…")
+        self._set_status(f"Saving {self._snapshot.resolved(key).definition.title}…")
         self.run_worker(
             partial(self._mutate, key, value, reset),
             name=f"update {key}",
@@ -452,11 +493,13 @@ class SettingsApp(App[int]):
         for category in SettingCategory:
             if category.name.lower() == option_id:
                 if category is self._category:
+                    if self.query_one("#search", Input).value:
+                        self.query_one("#search", Input).value = ""
                     if focus_settings:
                         self.query_one("#settings-list", OptionList).focus()
                     return
                 self._category = category
-                self._refresh_setting_list()
+                self._clear_search_or_refresh()
                 if focus_settings:
                     self.query_one("#settings-list", OptionList).focus()
                 return
@@ -481,6 +524,10 @@ class SettingsApp(App[int]):
         )
         self._visible_definitions = definitions
         options = self.query_one("#settings-list", OptionList)
+        options.border_title = (
+            f"Search · {len(definitions)} results" if query else self._category.value
+        )
+        self.query_one("#clear-search", Button).disabled = not bool(query)
         options.clear_options()
         options.add_options(
             Option(
@@ -491,7 +538,9 @@ class SettingsApp(App[int]):
         )
         if not definitions:
             self._selected_key = ""
-            self._render_empty_detail("No settings match this search.")
+            self._render_empty_detail(
+                "No settings match. Try a shorter word or clear the search."
+            )
             return
         selected_index = next(
             (
@@ -520,9 +569,14 @@ class SettingsApp(App[int]):
             self._render_detail()
 
     def _setting_prompt(self, definition: SettingDefinition) -> str:
-        return (
-            f"{definition.title}\n  {format_value(self._snapshot.get(definition.key))}"
+        resolved = self._snapshot.resolved(definition.key)
+        value = resolved.value
+        summary = (
+            f"{len(value)} items"
+            if isinstance(value, tuple) and value
+            else format_value(value)
         )
+        return f"{definition.title}\n  {summary} · {origin_text(resolved.origin)}"
 
     def _render_detail(self) -> None:
         if not self._ui_ready or not self._selected_key:
@@ -593,11 +647,26 @@ class SettingsApp(App[int]):
             resolved.definition.title,
             baseline,
             path_values=resolved.definition.key == "library.roots",
+            preferred=resolved.definition.key == "players.preferred",
+            validate=partial(self._validate_list_draft, resolved.definition.key),
         )
         self.push_screen(
             screen,
             partial(self._list_editor_closed, resolved.definition.key, baseline),
         )
+
+    def _validate_list_draft(self, key: str, values: tuple[str, ...]) -> str | None:
+        candidate = {
+            definition.key: self._snapshot.get(definition.key)
+            for definition in SETTINGS_SCHEMA
+        }
+        candidate[key] = values
+        try:
+            validate_settings_values(candidate)
+        except SettingsValidationError as error:
+            self._set_status(str(error), error=True)
+            return str(error)
+        return None
 
     def _list_editor_closed(
         self,
@@ -625,11 +694,17 @@ class SettingsApp(App[int]):
         self, diagnostics: tuple[SettingsDiagnostic, ...], context: str
     ) -> None:
         rendered = "; ".join(item.render() for item in diagnostics)
-        self._set_status(f"{context}: {rendered}", error=True)
+        self._file_diagnostic = (
+            f"{context}. Last-known-good values remain active.\n{rendered}"
+        )
+        self._set_status("Repair the file to reload settings.", error=True)
 
     def _set_status(
         self, text: str, *, error: bool = False, success: bool = False
     ) -> None:
+        if self._file_diagnostic:
+            text = f"{self._file_diagnostic}\n{text}"
+            error = True
         self.query_one(SettingsWorkspace).set_status(
             text,
             error=error,

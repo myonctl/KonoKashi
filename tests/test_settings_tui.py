@@ -475,7 +475,7 @@ def test_local_mutation_has_one_targeted_render_and_no_disk_echo(
         assert service.reloads == 1
         assert measured.list_refreshes == 0
         assert measured.detail_renders == 1
-        assert "Saved lyrics.display.original" in _text(
+        assert "Saved Show original lyrics" in _text(
             measured.query_one("#status", Static)
         )
         assert "Current: Off" in _text(measured.query_one("#detail-value", Static))
