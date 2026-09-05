@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from textual.app import ComposeResult
 from textual.containers import Container, Horizontal, Vertical, VerticalScroll
+from textual.widget import Widget
 from textual.widgets import Button, Input, Label, OptionList, Static
 from textual.widgets.option_list import Option
 
@@ -86,6 +87,7 @@ OrderedListEditorScreen, SettingsHelpScreen { background: $surface; }
     border: round $primary; background: $surface; padding: 0 1;
 }
 #list-dialog { height: 28; }
+#help-dialog { height: 32; }
 #list-dialog-title, #help-title { text-style: bold; color: $text; }
 #list-dialog-hint { height: 2; color: $text-muted; }
 #draft-values { height: 1fr; min-height: 3; border: round $border; }
@@ -97,7 +99,7 @@ OrderedListEditorScreen, SettingsHelpScreen { background: $surface; }
 #new-value { width: 1fr; }
 #add-value { margin-left: 1; min-width: 8; width: 8; }
 #help-content { margin: 1 0; }
-#help-scroll { height: auto; max-height: 1fr; }
+#help-scroll { height: 1fr; }
 """
 
 
@@ -174,21 +176,15 @@ class SettingsWorkspace(Vertical):
         self._update_text(
             "#detail-metadata",
             f"Key: {definition.key}\n"
-            f"{origin_text(resolved.origin)}  ·  Scope: {definition.scope.value}\n"
+            f"Scope: {definition.scope.value}\n"
             f"Reload: {reload_text(definition.reload)}",
         )
-        self.query_one("#boolean-row", Horizontal).set_class(
-            definition.value_type is not SettingType.BOOLEAN,
-            "hidden",
-        )
-        self.query_one("#integer-row", Horizontal).set_class(
-            definition.value_type is not SettingType.INTEGER,
-            "hidden",
-        )
-        self.query_one("#edit-list", Button).set_class(
-            definition.value_type is not SettingType.STRING_LIST,
-            "hidden",
-        )
+        for selector, value_type in (
+            ("#boolean-row", SettingType.BOOLEAN),
+            ("#integer-row", SettingType.INTEGER),
+            ("#edit-list", SettingType.STRING_LIST),
+        ):
+            self._show_editor(selector, definition.value_type is value_type)
         if definition.value_type is SettingType.BOOLEAN:
             boolean = self.query_one("#boolean-value", SettingSwitch)
             boolean_value = bool(resolved.value)
@@ -225,9 +221,8 @@ class SettingsWorkspace(Vertical):
         self._update_text("#detail-metadata", " \n \n ")
         self._update_text("#editor-hint", "Esc or Clear returns to your category")
         self.query_one("#boolean-value", SettingSwitch).setting_key = ""
-        self.query_one("#boolean-row", Horizontal).add_class("hidden")
-        self.query_one("#integer-row", Horizontal).add_class("hidden")
-        self.query_one("#edit-list", Button).add_class("hidden")
+        for selector in ("#boolean-row", "#integer-row", "#edit-list"):
+            self._show_editor(selector, False)
         self._reset_disabled_when_enabled = True
         for selector in (
             "#boolean-value",
@@ -263,18 +258,24 @@ class SettingsWorkspace(Vertical):
                 widget.refresh(layout=True)
         self._rendered_text[selector] = content
 
+    def _show_editor(self, selector: str, visible: bool) -> None:
+        editor = self.query_one(selector, Widget)
+        # Keep the semantic marker without rematching every descendant's CSS.
+        # Visibility is inherited and Textual excludes invisible focus targets.
+        editor.set_class(not visible, "hidden", update=False)
+        editor.visible = visible
+
     def set_editing_enabled(self, enabled: bool) -> None:
         self._editing_enabled = enabled
-        for selector, group in (
-            ("#boolean-value", "#boolean-row"),
-            ("#integer-value", "#integer-row"),
-            ("#integer-minus", "#integer-row"),
-            ("#integer-plus", "#integer-row"),
-            ("#integer-apply", "#integer-row"),
-            ("#edit-list", "#edit-list"),
+        for selector in (
+            "#boolean-value",
+            "#integer-value",
+            "#integer-minus",
+            "#integer-plus",
+            "#integer-apply",
+            "#edit-list",
         ):
-            hidden = self.query_one(group).has_class("hidden")
-            self.query_one(selector).disabled = not enabled or hidden
+            self.query_one(selector).disabled = not enabled
         self.query_one("#reset-setting").disabled = (
             not enabled or self._reset_disabled_when_enabled
         )

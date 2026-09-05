@@ -109,8 +109,7 @@ class OrderedListEditorScreen(ModalScreen[tuple[str, ...] | None]):
         self.dismiss(None)
 
     def action_apply(self) -> None:
-        if self.query_one("#new-value", Input).value.strip():
-            self._add()
+        if self.query_one("#new-value", Input).value.strip() and not self._add():
             return
         values = tuple(self._values)
         diagnostic = self._validate(values) if self._validate else None
@@ -136,13 +135,13 @@ class OrderedListEditorScreen(ModalScreen[tuple[str, ...] | None]):
         options.focus()
         options.action_cursor_up()
 
-    def _add(self) -> None:
+    def _add(self) -> bool:
         editor = self.query_one("#new-value", Input)
         value = editor.value.strip()
         if not value:
             self.query_one("#draft-feedback", Static).update("Enter an item first.")
             editor.focus()
-            return
+            return False
         if value in self._values:
             self.query_one(
                 "#draft-values", OptionList
@@ -151,7 +150,7 @@ class OrderedListEditorScreen(ModalScreen[tuple[str, ...] | None]):
                 "That item is already in the list."
             )
             editor.focus()
-            return
+            return False
         self._values.append(value)
         editor.value = ""
         self._refresh(highlight=len(self._values) - 1)
@@ -159,6 +158,7 @@ class OrderedListEditorScreen(ModalScreen[tuple[str, ...] | None]):
             "Added to draft · Apply to save"
         )
         editor.focus()
+        return True
 
     def _remove(self) -> None:
         options = self.query_one("#draft-values", OptionList)

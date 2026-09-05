@@ -685,6 +685,9 @@ class SettingsApp(App[int]):
             self._snapshot = self._service.current
             self._refresh_setting_list()
             return
+        # The dismissed dialog restores its launch button. Move to results
+        # before saving disables editors, so Textual does not jump to Search.
+        self.query_one("#settings-list", OptionList).focus()
         self._start_mutation(key, result)
 
     def _set_editing_enabled(self, enabled: bool) -> None:
