@@ -20,8 +20,15 @@ unreleased.
   persistent last-known-good diagnostics and restrained cyan. Fixed a real
   rapid-navigation defect where rendered toggle changes could attempt to save
   another selected setting. First automated/release gate passes 638 tests with
-  two unchanged warnings. Real use, second polish and final acceptance remain
-  pending; Stage 15 is not Completed.
+  two unchanged warnings. Real-use refinements keep help's Close visible, save
+  pending list input with one Apply, return save focus to results and remove
+  repeated origin copy. Profile-driven direct visibility updates avoid repeated
+  descendant style matching without admitting hidden controls to keyboard focus.
+  Stage 15 is Completed: 43 focused TUI cases, 644 full-suite tests with two
+  unchanged warnings, reproducible artifacts and installed lifecycle pass.
+  Installed Konsole/Kitty, real canonical recovery, multilingual desktop,
+  15-minute soak and responsiveness/idle-CPU acceptance pass. No implementation
+  stage remains Active; Stage 16+ is Proposed / unauthorized.
 
 - Defined and activated exactly **Stage 14 — Desktop UX & Daily-Use Polish**
   from the user's explicit roadmap priority. The stage is bounded to observed

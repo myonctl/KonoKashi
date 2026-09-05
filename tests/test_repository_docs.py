@@ -180,13 +180,11 @@ def test_project_state_contains_the_continuation_contract() -> None:
     assert "docs/PROJECT_RENAME_LYRIFLUX.md" in content
 
 
-def test_agent_todo_authorizes_only_stage_15_polish() -> None:
+def test_agent_todo_closes_stage_15_without_authorizing_new_work() -> None:
     content = (REPOSITORY_ROOT / "AGENT_TODO.md").read_text(encoding="utf-8")
 
     assert content.startswith("# Stage 15 — Settings TUI UX & Daily-Use Polish\n")
-    assert (
-        "Status: **Active — main implementation; verification in progress**" in content
-    )
+    assert "Status: **Completed — no implementation stage Active**" in content
     assert "Stage 14 — Desktop UX & Daily-Use Polish is **Completed**" in content
     assert "Stage 16+" in content
     assert "Proposed / unauthorized" in content
@@ -200,9 +198,7 @@ def test_manifest_is_inventory_not_authority() -> None:
     )
 
     assert manifest["implementation_authority"] == "AGENT_TODO.md"
-    assert manifest["authorized_stage"] == (
-        "Stage 15 — Settings TUI UX & Daily-Use Polish"
-    )
+    assert manifest["authorized_stage"] is None
     assert manifest["proposed_stage"] == "Stage 16+ — Remaining post-v1 backlog"
     assert all((REPOSITORY_ROOT / path).is_file() for path in manifest["files"])
 
