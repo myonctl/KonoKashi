@@ -19,8 +19,10 @@ KDE/playback/resize/palette/multilingual/settings/TUI/soak/restart matrix.
 Stage 15 — Settings TUI UX & Daily-Use Polish is Completed for the existing
 `lyriflux settings`. No implementation stage is Active; Stage 16+ remains
 Proposed / unauthorized.
-The bounded post-Stage-15 whole-code engineering audit is Active; it is
-maintenance rather than Stage 16 and authorizes no new feature or release work.
+The bounded post-Stage-15 whole-code engineering audit is **Completed** with
+its frozen finding inventory, focused repairs, whole-source review, automated/
+artifact gates, and real KDE/Konsole/Kitty/interoperability evidence. It was
+maintenance rather than Stage 16 and authorized no new feature or release work.
 Stage 11 — Canonical Settings & Configuration Foundation passed its 579-test
 automated gate, exact-SHA implementation CI, and bounded real KDE/configuration/
 daily-use/restart/legacy-safety matrix on 2026-08-26. Stage 12 — GUI Settings

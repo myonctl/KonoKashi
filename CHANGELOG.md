@@ -7,7 +7,7 @@ unreleased.
 
 ### Changed
 
-- Activated the bounded post-Stage-15 whole-code engineering audit without
+- Completed the bounded post-Stage-15 whole-code engineering audit without
   authorizing Stage 16. Confirmed repairs serialize complete canonical TOML
   updates across processes, make approve/reject/reset lyric-match decisions one
   SQLite transaction, reject null-byte local URLs safely, bind sidecar size and
@@ -16,6 +16,10 @@ unreleased.
   transient journals are now private mode 0600 even under a permissive umask.
   Eight focused regression paths and
   `docs/POST_STAGE_15_ENGINEERING_AUDIT.md` record the evidence and disposition.
+  The 651-test source gate, reproducible artifacts, fresh exact-wheel lifecycle,
+  real KDE/Konsole/Kitty/interoperability checks, and final configuration/
+  database safety checks passed. Published checkpoint `5e38cb8` passed both
+  jobs in exact-SHA Actions run `33983419996`; Stage 16+ remains unauthorized.
 
 - Authorized exactly **Stage 15 — Settings TUI UX & Daily-Use Polish** for the
   existing nine-setting terminal frontend. Its implementation-first workflow
