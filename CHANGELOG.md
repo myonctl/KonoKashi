@@ -7,6 +7,16 @@ unreleased.
 
 ### Changed
 
+- Activated the bounded post-Stage-15 whole-code engineering audit without
+  authorizing Stage 16. Confirmed repairs serialize complete canonical TOML
+  updates across processes, make approve/reject/reset lyric-match decisions one
+  SQLite transaction, reject null-byte local URLs safely, bind sidecar size and
+  content checks to one nonblocking regular-file descriptor, and reject LRC
+  timing values outside the durable integer range. Fresh databases and their
+  transient journals are now private mode 0600 even under a permissive umask.
+  Eight focused regression paths and
+  `docs/POST_STAGE_15_ENGINEERING_AUDIT.md` record the evidence and disposition.
+
 - Authorized exactly **Stage 15 — Settings TUI UX & Daily-Use Polish** for the
   existing nine-setting terminal frontend. Its implementation-first workflow
   requires an installed-terminal inventory, coherent main implementation,

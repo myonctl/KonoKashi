@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -89,13 +90,24 @@ def test_missing_and_inaccessible_sidecars_are_controlled_misses(
     assert provider.load(_track(media)).status is LocalLyricsStatus.MISS
     media.with_suffix(".lrc").write_text("plain", encoding="utf-8")
 
-    def inaccessible(_path: Path) -> bytes:
+    def inaccessible(_path: Path, _flags: int) -> int:
         raise PermissionError("denied")
 
-    monkeypatch.setattr(Path, "read_bytes", inaccessible)
+    monkeypatch.setattr(os, "open", inaccessible)
     result = provider.load(_track(media))
     assert result.status is LocalLyricsStatus.MISS
     assert any("inaccessible" in item for item in result.diagnostics)
+
+
+def test_non_regular_sidecar_is_rejected_without_blocking(tmp_path: Path) -> None:
+    media = tmp_path / "song.flac"
+    sidecar = media.with_suffix(".lrc")
+    os.mkfifo(sidecar)
+
+    result = LocalSidecarLyricsProvider(lambda: NOW).load(_track(media))
+
+    assert result.status is LocalLyricsStatus.INVALID
+    assert any("regular file" in item for item in result.diagnostics)
 
 
 def test_invalid_encoding_and_malformed_sidecar_are_controlled(

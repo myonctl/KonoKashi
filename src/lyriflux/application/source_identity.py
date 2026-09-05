@@ -145,6 +145,16 @@ class SourceIdentityResolver:
             )
 
         decoded_path = unquote(encoded_path)
+        if "\0" in decoded_path:
+            return SourceResolution(
+                GenericMprisIdentity(
+                    snapshot.service_name,
+                    snapshot.metadata.track_id,
+                    None,
+                ),
+                ("rejected invalid local file URL path",),
+                ("file URL path contains a null byte; identity is session-only",),
+            )
         resolution = self._local_paths.canonicalize(decoded_path)
         evidence = [
             "decoded file URL",

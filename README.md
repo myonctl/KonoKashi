@@ -12,13 +12,15 @@ version is 1.0.0.
 
 ## Current status
 
-Stages 1 through 14 and the post-Stage-5 Chinese/Pinyin repair are **Completed**.
+Stages 1 through 15 and the post-Stage-5 Chinese/Pinyin repair are **Completed**.
 Stage 14 — Desktop UX & Daily-Use Polish closed after its 627-test automated/
 package gate, exact-SHA implementation and correction CI, and accepted real
 KDE/playback/resize/palette/multilingual/settings/TUI/soak/restart matrix.
 Stage 15 — Settings TUI UX & Daily-Use Polish is Completed for the existing
 `lyriflux settings`. No implementation stage is Active; Stage 16+ remains
 Proposed / unauthorized.
+The bounded post-Stage-15 whole-code engineering audit is Active; it is
+maintenance rather than Stage 16 and authorizes no new feature or release work.
 Stage 11 — Canonical Settings & Configuration Foundation passed its 579-test
 automated gate, exact-SHA implementation CI, and bounded real KDE/configuration/
 daily-use/restart/legacy-safety matrix on 2026-08-26. Stage 12 — GUI Settings
@@ -182,6 +184,12 @@ Supporting authorities:
   findings, severity, reproduction, verification, and disposition.
 - `docs/STAGE_14_COMPLETION.md` — completed desktop-polish implementation,
   automated/package, real KDE daily-use, soak, restart, and closure evidence.
+- `docs/STAGE_15_TUI_POLISH_INVENTORY.md` — closed evidence-backed settings-TUI
+  polish findings and second-pass disposition.
+- `docs/STAGE_15_COMPLETION.md` — completed settings-TUI polish, automated,
+  artifact, real-terminal, performance, soak, interoperability, and CI evidence.
+- `docs/POST_STAGE_15_ENGINEERING_AUDIT.md` — whole-code audit inventory,
+  bounded repairs, regressions, verification ledger, and deferred findings.
 - `docs/PRODUCT_GAP_RESEARCH.md` — bounded public product-feedback findings and
   Stage 7/future/rejected scope decisions.
 - `docs/adr/0010-stage4-lyrics-resolution.md` — accepted Stage 4 precedence,

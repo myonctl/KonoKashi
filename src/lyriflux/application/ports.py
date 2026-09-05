@@ -300,6 +300,15 @@ class LyricsMatchRepositoryPort(Protocol):
     def clear_rejections(self, source_identity: SourceIdentity) -> int:
         """Reset every rejected-document preference for one recording."""
 
+    def approve(self, source_identity: SourceIdentity, match: LyricsMatch) -> None:
+        """Atomically save an approval and clear its matching rejection."""
+
+    def reject(self, source_identity: SourceIdentity, match: LyricsMatch) -> None:
+        """Atomically save a current rejection and its durable history."""
+
+    def reset(self, source_identity: SourceIdentity) -> bool:
+        """Atomically clear the current decision and all rejection history."""
+
 
 class ProviderCacheRepositoryPort(Protocol):
     """Persist provider responses without granting them approval semantics."""

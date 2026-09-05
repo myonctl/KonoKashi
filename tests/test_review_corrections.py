@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sqlite3
 from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
@@ -35,6 +36,7 @@ from lyriflux.infrastructure.lyrics.provider_documents import (
     ProviderLyricDocumentBuilder,
 )
 from lyriflux.infrastructure.storage.bootstrap import open_storage
+from lyriflux.infrastructure.storage.errors import StorageError
 
 NOW = datetime(2026, 8, 23, 18, tzinfo=UTC)
 
@@ -263,6 +265,130 @@ def test_reject_and_choose_alternative_change_only_match_decision(
     assert service.reset_match(track)
     assert storage.lyrics_matches.get(track.source_identity) is None  # type: ignore[attr-defined]
     assert storage.lyrics_matches.rejections(track.source_identity) == ()  # type: ignore[attr-defined]
+
+
+def test_reject_rolls_back_history_when_current_decision_cannot_be_saved(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "reject-atomic.sqlite3"
+    service, storage = _service(path)
+    track = _track()
+    builder = ProviderLyricDocumentBuilder()
+    document, _ = builder.build(_candidate("current"), NOW)
+    assert document is not None
+    storage.lyrics.put(document)  # type: ignore[attr-defined]
+    original = LyricsMatch(
+        document.document_id,
+        LyricsMatchDecision.CANDIDATE,
+        ContentProvenance.PROVIDER,
+        NOW,
+        LyricsMatchConfidence.HIGH,
+    )
+    storage.lyrics_matches.put(track.source_identity, original)  # type: ignore[attr-defined]
+    with sqlite3.connect(path) as connection:
+        connection.execute(
+            """
+            CREATE TRIGGER reject_write_failure
+            BEFORE UPDATE OF decision ON lyrics_matches
+            WHEN NEW.decision = 'rejected'
+            BEGIN
+                SELECT RAISE(ABORT, 'simulated rejected-current failure');
+            END
+            """
+        )
+    resolution = LyricsResolutionResult(
+        track.source_identity,
+        LyricsResolutionStatus.FOUND_TIMED,
+        document,
+        "LRCLIB",
+        LyricsMatchConfidence.HIGH,
+    )
+
+    with pytest.raises(StorageError, match="simulated rejected-current failure"):
+        service.reject_current(track, resolution)
+
+    assert storage.lyrics_matches.get(track.source_identity) == original  # type: ignore[attr-defined]
+    assert storage.lyrics_matches.rejections(track.source_identity) == ()  # type: ignore[attr-defined]
+
+
+def test_approve_rolls_back_current_when_rejection_cannot_be_cleared(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "approve-atomic.sqlite3"
+    service, storage = _service(path)
+    track = _track()
+    builder = ProviderLyricDocumentBuilder()
+    document, _ = builder.build(_candidate("current"), NOW)
+    assert document is not None
+    storage.lyrics.put(document)  # type: ignore[attr-defined]
+    resolution = LyricsResolutionResult(
+        track.source_identity,
+        LyricsResolutionStatus.FOUND_TIMED,
+        document,
+        "LRCLIB",
+        LyricsMatchConfidence.HIGH,
+    )
+    service.reject_current(track, resolution)
+    rejected = storage.lyrics_matches.get(track.source_identity)  # type: ignore[attr-defined]
+    assert rejected is not None
+    with sqlite3.connect(path) as connection:
+        connection.execute(
+            """
+            CREATE TRIGGER approve_delete_failure
+            BEFORE DELETE ON lyrics_match_rejections
+            BEGIN
+                SELECT RAISE(ABORT, 'simulated rejection-delete failure');
+            END
+            """
+        )
+
+    with pytest.raises(StorageError, match="simulated rejection-delete failure"):
+        service.approve_current(track, resolution)
+
+    assert storage.lyrics_matches.get(track.source_identity) == rejected  # type: ignore[attr-defined]
+    assert storage.lyrics_matches.rejections(track.source_identity) == (  # type: ignore[attr-defined]
+        rejected,
+    )
+
+
+def test_reset_rolls_back_current_when_rejections_cannot_be_cleared(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "reset-atomic.sqlite3"
+    service, storage = _service(path)
+    track = _track()
+    builder = ProviderLyricDocumentBuilder()
+    document, _ = builder.build(_candidate("current"), NOW)
+    assert document is not None
+    storage.lyrics.put(document)  # type: ignore[attr-defined]
+    resolution = LyricsResolutionResult(
+        track.source_identity,
+        LyricsResolutionStatus.FOUND_TIMED,
+        document,
+        "LRCLIB",
+        LyricsMatchConfidence.HIGH,
+    )
+    service.reject_current(track, resolution)
+    rejected = storage.lyrics_matches.get(track.source_identity)  # type: ignore[attr-defined]
+    assert rejected is not None
+    with sqlite3.connect(path) as connection:
+        connection.execute(
+            """
+            CREATE TRIGGER reset_delete_failure
+            BEFORE DELETE ON lyrics_match_rejections
+            BEGIN
+                SELECT RAISE(ABORT, 'simulated reset failure');
+            END
+            """
+        )
+
+    with pytest.raises(StorageError, match="simulated reset failure"):
+        service.reset_match(track)
+
+    assert storage.lyrics_matches.get(track.source_identity) == rejected  # type: ignore[attr-defined]
+    assert storage.lyrics_matches.rejections(track.source_identity) == (  # type: ignore[attr-defined]
+        rejected,
+    )
 
 
 def test_session_only_and_stale_source_corrections_are_rejected(tmp_path: Path) -> None:

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping
+from contextlib import AbstractContextManager
 from dataclasses import dataclass, replace
 from pathlib import Path
 from threading import RLock
@@ -39,6 +40,8 @@ class SettingsConfigPort(Protocol):
     def path(self) -> Path: ...
 
     def read(self) -> Mapping[str, object]: ...
+
+    def transaction(self) -> AbstractContextManager[None]: ...
 
     def update_many(self, values: Mapping[str, SettingValue]) -> bool: ...
 
@@ -169,21 +172,23 @@ class CanonicalSettingsService:
             raise SettingsValidationError(
                 (unknown_setting_diagnostic(key, path=self.path),)
             )
-        raw = self._read_flattened()
-        raw[key] = value
-        self._validate_flattened(raw)
-        self._config.update_many({key: value})
-        result = self.reload()
+        with self._config.transaction():
+            raw = self._read_flattened()
+            raw[key] = value
+            self._validate_flattened(raw)
+            self._config.update_many({key: value})
+            result = self.reload()
         if not result.applied:
             raise SettingsValidationError(result.diagnostics)
         return result
 
     def set_many(self, values: Mapping[str, SettingValue]) -> SettingsReloadResult:
-        raw = self._read_flattened()
-        raw.update(values)
-        self._validate_flattened(raw)
-        self._config.update_many(values)
-        result = self.reload()
+        with self._config.transaction():
+            raw = self._read_flattened()
+            raw.update(values)
+            self._validate_flattened(raw)
+            self._config.update_many(values)
+            result = self.reload()
         if not result.applied:
             raise SettingsValidationError(result.diagnostics)
         return result
@@ -193,9 +198,10 @@ class CanonicalSettingsService:
             raise SettingsValidationError(
                 (unknown_setting_diagnostic(key, path=self.path),)
             )
-        self._read_flattened()
-        self._config.reset(key)
-        result = self.reload()
+        with self._config.transaction():
+            self._read_flattened()
+            self._config.reset(key)
+            result = self.reload()
         if not result.applied:
             raise SettingsValidationError(result.diagnostics)
         return result

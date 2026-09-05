@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import os
+import stat
 from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
@@ -33,17 +35,30 @@ class LocalSidecarLyricsProvider:
             return LocalLyricsResult(LocalLyricsStatus.MISS, "Local sidecar LRC")
         sidecar = Path(track.source_identity.canonical_path).with_suffix(".lrc")
         try:
-            size = sidecar.stat().st_size
-            if size > MAX_LOCAL_LYRICS_BYTES:
+            descriptor = os.open(
+                sidecar,
+                os.O_RDONLY
+                | getattr(os, "O_CLOEXEC", 0)
+                | getattr(os, "O_NONBLOCK", 0),
+            )
+            with os.fdopen(descriptor, "rb") as stream:
+                metadata = os.fstat(stream.fileno())
+                if not stat.S_ISREG(metadata.st_mode):
+                    return LocalLyricsResult(
+                        LocalLyricsStatus.INVALID,
+                        "Local sidecar LRC",
+                        diagnostics=("adjacent lyrics path is not a regular file",),
+                    )
+                raw = stream.read(MAX_LOCAL_LYRICS_BYTES + 1)
+            if len(raw) > MAX_LOCAL_LYRICS_BYTES:
                 return LocalLyricsResult(
                     LocalLyricsStatus.INVALID,
                     "Local sidecar LRC",
                     diagnostics=("adjacent lyrics file exceeds the safe size limit",),
                 )
-            raw = sidecar.read_bytes()
         except FileNotFoundError:
             return LocalLyricsResult(LocalLyricsStatus.MISS, "Local sidecar LRC")
-        except (OSError, PermissionError) as error:
+        except OSError as error:
             return LocalLyricsResult(
                 LocalLyricsStatus.MISS,
                 "Local sidecar LRC",

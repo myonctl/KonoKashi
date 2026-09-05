@@ -75,6 +75,19 @@ def test_existing_symlink_is_canonicalized_without_hashing(
     assert result.symlink_resolved is True
 
 
+def test_file_url_with_null_byte_falls_back_without_touching_filesystem() -> None:
+    paths = PredictableLocalPaths()
+    result = SourceIdentityResolver(paths).resolve(
+        snapshot("hostile", url="file://localhost/%00music/song.flac")
+    )
+
+    assert isinstance(result.identity, GenericMprisIdentity)
+    assert result.identity.persistence_scope is PersistenceScope.SESSION_ONLY
+    assert result.identity.media_url is None
+    assert paths.seen == []
+    assert "null byte" in result.warnings[0]
+
+
 def test_invalid_youtube_url_uses_limited_generic_identity() -> None:
     result = SourceIdentityResolver(PredictableLocalPaths()).resolve(
         snapshot("browser", url="https://youtu.be/not-valid")

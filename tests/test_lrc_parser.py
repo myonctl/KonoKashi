@@ -60,6 +60,13 @@ def test_malformed_offset_is_controlled() -> None:
     assert any("malformed offset" in item for item in parsed.diagnostics)
 
 
+def test_offset_outside_durable_integer_range_is_controlled() -> None:
+    parsed = parse_lyrics_text(f"[offset:{10**100}]\n[00:01.00]Line")
+
+    assert parsed.status is LyricsTextParseStatus.INVALID
+    assert any("supported integer range" in item for item in parsed.diagnostics)
+
+
 def test_out_of_order_and_duplicate_timestamps_are_preserved_and_diagnosed() -> None:
     parsed = parse_lyrics_text("[00:03.00]Third\n[00:01.00]First\n[00:01.00]Also first")
 

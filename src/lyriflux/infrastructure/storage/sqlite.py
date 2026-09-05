@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import sqlite3
 from collections.abc import Iterator, Sequence
 from contextlib import contextmanager
@@ -62,6 +63,49 @@ class SQLiteDatabase:
             raise StoragePathError(
                 f"cannot create database parent directory: {error}", path=self.path
             ) from error
+
+    def _create_private_file_if_missing(self) -> None:
+        """Pre-create a new database privately without changing existing files."""
+
+        descriptor: int | None = None
+        try:
+            descriptor = os.open(
+                self.path,
+                os.O_RDWR
+                | os.O_CREAT
+                | os.O_EXCL
+                | getattr(os, "O_CLOEXEC", 0)
+                | getattr(os, "O_NOFOLLOW", 0),
+                0o600,
+            )
+            os.fchmod(descriptor, 0o600)
+        except FileExistsError:
+            return
+        except OSError as error:
+            raise StoragePathError(
+                f"cannot create private database file: {error}", path=self.path
+            ) from error
+        finally:
+            if descriptor is not None:
+                os.close(descriptor)
+
+    def _secure_permissions(self) -> None:
+        """Restrict a validated writable database and its transient sidecars."""
+
+        for path in (
+            self.path,
+            Path(f"{self.path}-journal"),
+            Path(f"{self.path}-wal"),
+            Path(f"{self.path}-shm"),
+        ):
+            try:
+                path.chmod(0o600)
+            except FileNotFoundError:
+                continue
+            except OSError as error:
+                raise StoragePathError(
+                    f"cannot restrict database permissions: {error}", path=path
+                ) from error
 
     def _open(self, *, readonly: bool = False) -> sqlite3.Connection:
         try:
@@ -124,7 +168,9 @@ class SQLiteDatabase:
         expected_versions = tuple(range(1, len(ordered) + 1))
         if tuple(item.version for item in ordered) != expected_versions:
             raise ValueError("migrations must be sequential and start at version 1")
+        self._create_private_file_if_missing()
         if not self._history_table_exists():
+            self._secure_permissions()
             self._ensure_history_table()
         applied = self.migration_history()
         by_version = {migration.version: migration for migration in ordered}
@@ -144,9 +190,11 @@ class SQLiteDatabase:
                     "database migration history differs from this LyriFlux build",
                     path=self.path,
                 )
+        self._secure_permissions()
         current = applied[-1][0] if applied else 0
         for migration in ordered[current:]:
             self._apply_migration(migration)
+        self._secure_permissions()
         return len(ordered)
 
     def _ensure_history_table(self) -> None:

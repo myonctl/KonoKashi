@@ -13,6 +13,7 @@ from lyriflux.domain.lyrics import (
 )
 
 MAX_LYRICS_TEXT_CHARS = 2_000_000
+MAX_LYRIC_TIMESTAMP_MS = 2**63 - 1
 
 _TIMESTAMP = re.compile(r"\[(\d{1,3}):([0-5]\d)[.:](\d{2,3})\]")
 _TIMESTAMP_LIKE = re.compile(r"^\[\d{1,3}:[^\]]*\]")
@@ -93,7 +94,14 @@ def parse_lyrics_text(
                     )
                     invalid_timing = True
                 else:
-                    metadata.append((key, value))
+                    if abs(offset_ms) > MAX_LYRIC_TIMESTAMP_MS:
+                        diagnostics.append(
+                            f"line {source_position + 1}: offset metadata is outside "
+                            "the supported integer range"
+                        )
+                        invalid_timing = True
+                    else:
+                        metadata.append((key, value))
             elif key in _SUPPORTED_METADATA:
                 metadata.append((key, value))
             else:
@@ -124,6 +132,13 @@ def parse_lyrics_text(
             if start_ms < 0:
                 diagnostics.append(
                     f"line {source_position + 1}: offset produced a negative timestamp"
+                )
+                invalid_timing = True
+                continue
+            if start_ms > MAX_LYRIC_TIMESTAMP_MS:
+                diagnostics.append(
+                    f"line {source_position + 1}: timestamp is outside the supported "
+                    "integer range"
                 )
                 invalid_timing = True
                 continue

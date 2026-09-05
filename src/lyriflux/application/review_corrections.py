@@ -228,7 +228,7 @@ class ReviewCorrectionService:
         evidence = tuple(
             dict.fromkeys((*resolution.evidence, "explicitly approved by the user"))
         )
-        self._matches.put(
+        self._matches.approve(
             track.source_identity,
             LyricsMatch(
                 document.document_id,
@@ -239,7 +239,6 @@ class ReviewCorrectionService:
                 evidence,
             ),
         )
-        self._matches.delete_rejection(track.source_identity, document.document_id)
 
     def reject_current(
         self, track: ResolvedTrack, resolution: LyricsResolutionResult
@@ -259,8 +258,7 @@ class ReviewCorrectionService:
             resolution.confidence or LyricsMatchConfidence.LOW,
             evidence,
         )
-        self._matches.put_rejection(track.source_identity, rejected)
-        self._matches.put(track.source_identity, rejected)
+        self._matches.reject(track.source_identity, rejected)
 
     def choose_alternative(
         self, track: ResolvedTrack, alternative: LyricsAlternative
@@ -278,7 +276,7 @@ class ReviewCorrectionService:
             detail = "; ".join(diagnostics) or "candidate has no usable lyric content"
             raise ReviewCorrectionError(f"selected alternative is invalid: {detail}")
         self._lyrics.put(document)
-        self._matches.put(
+        self._matches.approve(
             track.source_identity,
             LyricsMatch(
                 document.document_id,
@@ -293,15 +291,12 @@ class ReviewCorrectionService:
                 ),
             ),
         )
-        self._matches.delete_rejection(track.source_identity, document.document_id)
 
     def reset_match(self, track: ResolvedTrack) -> bool:
         """Reset current and rejected recording-to-document preferences."""
 
         self._require_durable(track)
-        current_deleted = self._matches.delete(track.source_identity)
-        rejection_count = self._matches.clear_rejections(track.source_identity)
-        return current_deleted or rejection_count > 0
+        return self._matches.reset(track.source_identity)
 
     def set_display_delay(
         self,

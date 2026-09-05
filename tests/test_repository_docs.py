@@ -44,6 +44,9 @@ REQUIRED_DOCUMENTS = (
     "docs/STAGE_13_DECISION.md",
     "docs/STAGE_13_COMPLETION.md",
     "docs/STAGE_14_POLISH_INVENTORY.md",
+    "docs/STAGE_15_TUI_POLISH_INVENTORY.md",
+    "docs/STAGE_15_COMPLETION.md",
+    "docs/POST_STAGE_15_ENGINEERING_AUDIT.md",
     "docs/PRODUCT_GAP_RESEARCH.md",
     "docs/adr/0011-offline-romanization-routing.md",
     "docs/adr/0010-stage4-lyrics-resolution.md",
@@ -180,16 +183,16 @@ def test_project_state_contains_the_continuation_contract() -> None:
     assert "docs/PROJECT_RENAME_LYRIFLUX.md" in content
 
 
-def test_agent_todo_closes_stage_15_without_authorizing_new_work() -> None:
+def test_agent_todo_authorizes_only_the_post_stage_15_audit() -> None:
     content = (REPOSITORY_ROOT / "AGENT_TODO.md").read_text(encoding="utf-8")
 
-    assert content.startswith("# Stage 15 — Settings TUI UX & Daily-Use Polish\n")
-    assert "Status: **Completed — no implementation stage Active**" in content
-    assert "Stage 14 — Desktop UX & Daily-Use Polish is **Completed**" in content
+    assert content.startswith("# Post-Stage-15 Whole-Code Engineering Audit\n")
+    assert "This work is **not Stage 16**" in content
+    assert "Stages 1\N{EN DASH}15 remain historically Completed" in content
     assert "Stage 16+" in content
     assert "Proposed / unauthorized" in content
-    assert "full\nlyrics TUI" in content
-    assert "LyriFlux Web" in content
+    assert "public-release" in content
+    assert "history-cleanup" in content
 
 
 def test_manifest_is_inventory_not_authority() -> None:

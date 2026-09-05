@@ -57,43 +57,7 @@ class SQLiteLyricsMatchRepository:
             source_id = identity_id(connection, source_identity, create=True)
             if source_id is None:
                 raise InvalidStoredDataError("stable source identity was not stored")
-            connection.execute(
-                """
-                INSERT INTO lyrics_matches(
-                    source_identity_id, document_id, decision, provenance, updated_at,
-                    match_confidence
-                ) VALUES (?, ?, ?, ?, ?, ?)
-                ON CONFLICT(source_identity_id) DO UPDATE SET
-                    document_id = excluded.document_id,
-                    decision = excluded.decision,
-                    provenance = excluded.provenance,
-                    updated_at = excluded.updated_at,
-                    match_confidence = excluded.match_confidence
-                """,
-                (
-                    source_id,
-                    match.document_id,
-                    match.decision.value,
-                    match.provenance.value,
-                    match.updated_at.astimezone(UTC).isoformat(),
-                    match.confidence.value,
-                ),
-            )
-            connection.execute(
-                "DELETE FROM lyrics_match_evidence WHERE source_identity_id = ?",
-                (source_id,),
-            )
-            connection.executemany(
-                """
-                INSERT INTO lyrics_match_evidence(
-                    source_identity_id, position, evidence
-                ) VALUES (?, ?, ?)
-                """,
-                (
-                    (source_id, position, evidence)
-                    for position, evidence in enumerate(match.evidence)
-                ),
-            )
+            self._put_current(connection, source_id, match)
 
     def delete(self, source_identity: SourceIdentity) -> bool:
         """Explicitly reset one match decision."""
@@ -159,43 +123,7 @@ class SQLiteLyricsMatchRepository:
             source_id = identity_id(connection, source_identity, create=True)
             if source_id is None:
                 raise InvalidStoredDataError("stable source identity was not stored")
-            connection.execute(
-                """
-                INSERT INTO lyrics_match_rejections(
-                    source_identity_id, document_id, provenance, rejected_at,
-                    match_confidence
-                ) VALUES (?, ?, ?, ?, ?)
-                ON CONFLICT(source_identity_id, document_id) DO UPDATE SET
-                    provenance = excluded.provenance,
-                    rejected_at = excluded.rejected_at,
-                    match_confidence = excluded.match_confidence
-                """,
-                (
-                    source_id,
-                    match.document_id,
-                    match.provenance.value,
-                    match.updated_at.astimezone(UTC).isoformat(),
-                    match.confidence.value,
-                ),
-            )
-            connection.execute(
-                """
-                DELETE FROM lyrics_match_rejection_evidence
-                WHERE source_identity_id = ? AND document_id = ?
-                """,
-                (source_id, match.document_id),
-            )
-            connection.executemany(
-                """
-                INSERT INTO lyrics_match_rejection_evidence(
-                    source_identity_id, document_id, position, evidence
-                ) VALUES (?, ?, ?, ?)
-                """,
-                (
-                    (source_id, match.document_id, position, evidence)
-                    for position, evidence in enumerate(match.evidence)
-                ),
-            )
+            self._put_rejection(connection, source_id, match)
 
     def delete_rejection(
         self, source_identity: SourceIdentity, document_id: str
@@ -230,6 +158,145 @@ class SQLiteLyricsMatchRepository:
                 (source_id,),
             )
             return cursor.rowcount
+
+    def approve(self, source_identity: SourceIdentity, match: LyricsMatch) -> None:
+        """Save an approval and clear a prior rejection in one transaction."""
+
+        self._validate(source_identity, match)
+        if match.decision is not LyricsMatchDecision.APPROVED:
+            raise StorageValidationError(
+                "approval operation requires an approved match"
+            )
+        with self._database.transaction() as connection:
+            source_id = identity_id(connection, source_identity, create=True)
+            if source_id is None:
+                raise InvalidStoredDataError("stable source identity was not stored")
+            self._put_current(connection, source_id, match)
+            connection.execute(
+                """
+                DELETE FROM lyrics_match_rejections
+                WHERE source_identity_id = ? AND document_id = ?
+                """,
+                (source_id, match.document_id),
+            )
+
+    def reject(self, source_identity: SourceIdentity, match: LyricsMatch) -> None:
+        """Save current and historical rejection state in one transaction."""
+
+        self._validate(source_identity, match)
+        if match.decision is not LyricsMatchDecision.REJECTED:
+            raise StorageValidationError(
+                "rejection operation requires a rejected match"
+            )
+        with self._database.transaction() as connection:
+            source_id = identity_id(connection, source_identity, create=True)
+            if source_id is None:
+                raise InvalidStoredDataError("stable source identity was not stored")
+            self._put_rejection(connection, source_id, match)
+            self._put_current(connection, source_id, match)
+
+    def reset(self, source_identity: SourceIdentity) -> bool:
+        """Clear all match preference state in one transaction."""
+
+        with self._database.transaction() as connection:
+            source_id = identity_id(connection, source_identity, create=False)
+            if source_id is None:
+                return False
+            current = connection.execute(
+                "DELETE FROM lyrics_matches WHERE source_identity_id = ?", (source_id,)
+            )
+            rejections = connection.execute(
+                """
+                DELETE FROM lyrics_match_rejections
+                WHERE source_identity_id = ?
+                """,
+                (source_id,),
+            )
+            return current.rowcount > 0 or rejections.rowcount > 0
+
+    @staticmethod
+    def _put_current(
+        connection: sqlite3.Connection, source_id: int, match: LyricsMatch
+    ) -> None:
+        connection.execute(
+            """
+            INSERT INTO lyrics_matches(
+                source_identity_id, document_id, decision, provenance, updated_at,
+                match_confidence
+            ) VALUES (?, ?, ?, ?, ?, ?)
+            ON CONFLICT(source_identity_id) DO UPDATE SET
+                document_id = excluded.document_id,
+                decision = excluded.decision,
+                provenance = excluded.provenance,
+                updated_at = excluded.updated_at,
+                match_confidence = excluded.match_confidence
+            """,
+            (
+                source_id,
+                match.document_id,
+                match.decision.value,
+                match.provenance.value,
+                match.updated_at.astimezone(UTC).isoformat(),
+                match.confidence.value,
+            ),
+        )
+        connection.execute(
+            "DELETE FROM lyrics_match_evidence WHERE source_identity_id = ?",
+            (source_id,),
+        )
+        connection.executemany(
+            """
+            INSERT INTO lyrics_match_evidence(
+                source_identity_id, position, evidence
+            ) VALUES (?, ?, ?)
+            """,
+            (
+                (source_id, position, evidence)
+                for position, evidence in enumerate(match.evidence)
+            ),
+        )
+
+    @staticmethod
+    def _put_rejection(
+        connection: sqlite3.Connection, source_id: int, match: LyricsMatch
+    ) -> None:
+        connection.execute(
+            """
+            INSERT INTO lyrics_match_rejections(
+                source_identity_id, document_id, provenance, rejected_at,
+                match_confidence
+            ) VALUES (?, ?, ?, ?, ?)
+            ON CONFLICT(source_identity_id, document_id) DO UPDATE SET
+                provenance = excluded.provenance,
+                rejected_at = excluded.rejected_at,
+                match_confidence = excluded.match_confidence
+            """,
+            (
+                source_id,
+                match.document_id,
+                match.provenance.value,
+                match.updated_at.astimezone(UTC).isoformat(),
+                match.confidence.value,
+            ),
+        )
+        connection.execute(
+            """
+            DELETE FROM lyrics_match_rejection_evidence
+            WHERE source_identity_id = ? AND document_id = ?
+            """,
+            (source_id, match.document_id),
+        )
+        connection.executemany(
+            """
+            INSERT INTO lyrics_match_rejection_evidence(
+                source_identity_id, document_id, position, evidence
+            ) VALUES (?, ?, ?, ?)
+            """,
+            (
+                (source_id, match.document_id, position, evidence)
+                for position, evidence in enumerate(match.evidence)
+            ),
+        )
 
     @staticmethod
     def _validate(source_identity: SourceIdentity, match: LyricsMatch) -> None:

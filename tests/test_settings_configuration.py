@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
+from threading import Event, Thread
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
@@ -249,7 +250,68 @@ def test_interrupted_atomic_replace_retains_original(
         service.set("desktop.lyrics.selectable", True)
 
     assert path.read_text(encoding="utf-8") == original
-    assert tuple(tmp_path.glob(".config.toml.*")) == ()
+    assert tuple(tmp_path.glob(".config.toml.*.tmp")) == ()
+
+
+def test_concurrent_services_do_not_lose_independent_updates(tmp_path: Path) -> None:
+    path = tmp_path / "config.toml"
+    first_read = Event()
+    release_first = Event()
+    second_done = Event()
+    errors: list[BaseException] = []
+
+    class PausingTomlSettingsFile(TomlSettingsFile):
+        paused = False
+
+        def _editable_document(self):  # type: ignore[no-untyped-def]
+            document = super()._editable_document()
+            if not self.paused:
+                self.paused = True
+                first_read.set()
+                if not release_first.wait(2):
+                    raise TimeoutError(
+                        "concurrent settings test did not release writer"
+                    )
+            return document
+
+    first = CanonicalSettingsService(PausingTomlSettingsFile(path))
+    second = CanonicalSettingsService(TomlSettingsFile(path))
+    assert first.initialize().applied
+    assert second.initialize().applied
+
+    def update_first() -> None:
+        try:
+            first.set("lyrics.display.translated", True)
+        except BaseException as error:
+            errors.append(error)
+
+    def update_second() -> None:
+        try:
+            second.set("desktop.lyrics.selectable", True)
+        except BaseException as error:
+            errors.append(error)
+        finally:
+            second_done.set()
+
+    first_thread = Thread(target=update_first)
+    second_thread = Thread(target=update_second)
+    first_thread.start()
+    assert first_read.wait(1)
+    second_thread.start()
+    try:
+        assert not second_done.wait(0.1)
+    finally:
+        release_first.set()
+        first_thread.join(2)
+        second_thread.join(2)
+
+    assert not first_thread.is_alive()
+    assert not second_thread.is_alive()
+    assert errors == []
+    snapshot = _service(path).current
+    assert snapshot.representation_display.show_translated
+    assert snapshot.desktop_interaction.allow_lyric_selection
+    assert stat_mode(tmp_path / ".config.toml.lock") == 0o600
 
 
 def test_oversized_config_is_rejected_without_parsing(tmp_path: Path) -> None:

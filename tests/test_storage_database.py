@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import os
 import sqlite3
+import stat
 from pathlib import Path
 
 import pytest
@@ -52,17 +54,27 @@ def test_brand_new_unicode_database_migrates_in_order_and_reopens_noop(
     path = tmp_path / "Unicode space 日本語" / "lyrics data.sqlite3"
     database = SQLiteDatabase(path)
 
-    assert database.initialize() == CURRENT_SCHEMA_VERSION
+    previous_umask = os.umask(0)
+    try:
+        assert database.initialize() == CURRENT_SCHEMA_VERSION
+    finally:
+        os.umask(previous_umask)
+    assert stat.S_IMODE(path.stat().st_mode) == 0o600
+    with database.transaction() as connection:
+        connection.execute("CREATE TABLE private_mode_probe(value INTEGER)")
+        assert stat.S_IMODE(Path(f"{path}-journal").stat().st_mode) == 0o600
     first_history = database.migration_history()
     assert [item[0] for item in first_history] == list(
         range(1, CURRENT_SCHEMA_VERSION + 1)
     )
+    path.chmod(0o644)
 
     def unexpected_transaction() -> None:
         raise AssertionError("current-schema initialization opened a write transaction")
 
     monkeypatch.setattr(database, "transaction", unexpected_transaction)
     assert database.initialize() == CURRENT_SCHEMA_VERSION
+    assert stat.S_IMODE(path.stat().st_mode) == 0o600
     assert database.migration_history() == first_history
 
 
@@ -421,11 +433,13 @@ def test_corrupt_database_is_reported_and_never_deleted(tmp_path: Path) -> None:
     path = tmp_path / "corrupt.sqlite3"
     payload = b"this is not sqlite"
     path.write_bytes(payload)
+    original_mode = stat.S_IMODE(path.stat().st_mode)
 
     with pytest.raises(StorageCorruptError):
         SQLiteDatabase(path).initialize()
 
     assert path.read_bytes() == payload
+    assert stat.S_IMODE(path.stat().st_mode) == original_mode
 
 
 def test_locked_database_has_bounded_controlled_failure(tmp_path: Path) -> None:
