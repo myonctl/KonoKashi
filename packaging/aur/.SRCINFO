@@ -1,0 +1,30 @@
+pkgbase = lyriflux
+	pkgdesc = Local-first synchronized multilingual lyrics for Linux MPRIS players
+	pkgver = 1.0.0
+	pkgrel = 1
+	url = https://github.com/myonctl/LyriFlux
+	arch = any
+	license = LicenseRef-Proprietary
+	checkdepends = python-pytest
+	makedepends = python-build
+	makedepends = python-installer
+	makedepends = python-setuptools
+	makedepends = python-wheel
+	depends = hicolor-icon-theme
+	depends = python>=3.11
+	depends = pyside6>=6.8.2
+	depends = python-cutlet>=0.5.2
+	depends = python-fugashi>=1.5.2
+	depends = python-httpx>=0.28.1
+	depends = python-mutagen>=1.47
+	depends = python-pypinyin>=0.55
+	depends = python-pyicu>=2.16.2
+	depends = python-textual>=8.2.8
+	depends = python-tomlkit>=0.15.1
+	depends = python-unidic-lite>=1.0.8
+	optdepends = playerctl: optional MPRIS debugging
+	optdepends = pipewire: optional audio timing diagnostics
+	source = lyriflux-1.0.0.tar.gz
+	sha256sums = 33fc7740a3a5e4c5e92104ac4a21671e1d8eaa45f510ceb59d1363a1db83c9a4
+
+pkgname = lyriflux

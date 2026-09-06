@@ -7,18 +7,16 @@ body:
   - type: markdown
     attributes:
       value: |
-        Feature requests inform planning. They do not authorize implementation
-        or override the current stage in AGENT_TODO.md.
+        Describe the user problem and the smallest useful outcome. Please keep
+        proposals consistent with LyriFlux's local-first privacy boundary.
   - type: checkboxes
     id: checks
     attributes:
       label: Preflight
       options:
-        - label: I searched the product specification, roadmap, backlog, and issues.
+        - label: I searched the roadmap, backlog, and existing issues.
           required: true
         - label: I removed secrets and unnecessary personal information.
-          required: true
-        - label: I understand that this request does not authorize implementation.
           required: true
   - type: textarea
     id: problem
@@ -41,8 +39,8 @@ body:
   - type: textarea
     id: product_fit
     attributes:
-      label: Product and architecture fit
-      description: Link related specification, roadmap, backlog, or ADR sections.
+      label: Product fit
+      description: Link related roadmap, backlog, or existing issue sections.
   - type: textarea
     id: privacy
     attributes:

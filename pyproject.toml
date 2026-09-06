@@ -12,7 +12,7 @@ license = "LicenseRef-Proprietary"
 license-files = ["LICENSE"]
 authors = [{ name = "LyriFlux contributors" }]
 classifiers = [
-    "Development Status :: 5 - Production/Stable",
+    "Development Status :: 3 - Alpha",
     "Environment :: X11 Applications :: Qt",
     "Operating System :: POSIX :: Linux",
     "Private :: Do Not Upload",
@@ -36,6 +36,11 @@ dependencies = [
     "unidic-lite>=1.0.8,<2",
 ]
 
+[project.urls]
+Homepage = "https://github.com/myonctl/LyriFlux"
+Issues = "https://github.com/myonctl/LyriFlux/issues"
+Source = "https://github.com/myonctl/LyriFlux"
+
 [project.optional-dependencies]
 dev = [
     "build>=1.3,<2",
@@ -52,7 +57,7 @@ lyriflux = "lyriflux.cli:main"
 package-dir = { "" = "src" }
 
 [tool.setuptools.package-data]
-lyriflux = ["resources/*.desktop.in", "resources/*.svg"]
+lyriflux = ["resources/*.desktop.in", "resources/*.metainfo.xml", "resources/*.svg"]
 
 [tool.setuptools.packages.find]
 where = ["src"]

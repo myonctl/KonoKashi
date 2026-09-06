@@ -46,6 +46,8 @@ def test_distribution_and_console_entry_point_are_canonically_named() -> None:
 
     assert project["name"] == "lyriflux"
     assert project["scripts"] == {"lyriflux": "lyriflux.cli:main"}
+    assert isinstance(project["dependencies"], list)
+    assert project["urls"]["Source"] == "https://github.com/myonctl/LyriFlux"
     assert "lyricflow" not in project["scripts"]
 
 
@@ -53,4 +55,5 @@ def test_packaged_desktop_resources_use_current_application_identity() -> None:
     resources = files("lyriflux").joinpath("resources")
 
     assert resources.joinpath("io.github.myonctl.LyriFlux.desktop.in").is_file()
+    assert resources.joinpath("io.github.myonctl.LyriFlux.metainfo.xml").is_file()
     assert resources.joinpath("io.github.myonctl.LyriFlux.svg").is_file()

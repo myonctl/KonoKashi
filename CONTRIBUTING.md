@@ -1,78 +1,68 @@
 # Contributing to LyriFlux
 
-LyriFlux is a private, pre-alpha project intended to become public open source
-after its licensing, security, privacy, packaging, and release prerequisites are
-resolved. The current `LICENSE` grants no open-source permissions. Repository
-access does not change that license status.
+Thank you for considering a contribution. LyriFlux is Linux-first and under
+active development; focused bug fixes, tests, documentation improvements, and
+well-scoped proposals are welcome.
 
-## Before making a change
-
-Start from a clean checkout and follow this reading order:
-
-1. `PROJECT_STATE.md` — current reality and exact continuation point.
-2. `AGENTS.md` — durable repository rules.
-3. `AGENT_TODO.md` — the only implementation authority.
-4. Relevant sections of `docs/PRODUCT_SPEC.md`, `docs/ARCHITECTURE.md`,
-   `docs/ROADMAP.md`, and `docs/TESTING.md`.
-5. Relevant decisions in `docs/adr/`.
-6. Existing implementation, tests, fixtures, Git history, and current diff.
-
-An issue, roadmap entry, backlog item, pull request, source draft, or discussion
-does not authorize implementation. Do not begin a Proposed stage until the user
-explicitly authorizes it through `AGENT_TODO.md`.
+Until an open-source license is selected, source access does not grant permission
+to redistribute or publish modified copies. This policy will be updated before
+the repository becomes public.
 
 ## Development setup
 
-LyriFlux requires Python 3.11 or newer. From the repository root:
+Use Linux and Python 3.11 or newer. From a fresh checkout:
 
 ```bash
 python -m venv .venv
-.venv/bin/python -m pip install ".[dev]"
+.venv/bin/python -m pip install --upgrade pip
+.venv/bin/python -m pip install -e '.[dev]'
+.venv/bin/lyriflux doctor
 ```
 
-Never commit `.venv`, caches, local databases, music, lyrics caches, credentials,
-tokens, machine configuration, or reproducible build output.
+Qt needs a working EGL/OpenGL runtime for desktop use. Building PyICU from source
+may require ICU development headers, `pkg-config`, and a C++ compiler.
 
-## Making changes
+## Making a change
 
-- Keep changes coherent and inside the authorized scope.
-- Do not silently expand scope or implement backlog features opportunistically.
-- Preserve the dependency direction and replaceable boundaries documented in
-  `docs/ARCHITECTURE.md`.
-- Add or update tests with every behavior change. Keep regression tests and
-  sanitized evidence fixtures permanently when practical.
-- Do not weaken tests, linting, formatting, or type checking to obtain a pass.
-- Document any new dependency according to `docs/DEPENDENCIES.md` and
-  `AGENTS.md` before adding it.
-- Record significant architecture or workflow decisions in an ADR. Never
-  silently reverse an Accepted ADR.
-- Follow `docs/DOCUMENTATION_STYLE.md` and leave an exact handoff according to
-  `docs/DEVELOPMENT_WORKFLOW.md`.
+- Open or reference an issue before a large behavioral or architectural change.
+- Keep the pull request focused; roadmap entries are context, not blanket
+  authorization to implement adjacent features.
+- Preserve the boundaries in `docs/ARCHITECTURE.md` and the privacy rules in
+  `AGENTS.md`.
+- Add a regression test for every bug fix and proportionate tests for behavior
+  changes.
+- Use synthetic or deliberately sanitized fixtures. Never submit credentials,
+  personal playback history, private paths, complete copyrighted lyrics, or
+  unrelated diagnostic data.
+- Update user documentation when installation, configuration, behavior, or known
+  limitations change.
+- Discuss a new runtime dependency before adding it and document the decision in
+  `docs/DEPENDENCIES.md`.
 
 ## Quality gate
 
-Run the complete gate from the repository root:
+Run from the repository root:
 
 ```bash
-.venv/bin/python -m pip install --no-build-isolation --no-deps --force-reinstall .
 .venv/bin/python -m pytest
 .venv/bin/python -m ruff check .
 .venv/bin/python -m ruff format --check .
 .venv/bin/python -m mypy src
-.venv/bin/lyriflux --version
-.venv/bin/lyriflux doctor
+.venv/bin/python scripts/build_release.py --output-dir /tmp/lyriflux-dist
 ```
 
-Record exact results. A configured CI workflow or passing subset is not proof
-that the complete gate passed.
+For a focused documentation-only change, explain which checks were run and why
+the remainder were unnecessary. CI remains authoritative for the supported
+Python matrix and reproducible artifact job.
 
 ## Pull requests
 
-Keep pull requests reviewable and explain scope, authorization, behavior,
-tests, manual verification, documentation, dependencies, privacy impact, and
-known limitations. Significant architecture changes require an ADR in the same
-change or an already Accepted ADR that authorizes the direction.
+Describe the problem, behavior change, tests, manual verification, privacy
+impact, dependency changes, and known limitations. Significant architectural
+changes should include an ADR or explicitly explain why no durable decision is
+needed.
 
-Do not include secrets or unnecessary personal information in issues, pull
-requests, logs, screenshots, fixtures, or commit history. Follow `SECURITY.md`
-for sensitive reports.
+Review feedback may request smaller commits or additional evidence. Do not weaken
+tests, linting, formatting, typing, or security checks to obtain a green result.
+
+Use `SECURITY.md` for vulnerabilities rather than opening a public issue.

@@ -1,0 +1,9 @@
+cutlet==0.5.2
+fugashi==1.5.2
+httpx==0.28.1
+mutagen==1.48.1
+pypinyin==0.55.0
+PyICU==2.16.2
+textual==8.2.8
+tomlkit==0.15.1
+unidic-lite==1.0.8

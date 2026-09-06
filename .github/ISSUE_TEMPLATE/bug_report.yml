@@ -18,8 +18,6 @@ body:
           required: true
         - label: I removed secrets and unnecessary personal information.
           required: true
-        - label: I understand that an issue does not authorize a roadmap stage.
-          required: true
   - type: input
     id: revision
     attributes:
@@ -61,7 +59,10 @@ body:
     id: evidence
     attributes:
       label: Sanitized logs or evidence
-      description: Paste only the minimum sanitized output needed to investigate.
+      description: >-
+        Paste only the minimum sanitized output needed to investigate. You can
+        generate a privacy-bounded report with `lyriflux diagnostics export`,
+        but review it before sharing.
       render: shell
   - type: textarea
     id: additional

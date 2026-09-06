@@ -1,4 +1,4 @@
-"""Regression tests for the repository continuation contract."""
+"""Regression tests for the public repository surface."""
 
 from __future__ import annotations
 
@@ -7,11 +7,9 @@ from pathlib import Path
 
 REPOSITORY_ROOT = Path(__file__).parents[1]
 
-REQUIRED_DOCUMENTS = (
+PUBLIC_DOCUMENTS = (
     "README.md",
-    "PROJECT_STATE.md",
     "AGENTS.md",
-    "AGENT_TODO.md",
     "BACKLOG.md",
     "CHANGELOG.md",
     "CONTRIBUTING.md",
@@ -20,101 +18,72 @@ REQUIRED_DOCUMENTS = (
     "docs/ARCHITECTURE.md",
     "docs/ROADMAP.md",
     "docs/TESTING.md",
-    "docs/MANUAL_TEST_LOG.md",
     "docs/DEPENDENCIES.md",
     "docs/RELEASE.md",
-    "docs/PROJECT_RENAME_LYRIFLUX.md",
     "docs/REFERENCES.md",
     "docs/MULTILINGUAL_SUPPORT.md",
-    "docs/DOCUMENTATION_STYLE.md",
-    "docs/DEVELOPMENT_WORKFLOW.md",
-    "docs/STAGE_COMPLETION_TEMPLATE.md",
-    "docs/STAGE_1_COMPLETION.md",
-    "docs/STAGE_2_COMPLETION.md",
-    "docs/STAGE_3_COMPLETION.md",
-    "docs/STAGE_4_COMPLETION.md",
-    "docs/STAGE_5_COMPLETION.md",
-    "docs/STAGE_6_COMPLETION.md",
-    "docs/STAGE_7_COMPLETION.md",
-    "docs/STAGE_8_COMPLETION.md",
-    "docs/STAGE_9_COMPLETION.md",
-    "docs/STAGE_10_COMPLETION.md",
-    "docs/STAGE_11_COMPLETION.md",
-    "docs/STAGE_12_COMPLETION.md",
-    "docs/STAGE_13_DECISION.md",
-    "docs/STAGE_13_COMPLETION.md",
-    "docs/STAGE_14_POLISH_INVENTORY.md",
-    "docs/STAGE_15_TUI_POLISH_INVENTORY.md",
+)
+
+MAINTAINER_ONLY_PATHS = (
+    "AGENT_TODO.md",
+    "CODEX_MASTER_PROMPT.md",
+    "PLAN_MANIFEST.json",
+    "PROJECT_STATE.md",
+    "docs/MANUAL_TEST_LOG.md",
     "docs/STAGE_15_COMPLETION.md",
-    "docs/POST_STAGE_15_ENGINEERING_AUDIT.md",
-    "docs/PRODUCT_GAP_RESEARCH.md",
-    "docs/adr/0011-offline-romanization-routing.md",
-    "docs/adr/0010-stage4-lyrics-resolution.md",
-    "docs/adr/0013-python-first-hybrid-architecture.md",
-    "docs/adr/0014-frontend-neutral-settings-and-themes.md",
-    "docs/adr/0016-chinese-pinyin-regression-repair.md",
-    "docs/adr/0017-linux-v1-packaging.md",
 )
 
-REQUIRED_EVIDENCE_FIXTURES = (
-    "tests/fixtures/mpris/firefox_native.json",
-    "tests/fixtures/mpris/plasma_browser_integration.json",
-)
-
-REQUIRED_GITHUB_COMMUNITY_FILES = (
+REQUIRED_GITHUB_FILES = (
     ".github/ISSUE_TEMPLATE/bug_report.yml",
     ".github/ISSUE_TEMPLATE/feature_request.yml",
     ".github/pull_request_template.md",
     ".github/workflows/ci.yml",
 )
 
-PROJECT_STATE_HEADINGS = (
-    "## What currently works",
-    "## What does not exist yet",
-    "## Current architecture summary",
-    "## Supported/tested environments",
-    "## Automated test status",
-    "## Manual verification status",
-    "## Known issues",
-    "## Current blockers",
-    "## Important accepted decisions",
-    "## Current repository path",
-    "## Continue here",
-)
 
-COMPLETION_HEADINGS = (
-    "## Scope completed",
-    "## Files changed",
-    "## Behavior implemented",
-    "## Architecture decisions",
-    "## Dependencies added/removed",
-    "## Database/schema changes",
-    "## Tests added",
-    "## Automated checks run",
-    "## Manual verification",
-    "## Known limitations",
-    "## Bugs / technical debt",
-    "## Documentation updated",
-    "## Out-of-scope work intentionally not done",
-    "## Git state / commit",
-    "## Handoff",
-)
-
-
-def test_required_repository_documents_exist() -> None:
+def test_public_repository_documents_exist() -> None:
     missing = [
         relative_path
-        for relative_path in REQUIRED_DOCUMENTS
+        for relative_path in (*PUBLIC_DOCUMENTS, *REQUIRED_GITHUB_FILES)
         if not (REPOSITORY_ROOT / relative_path).is_file()
     ]
 
     assert missing == []
 
 
+def test_maintainer_only_documents_are_not_in_public_tree() -> None:
+    present = [
+        relative_path
+        for relative_path in MAINTAINER_ONLY_PATHS
+        if (REPOSITORY_ROOT / relative_path).exists()
+    ]
+
+    assert present == []
+    assert "/.maintainer-private/" in (REPOSITORY_ROOT / ".gitignore").read_text(
+        encoding="utf-8"
+    )
+
+
+def test_public_docs_do_not_embed_maintainer_home_path() -> None:
+    private_marker = "/" + "home/" + "myon"
+    offending = [
+        relative_path
+        for relative_path in PUBLIC_DOCUMENTS
+        if private_marker
+        in (REPOSITORY_ROOT / relative_path).read_text(encoding="utf-8")
+    ]
+
+    assert offending == []
+
+
 def test_sanitized_mpris_evidence_fixtures_are_preserved() -> None:
+    paths = (
+        "tests/fixtures/mpris/firefox_native.json",
+        "tests/fixtures/mpris/plasma_browser_integration.json",
+    )
     fixtures = [
         json.loads((REPOSITORY_ROOT / path).read_text(encoding="utf-8"))
-        for path in REQUIRED_EVIDENCE_FIXTURES
+        for path in paths
     ]
 
     assert [fixture["service"] for fixture in fixtures] == [
@@ -122,16 +91,6 @@ def test_sanitized_mpris_evidence_fixtures_are_preserved() -> None:
         "plasma-browser-integration",
     ]
     assert all("/home/" not in json.dumps(fixture) for fixture in fixtures)
-
-
-def test_github_community_and_ci_files_exist() -> None:
-    missing = [
-        relative_path
-        for relative_path in REQUIRED_GITHUB_COMMUNITY_FILES
-        if not (REPOSITORY_ROOT / relative_path).is_file()
-    ]
-
-    assert missing == []
 
 
 def test_github_actions_runs_the_required_quality_gate() -> None:
@@ -149,78 +108,73 @@ def test_github_actions_runs_the_required_quality_gate() -> None:
     assert all(command in content for command in required_commands)
 
 
-def test_git_attribution_policy_is_durable() -> None:
-    agents = (REPOSITORY_ROOT / "AGENTS.md").read_text(encoding="utf-8")
-    workflow = (REPOSITORY_ROOT / "docs/DEVELOPMENT_WORKFLOW.md").read_text(
-        encoding="utf-8"
-    )
-    combined = f"{agents}\n{workflow}"
-
-    required_policy = (
-        "git config user.name",
-        "git config user.email",
-        "gh auth status",
-        "myonctl",
-        "Co-authored-by:",
-        "CI-generated commits",
-    )
-
-    assert all(rule in combined for rule in required_policy)
-
-
-def test_readme_indexes_the_continuation_documents() -> None:
+def test_readme_is_product_first_and_honest_about_license() -> None:
     content = (REPOSITORY_ROOT / "README.md").read_text(encoding="utf-8")
 
-    assert all(relative_path in content for relative_path in REQUIRED_DOCUMENTS[1:])
+    assert content.startswith("# LyriFlux\n")
+    assert "usable and under active development" in content
+    assert "## Installation from source" in content
+    assert "No open-source license has been selected" in content
+    assert "AGENT_TODO.md" not in content
 
 
-def test_project_state_contains_the_continuation_contract() -> None:
-    content = (REPOSITORY_ROOT / "PROJECT_STATE.md").read_text(encoding="utf-8")
+def test_runtime_source_does_not_embed_a_maintainer_home_path() -> None:
+    private_marker = "/" + "home/" + "myon"
+    offending = [
+        str(path.relative_to(REPOSITORY_ROOT))
+        for path in (REPOSITORY_ROOT / "src").rglob("*.py")
+        if private_marker in path.read_text(encoding="utf-8")
+    ]
 
-    assert content.startswith("# LyriFlux Project State\n")
-    assert all(heading in content for heading in PROJECT_STATE_HEADINGS)
-    assert "/home/example/Documents/LyriFlux/" in content
-    assert "docs/PROJECT_RENAME_LYRIFLUX.md" in content
-
-
-def test_agent_todo_authorizes_only_the_post_stage_15_audit() -> None:
-    content = (REPOSITORY_ROOT / "AGENT_TODO.md").read_text(encoding="utf-8")
-
-    assert content.startswith("# Post-Stage-15 Whole-Code Engineering Audit\n")
-    assert "This work is **not Stage 16**" in content
-    assert "Stages 1\N{EN DASH}15 remain historically Completed" in content
-    assert "Stage 16+" in content
-    assert "Proposed / unauthorized" in content
-    assert "public-release" in content
-    assert "history-cleanup" in content
+    assert offending == []
 
 
-def test_manifest_is_inventory_not_authority() -> None:
-    manifest = json.loads(
-        (REPOSITORY_ROOT / "PLAN_MANIFEST.json").read_text(encoding="utf-8")
-    )
+def test_appstream_metadata_matches_the_desktop_identity() -> None:
+    metadata = (
+        REPOSITORY_ROOT
+        / "src/lyriflux/resources/io.github.myonctl.LyriFlux.metainfo.xml"
+    ).read_text(encoding="utf-8")
 
-    assert manifest["implementation_authority"] == "AGENT_TODO.md"
-    assert manifest["authorized_stage"] is None
-    assert manifest["proposed_stage"] == "Stage 16+ — Remaining post-v1 backlog"
-    assert all((REPOSITORY_ROOT / path).is_file() for path in manifest["files"])
+    assert "<id>io.github.myonctl.LyriFlux</id>" in metadata
+    assert (
+        '<launchable type="desktop-id">io.github.myonctl.LyriFlux.desktop</launchable>'
+    ) in metadata
+    assert "<metadata_license>CC0-1.0</metadata_license>" in metadata
+    assert "<project_license>LicenseRef-proprietary</project_license>" in metadata
 
 
-def test_stage_completion_template_keeps_every_required_section() -> None:
-    content = (REPOSITORY_ROOT / "docs/STAGE_COMPLETION_TEMPLATE.md").read_text(
+def test_release_copy_excludes_maintainer_and_flatpak_worktrees() -> None:
+    build_script = (REPOSITORY_ROOT / "scripts/build_release.py").read_text(
         encoding="utf-8"
     )
 
-    assert all(heading in content for heading in COMPLETION_HEADINGS)
+    for excluded in (
+        ".maintainer-private",
+        ".release-readiness-work",
+        ".flatpak-builder",
+    ):
+        assert f'"{excluded}"' in build_script
 
 
-def test_runtime_source_does_not_embed_the_local_repository_path() -> None:
-    offending: list[str] = []
-    for path in (REPOSITORY_ROOT / "src").rglob("*.py"):
-        if "/home/example/Documents/LyriFlux/" in path.read_text(encoding="utf-8"):
-            offending.append(str(path.relative_to(REPOSITORY_ROOT)))
+def test_flatpak_manifest_uses_narrow_runtime_permissions() -> None:
+    manifest = (
+        REPOSITORY_ROOT / "packaging/flatpak/io.github.myonctl.LyriFlux.yaml"
+    ).read_text(encoding="utf-8")
 
-    assert offending == []
+    assert "--talk-name=org.mpris.MediaPlayer2.*" in manifest
+    assert "--filesystem=xdg-music:ro" in manifest
+    assert "--filesystem=home" not in manifest
+    assert "--filesystem=host" not in manifest
+    assert "--socket=session-bus" not in manifest
+
+
+def test_personal_audio_device_name_is_not_a_regression_fixture() -> None:
+    content = (REPOSITORY_ROOT / "tests/test_pipewire_latency.py").read_text(
+        encoding="utf-8"
+    )
+
+    assert "MOMENTUM" not in content
+    assert "Synthetic Wireless Sink" in content
 
 
 def test_accepted_cross_cutting_architecture_is_durable() -> None:

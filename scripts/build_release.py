@@ -23,6 +23,7 @@ REQUIRED_WHEEL_SUFFIXES = (
     "lyriflux/cli.py",
     "lyriflux/presentation/tui/settings_app.py",
     f"lyriflux/resources/{APP_ID}.desktop.in",
+    f"lyriflux/resources/{APP_ID}.metainfo.xml",
     f"lyriflux/resources/{APP_ID}.svg",
 )
 REQUIRED_SDIST_SUFFIXES = (
@@ -30,6 +31,7 @@ REQUIRED_SDIST_SUFFIXES = (
     "README.md",
     "pyproject.toml",
     f"src/lyriflux/resources/{APP_ID}.desktop.in",
+    f"src/lyriflux/resources/{APP_ID}.metainfo.xml",
     f"src/lyriflux/resources/{APP_ID}.svg",
 )
 FORBIDDEN_WHEEL_PREFIXES = ("lyricflow/",)
@@ -98,6 +100,8 @@ def _build(output: Path, environment: dict[str, str], epoch: int) -> None:
             source,
             ignore=shutil.ignore_patterns(
                 ".git",
+                ".maintainer-private",
+                ".release-readiness-work",
                 ".venv",
                 ".mypy_cache",
                 ".pytest_cache",
@@ -106,6 +110,8 @@ def _build(output: Path, environment: dict[str, str], epoch: int) -> None:
                 "*.egg-info",
                 "build",
                 "dist",
+                ".flatpak-builder",
+                "repo",
             ),
         )
         subprocess.run(
