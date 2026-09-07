@@ -15,7 +15,7 @@ authorization.
 - Support per-track display choices and per-layer typography.
 - Improve selected-stream PipeWire latency evidence without capturing audio.
 - Add more lyrics providers only after legal, privacy, and quality review.
-- Investigate secure remote display/LyriFlux Web as a separate product boundary.
+- Investigate secure remote display/KonoKashi Web as a separate product boundary.
 - Replace the temporary icon after a deliberate identity and trademark review.
 
 See `docs/ROADMAP.md` for release priorities and current product boundaries.

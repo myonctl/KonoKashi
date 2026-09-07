@@ -1,16 +1,16 @@
 """Discovery and race-condition tests at the fake D-Bus boundary."""
 
-from lyriflux.domain.models import InspectionFailure
-from lyriflux.infrastructure.mpris.backend import (
+from konokashi.domain.models import InspectionFailure
+from konokashi.infrastructure.mpris.backend import (
     MprisBackendError,
     MprisServiceUnavailable,
 )
-from lyriflux.infrastructure.mpris.metadata_mapper import (
+from konokashi.infrastructure.mpris.metadata_mapper import (
     MPRIS_PLAYER_INTERFACE,
     MPRIS_ROOT_INTERFACE,
     full_service_name,
 )
-from lyriflux.infrastructure.mpris.player_registry import MprisClient
+from konokashi.infrastructure.mpris.player_registry import MprisClient
 from tests.mpris_fakes import FakeMprisBackend
 
 

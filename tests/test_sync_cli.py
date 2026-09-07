@@ -8,16 +8,16 @@ from pathlib import Path
 
 import pytest
 
-from lyriflux import cli
-from lyriflux.application.ports import PlayerDiscoveryPort
-from lyriflux.domain.models import (
+from konokashi import cli
+from konokashi.application.ports import PlayerDiscoveryPort
+from konokashi.domain.models import (
     PlayerEvent,
     PlayerEventKind,
     PlayerInspection,
     PlayerListResult,
     PlayerSnapshot,
 )
-from lyriflux.domain.synchronization import (
+from konokashi.domain.synchronization import (
     AudioLatencyProbeResult,
     AudioLatencyProbeStatus,
     ObservationReason,

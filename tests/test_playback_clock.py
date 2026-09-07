@@ -2,8 +2,8 @@
 
 import pytest
 
-from lyriflux.application.playback_clock import PlaybackClock
-from lyriflux.domain.synchronization import (
+from konokashi.application.playback_clock import PlaybackClock
+from konokashi.domain.synchronization import (
     ClockHealth,
     ClockQuality,
     ClockUpdateKind,

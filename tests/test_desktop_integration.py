@@ -6,11 +6,9 @@ from pathlib import Path
 
 import pytest
 
-from lyriflux import cli
-from lyriflux.infrastructure.desktop_integration import (
+from konokashi import cli
+from konokashi.infrastructure.desktop_integration import (
     APP_ID,
-    LEGACY_APP_ID,
-    DesktopIntegrationError,
     install_desktop_integration,
     integration_status,
     remove_desktop_integration,
@@ -31,12 +29,12 @@ def test_xdg_data_home_requires_an_absolute_value(tmp_path: Path) -> None:
 
 
 def test_install_and_remove_touch_only_owned_integration_files(tmp_path: Path) -> None:
-    executable = tmp_path / "venv with spaces" / "bin" / "lyriflux"
+    executable = tmp_path / "venv with spaces" / "bin" / "konokashi"
     executable.parent.mkdir(parents=True)
     executable.write_text("#!/bin/sh\n", encoding="utf-8")
     executable.chmod(0o755)
     data_home = tmp_path / "data home"
-    database = data_home / "lyriflux" / "lyriflux.sqlite3"
+    database = data_home / "konokashi" / "konokashi.sqlite3"
     database.parent.mkdir(parents=True)
     database.write_bytes(b"private-data")
 
@@ -49,7 +47,7 @@ def test_install_and_remove_touch_only_owned_integration_files(tmp_path: Path) -
     assert "TryExec=" not in desktop
     escaped_icon = str(installed.icon_file.resolve()).replace(" ", "\\s")
     assert f"Icon={escaped_icon}" in desktop
-    assert "Icon=io.github.myonctl.LyriFlux" not in desktop
+    assert "Icon=io.github.myonctl.KonoKashi" not in desktop
     assert installed.icon_file.read_text(encoding="utf-8").startswith("<svg")
 
     removed = remove_desktop_integration(data_home)
@@ -59,61 +57,13 @@ def test_install_and_remove_touch_only_owned_integration_files(tmp_path: Path) -
     assert database.read_bytes() == b"private-data"
 
 
-def test_install_removes_only_the_known_legacy_launcher_and_icon(
-    tmp_path: Path,
-) -> None:
-    executable = tmp_path / "bin" / "lyriflux"
-    executable.parent.mkdir(parents=True)
-    executable.write_text("#!/bin/sh\n", encoding="utf-8")
-    executable.chmod(0o755)
-    data_home = tmp_path / "data"
-    legacy_desktop = data_home / "applications" / f"{LEGACY_APP_ID}.desktop"
-    legacy_icon = (
-        data_home / "icons" / "hicolor" / "scalable" / "apps" / f"{LEGACY_APP_ID}.svg"
-    )
-    legacy_desktop.parent.mkdir(parents=True)
-    legacy_icon.parent.mkdir(parents=True)
-    legacy_desktop.write_text(
-        "[Desktop Entry]\nName=LyricFlow\nExec=/legacy/bin/lyricflow desktop\n",
-        encoding="utf-8",
-    )
-    legacy_icon.write_text("legacy icon", encoding="utf-8")
-
-    status = install_desktop_integration(executable, data_home)
-
-    assert status.installed
-    assert not status.legacy_desktop_installed
-    assert not status.legacy_icon_installed
-    assert not legacy_desktop.exists()
-    assert not legacy_icon.exists()
-
-
-def test_install_retains_an_unrecognized_legacy_path(tmp_path: Path) -> None:
-    executable = tmp_path / "bin" / "lyriflux"
-    executable.parent.mkdir(parents=True)
-    executable.write_text("#!/bin/sh\n", encoding="utf-8")
-    executable.chmod(0o755)
-    data_home = tmp_path / "data"
-    legacy_desktop = data_home / "applications" / f"{LEGACY_APP_ID}.desktop"
-    legacy_desktop.parent.mkdir(parents=True)
-    legacy_desktop.write_text(
-        "[Desktop Entry]\nName=Unrelated application\nExec=/unrelated\n",
-        encoding="utf-8",
-    )
-
-    with pytest.raises(DesktopIntegrationError, match="does not match"):
-        install_desktop_integration(executable, data_home)
-
-    assert legacy_desktop.is_file()
-
-
 def test_desktop_integration_cli_round_trip(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "xdg"))
-    executable = tmp_path / "bin" / "lyriflux"
+    executable = tmp_path / "bin" / "konokashi"
     executable.parent.mkdir()
     executable.write_text("#!/bin/sh\n", encoding="utf-8")
     executable.chmod(0o755)

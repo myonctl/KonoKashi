@@ -13,42 +13,42 @@ from PySide6.QtGui import QColor, QFontMetrics, QPalette
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication, QBoxLayout, QLabel, QPlainTextEdit, QWidget
 
-from lyriflux.application.desktop_state import (
+from konokashi.application.desktop_state import (
     DesktopLyricGroup,
     DesktopLyricsState,
     DesktopViewState,
 )
-from lyriflux.application.review_corrections import (
+from konokashi.application.review_corrections import (
     ReviewCorrectionSnapshot,
     TrackAuditEvidence,
 )
-from lyriflux.application.settings import (
+from konokashi.application.settings import (
     DesktopInteractionSettings,
     default_settings_snapshot,
 )
-from lyriflux.domain.identity import YouTubeIdentity
-from lyriflux.domain.lyrics import (
+from konokashi.domain.identity import YouTubeIdentity
+from konokashi.domain.lyrics import (
     LyricsAlternative,
     LyricsMatchConfidence,
     LyricsMatchDecision,
     LyricsProviderCandidate,
 )
-from lyriflux.domain.synchronization import ClockHealth, PlaybackState
-from lyriflux.presentation.desktop.app import run_desktop
-from lyriflux.presentation.desktop.main_window import (
+from konokashi.domain.synchronization import ClockHealth, PlaybackState
+from konokashi.presentation.desktop.app import run_desktop
+from konokashi.presentation.desktop.main_window import (
     DiagnosticsDialog,
     MainWindow,
 )
-from lyriflux.presentation.desktop.review_dialog import (
+from konokashi.presentation.desktop.review_dialog import (
     CorrectionActionKind,
     ReviewCorrectionDialog,
 )
-from lyriflux.presentation.desktop.settings_window import SettingsWindow
+from konokashi.presentation.desktop.settings_window import SettingsWindow
 
 
 @pytest.fixture(scope="module")
 def qt_app() -> QApplication:
-    application = QApplication.instance() or QApplication(["lyriflux-test"])
+    application = QApplication.instance() or QApplication(["konokashi-test"])
     assert isinstance(application, QApplication)
     return application
 
@@ -95,7 +95,7 @@ def test_main_window_launches_and_renders_plain_multilingual_text(
     window.show()
     qt_app.processEvents()
 
-    assert window.windowTitle() == "LyriFlux"
+    assert window.windowTitle() == "KonoKashi"
     assert window.active_band.isVisible()
     assert "君の声が聞こえる" in window.active_band.text()
     assert "Kimi no koe ga kikoeru" in window.active_band.text()
@@ -252,10 +252,10 @@ def test_desktop_entry_point_launches_and_shuts_down_cleanly(
         captured.append(window)
         return Lifecycle()
 
-    assert run_desktop(["lyriflux"], coordinator_factory=factory) == 0
-    assert qt_app.applicationName() == "LyriFlux"
-    assert qt_app.organizationName() == "LyriFlux"
-    assert qt_app.desktopFileName() == "io.github.myonctl.LyriFlux"
+    assert run_desktop(["konokashi"], coordinator_factory=factory) == 0
+    assert qt_app.applicationName() == "KonoKashi"
+    assert qt_app.organizationName() == "KonoKashi"
+    assert qt_app.desktopFileName() == "io.github.myonctl.KonoKashi"
     assert len(captured) == 1
     assert captured[0].state.state is DesktopLyricsState.WAITING
     captured[0].close()

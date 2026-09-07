@@ -7,8 +7,8 @@ from pathlib import Path
 
 import pytest
 
-from lyriflux import cli
-from lyriflux.domain.lyrics import (
+from konokashi import cli
+from konokashi.domain.lyrics import (
     LyricsProviderCandidate,
     LyricsProviderResult,
     LyricsProviderStatus,

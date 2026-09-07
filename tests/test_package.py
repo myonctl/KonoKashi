@@ -5,34 +5,34 @@ from importlib import import_module
 from importlib.resources import files
 from pathlib import Path
 
-import lyriflux
+import konokashi
 
 
 def test_package_version_is_exposed() -> None:
-    assert lyriflux.__version__ == "1.0.0"
-    assert lyriflux.PRODUCT_NAME == "LyriFlux"
-    assert lyriflux.MACHINE_ID == "lyriflux"
-    assert lyriflux.APPLICATION_ID == "io.github.myonctl.LyriFlux"
+    assert konokashi.__version__ == "1.0.0"
+    assert konokashi.PRODUCT_NAME == "KonoKashi"
+    assert konokashi.MACHINE_ID == "konokashi"
+    assert konokashi.APPLICATION_ID == "io.github.myonctl.KonoKashi"
 
 
 def test_required_package_skeleton_imports() -> None:
     modules = (
-        "lyriflux.application",
-        "lyriflux.application.ports",
-        "lyriflux.domain",
-        "lyriflux.domain.models",
-        "lyriflux.infrastructure",
-        "lyriflux.infrastructure.lyrics",
-        "lyriflux.infrastructure.metadata",
-        "lyriflux.infrastructure.mpris",
-        "lyriflux.infrastructure.mpris.backend",
-        "lyriflux.infrastructure.mpris.metadata_mapper",
-        "lyriflux.infrastructure.mpris.player_registry",
-        "lyriflux.infrastructure.mpris.qt_dbus_client",
-        "lyriflux.infrastructure.mpris.qt_dbus_values",
-        "lyriflux.infrastructure.storage",
-        "lyriflux.presentation",
-        "lyriflux.presentation.desktop",
+        "konokashi.application",
+        "konokashi.application.ports",
+        "konokashi.domain",
+        "konokashi.domain.models",
+        "konokashi.infrastructure",
+        "konokashi.infrastructure.lyrics",
+        "konokashi.infrastructure.metadata",
+        "konokashi.infrastructure.mpris",
+        "konokashi.infrastructure.mpris.backend",
+        "konokashi.infrastructure.mpris.metadata_mapper",
+        "konokashi.infrastructure.mpris.player_registry",
+        "konokashi.infrastructure.mpris.qt_dbus_client",
+        "konokashi.infrastructure.mpris.qt_dbus_values",
+        "konokashi.infrastructure.storage",
+        "konokashi.presentation",
+        "konokashi.presentation.desktop",
     )
 
     for module in modules:
@@ -44,17 +44,16 @@ def test_distribution_and_console_entry_point_are_canonically_named() -> None:
         (Path(__file__).parents[1] / "pyproject.toml").read_text(encoding="utf-8")
     )["project"]
 
-    assert project["name"] == "lyriflux"
+    assert project["name"] == "konokashi"
     assert project["license"] == "PolyForm-Noncommercial-1.0.0"
-    assert project["scripts"] == {"lyriflux": "lyriflux.cli:main"}
+    assert project["scripts"] == {"konokashi": "konokashi.cli:main"}
     assert isinstance(project["dependencies"], list)
-    assert project["urls"]["Source"] == "https://github.com/myonctl/LyriFlux"
-    assert "lyricflow" not in project["scripts"]
+    assert project["urls"]["Source"] == "https://github.com/myonctl/KonoKashi"
 
 
 def test_packaged_desktop_resources_use_current_application_identity() -> None:
-    resources = files("lyriflux").joinpath("resources")
+    resources = files("konokashi").joinpath("resources")
 
-    assert resources.joinpath("io.github.myonctl.LyriFlux.desktop.in").is_file()
-    assert resources.joinpath("io.github.myonctl.LyriFlux.metainfo.xml").is_file()
-    assert resources.joinpath("io.github.myonctl.LyriFlux.svg").is_file()
+    assert resources.joinpath("io.github.myonctl.KonoKashi.desktop.in").is_file()
+    assert resources.joinpath("io.github.myonctl.KonoKashi.metainfo.xml").is_file()
+    assert resources.joinpath("io.github.myonctl.KonoKashi.svg").is_file()

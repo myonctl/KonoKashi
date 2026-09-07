@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>io.github.myonctl.KonoKashi</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>PolyForm-Noncommercial-1.0.0</project_license>
+  <name>KonoKashi</name>
+  <summary>Synchronized multilingual lyrics for Linux players</summary>
+  <description>
+    <p>
+      KonoKashi follows MPRIS playback in a native Linux desktop window and
+      displays synchronized lyrics from local files, an offline cache, or
+      LRCLIB.
+    </p>
+    <p>
+      Original-script lyrics remain authoritative. Aligned romanization or
+      transliteration can appear beneath the original, with translation kept
+      as a separate optional layer. Settings and user-approved corrections are
+      stored locally.
+    </p>
+  </description>
+  <launchable type="desktop-id">io.github.myonctl.KonoKashi.desktop</launchable>
+  <developer id="io.github.myonctl">
+    <name>KonoKashi contributors</name>
+  </developer>
+  <url type="homepage">https://github.com/myonctl/KonoKashi</url>
+  <url type="bugtracker">https://github.com/myonctl/KonoKashi/issues</url>
+  <content_rating type="oars-1.1" />
+  <releases>
+    <release version="1.0.0" date="2026-08-23" type="development">
+      <description>
+        <p>Internal development milestone; no public release was created.</p>
+      </description>
+    </release>
+  </releases>
+</component>

@@ -1,5 +1,5 @@
 name: Bug report
-description: Report a reproducible LyriFlux defect without sensitive data
+description: Report a reproducible KonoKashi defect without sensitive data
 title: "[Bug]: "
 labels:
   - bug
@@ -7,7 +7,7 @@ body:
   - type: markdown
     attributes:
       value: |
-        Thanks for helping improve LyriFlux. Do not include credentials,
+        Thanks for helping improve KonoKashi. Do not include credentials,
         private media paths, complete lyrics, or other personal information.
   - type: checkboxes
     id: checks
@@ -22,7 +22,7 @@ body:
     id: revision
     attributes:
       label: Version or revision
-      description: LyriFlux version or commit hash where the problem occurs.
+      description: KonoKashi version or commit hash where the problem occurs.
     validations:
       required: true
   - type: textarea
@@ -61,7 +61,7 @@ body:
       label: Sanitized logs or evidence
       description: >-
         Paste only the minimum sanitized output needed to investigate. You can
-        generate a privacy-bounded report with `lyriflux diagnostics export`,
+        generate a privacy-bounded report with `konokashi diagnostics export`,
         but review it before sharing.
       render: shell
   - type: textarea

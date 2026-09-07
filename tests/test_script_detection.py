@@ -6,9 +6,9 @@ import unicodedata
 
 import pytest
 
-from lyriflux.application.representations import route_romanization
-from lyriflux.domain.representations import RomanizationRoute
-from lyriflux.domain.scripts import UnicodeScript, analyze_scripts
+from konokashi.application.representations import route_romanization
+from konokashi.domain.representations import RomanizationRoute
+from konokashi.domain.scripts import UnicodeScript, analyze_scripts
 
 
 @pytest.mark.parametrize(

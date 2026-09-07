@@ -4,15 +4,15 @@ from __future__ import annotations
 
 import pytest
 
-from lyriflux.application.source_identity import SourceIdentityResolver
-from lyriflux.domain.identity import YouTubeIdentity
-from lyriflux.domain.normalization import (
+from konokashi.application.source_identity import SourceIdentityResolver
+from konokashi.domain.identity import YouTubeIdentity
+from konokashi.domain.normalization import (
     comparison_key,
     normalize_artist,
     normalize_text,
     parse_youtube_title,
 )
-from lyriflux.domain.tracks import ApprovedTrackIdentity, Confidence
+from konokashi.domain.tracks import ApprovedTrackIdentity, Confidence
 from tests.stage2_helpers import (
     PredictableLocalPaths,
     fixture_snapshot,

@@ -6,9 +6,9 @@ import pytest
 from textual.pilot import Pilot
 from textual.widgets import Button, Input, OptionList, Static
 
-from lyriflux.application.settings import SETTINGS_SCHEMA, SettingCategory
-from lyriflux.presentation.tui.settings_app import SettingsApp
-from lyriflux.presentation.tui.settings_controls import SettingSwitch
+from konokashi.application.settings import SETTINGS_SCHEMA, SettingCategory
+from konokashi.presentation.tui.settings_app import SettingsApp
+from konokashi.presentation.tui.settings_controls import SettingSwitch
 from tests.test_settings_tui import (
     CountingSettingsFile,
     CountingSettingsService,

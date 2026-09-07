@@ -1,7 +1,7 @@
 # Flatpak candidate
 
 This directory contains a local-build candidate, not a Flathub submission.
-`io.github.myonctl.LyriFlux` matches the current GitHub repository identity and
+`io.github.myonctl.KonoKashi` matches the current GitHub repository identity and
 the existing desktop application ID.
 
 The manifest uses the current `io.qt.PySide.BaseApp` 6.11 branch and generated,
@@ -32,18 +32,18 @@ the Python dependency manifest.
 The installed KDE runtime also adds read-only `xdg-config/kdeglobals` access
 and talk access to `com.canonical.AppMenu.Registrar`, `org.kde.KGlobalSettings`,
 and `org.kde.kconfig.notify` for desktop integration. Review effective
-permissions with `flatpak info --show-permissions io.github.myonctl.LyriFlux`.
+permissions with `flatpak info --show-permissions io.github.myonctl.KonoKashi`.
 
 Arbitrary configured library roots outside the Music directory are unavailable
-unless the user grants a path override. LyriFlux does not yet provide a file
+unless the user grants a path override. KonoKashi does not yet provide a file
 chooser/portal workflow that can persist arbitrary root grants, so this is a
 documented functionality difference rather than a reason to expose all of home.
 
 Flatpak supplies private XDG paths below
-`~/.var/app/io.github.myonctl.LyriFlux/`. Flatpak and native installations
+`~/.var/app/io.github.myonctl.KonoKashi/`. Flatpak and native installations
 therefore have intentionally separate configuration, data, and cache. Use
-`flatpak run io.github.myonctl.LyriFlux settings` for the terminal settings UI or
-`flatpak run --command=lyriflux io.github.myonctl.LyriFlux config path` for the
+`flatpak run io.github.myonctl.KonoKashi settings` for the terminal settings UI or
+`flatpak run --command=konokashi io.github.myonctl.KonoKashi config path` for the
 CLI; no host-config bridge is used.
 
 ## Local build
@@ -52,9 +52,9 @@ Install Flatpak Builder, then run from this directory:
 
 ```bash
 flatpak run org.flatpak.Builder --user --force-clean --install-deps-from flathub \
-  --repo=repo build io.github.myonctl.LyriFlux.yaml
-flatpak --user remote-add --if-not-exists --no-gpg-verify lyriflux-local repo
-flatpak --user install --noninteractive lyriflux-local io.github.myonctl.LyriFlux
+  --repo=repo build io.github.myonctl.KonoKashi.yaml
+flatpak --user remote-add --if-not-exists --no-gpg-verify konokashi-local repo
+flatpak --user install --noninteractive konokashi-local io.github.myonctl.KonoKashi
 ```
 
 Do not submit this candidate until the readiness report's blockers are resolved.

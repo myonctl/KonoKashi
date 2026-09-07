@@ -1,11 +1,11 @@
 """Deterministic suspend and adaptive-resampling policy tests."""
 
-from lyriflux.application.clock_lifecycle import (
+from konokashi.application.clock_lifecycle import (
     AdaptiveResampler,
     SamplingMode,
     SuspendResumeDetector,
 )
-from lyriflux.domain.synchronization import (
+from konokashi.domain.synchronization import (
     ClockCorrectionClass,
     ClockHealth,
     ClockUpdate,

@@ -6,16 +6,16 @@ import json
 from collections.abc import Mapping
 from pathlib import Path
 
-from lyriflux.application.ports import LocalPathResolution
-from lyriflux.application.resolve_track import TrackResolver
-from lyriflux.application.select_player import PlayerSelectionService
-from lyriflux.application.source_identity import SourceIdentityResolver
-from lyriflux.domain.models import PlayerInspection, PlayerListResult, PlayerSnapshot
-from lyriflux.infrastructure.mpris.metadata_mapper import (
+from konokashi.application.ports import LocalPathResolution
+from konokashi.application.resolve_track import TrackResolver
+from konokashi.application.select_player import PlayerSelectionService
+from konokashi.application.source_identity import SourceIdentityResolver
+from konokashi.domain.models import PlayerInspection, PlayerListResult, PlayerSnapshot
+from konokashi.infrastructure.mpris.metadata_mapper import (
     full_service_name,
     map_player_snapshot,
 )
-from lyriflux.infrastructure.storage.track_overrides import (
+from konokashi.infrastructure.storage.track_overrides import (
     InMemoryTrackOverrideRepository,
 )
 

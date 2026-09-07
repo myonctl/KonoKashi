@@ -1,21 +1,21 @@
-# LyriFlux
+# KonoKashi
 
-[![CI](https://github.com/myonctl/LyriFlux/actions/workflows/ci.yml/badge.svg)](https://github.com/myonctl/LyriFlux/actions/workflows/ci.yml)
+[![CI](https://github.com/myonctl/KonoKashi/actions/workflows/ci.yml/badge.svg)](https://github.com/myonctl/KonoKashi/actions/workflows/ci.yml)
 ![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-3776AB)
 ![Linux](https://img.shields.io/badge/platform-Linux-FCC624)
 
-LyriFlux is a Linux-first desktop application for synchronized, multilingual
+KonoKashi is a Linux-first desktop application for synchronized, multilingual
 lyrics from MPRIS-compatible players. It keeps its cache, settings, corrections,
 and lyric decisions local, while using LRCLIB only when local lyrics and cache do
 not have a suitable result.
 
-LyriFlux is usable and under active development.
+KonoKashi is usable and under active development.
 
 The project is source-available under the PolyForm Noncommercial License 1.0.0.
 It is free to use, study, modify, and redistribute for permitted noncommercial
 purposes under that license.
 
-## Why LyriFlux?
+## Why KonoKashi?
 
 - Follow timestamped lyrics in a native PySide6 desktop window.
 - Preserve original-script lyrics and show aligned romanization or
@@ -38,33 +38,33 @@ optional translation
 ```
 
 The original remains authoritative. Generated readings carry provenance and may
-need correction; LyriFlux does not claim perfect romanization.
+need correction; KonoKashi does not claim perfect romanization.
 
 ## Installation from source
 
-LyriFlux currently supports installation from a source checkout. It requires
+KonoKashi currently supports installation from a source checkout. It requires
 Linux and Python 3.11 or newer. A normal desktop installation also needs a Qt/EGL
 runtime and a session D-Bus. PyICU may require ICU headers, `pkg-config`, and a
 C++ compiler if a compatible wheel is unavailable for your Python version.
 
-Do not install LyriFlux into the distribution's system Python. Use a dedicated
+Do not install KonoKashi into the distribution's system Python. Use a dedicated
 virtual environment:
 
 ```bash
-git clone https://github.com/myonctl/LyriFlux.git
-cd LyriFlux
-python -m venv ~/.local/lib/lyriflux
-~/.local/lib/lyriflux/bin/python -m pip install --upgrade pip
-~/.local/lib/lyriflux/bin/python -m pip install .
-~/.local/lib/lyriflux/bin/lyriflux doctor
-~/.local/lib/lyriflux/bin/lyriflux desktop-integration install
+git clone https://github.com/myonctl/KonoKashi.git
+cd KonoKashi
+python -m venv ~/.local/lib/konokashi
+~/.local/lib/konokashi/bin/python -m pip install --upgrade pip
+~/.local/lib/konokashi/bin/python -m pip install .
+~/.local/lib/konokashi/bin/konokashi doctor
+~/.local/lib/konokashi/bin/konokashi desktop-integration install
 ```
 
 The last command installs a user-local launcher and icon. You can then start
-LyriFlux from the application menu or run:
+KonoKashi from the application menu or run:
 
 ```bash
-~/.local/lib/lyriflux/bin/lyriflux desktop
+~/.local/lib/konokashi/bin/konokashi desktop
 ```
 
 For development setup, see `CONTRIBUTING.md`. AUR and Flatpak packaging are being
@@ -74,7 +74,7 @@ prepared but are not published.
 
 1. Start an MPRIS player such as Strawberry, or play media through KDE Plasma
    Browser Integration.
-2. Launch LyriFlux from the application menu.
+2. Launch KonoKashi from the application menu.
 3. Open Settings in the desktop app to choose player, lyric layers, timing delay,
    and music-library roots.
 4. Use the review controls when a recording or lyric match needs correction.
@@ -82,11 +82,11 @@ prepared but are not published.
 Useful diagnostics:
 
 ```bash
-lyriflux players list
-lyriflux lyrics current
-lyriflux config validate
-lyriflux storage status
-lyriflux diagnostics export
+konokashi players list
+konokashi lyrics current
+konokashi config validate
+konokashi storage status
+konokashi diagnostics export
 ```
 
 `diagnostics export` is intentionally privacy-bounded: it omits media paths,
@@ -95,19 +95,19 @@ diagnostic output before sharing it.
 
 ## Configuration and data
 
-The canonical configuration is `$XDG_CONFIG_HOME/lyriflux/config.toml` (normally
-`~/.config/lyriflux/config.toml`). Inspect and edit it through:
+The canonical configuration is `$XDG_CONFIG_HOME/konokashi/config.toml` (normally
+`~/.config/konokashi/config.toml`). Inspect and edit it through:
 
 ```bash
-lyriflux settings
-lyriflux config path
-lyriflux config get lyrics.show_romanization
-lyriflux config set lyrics.show_romanization true
-lyriflux config validate
+konokashi settings
+konokashi config path
+konokashi config get lyrics.show_romanization
+konokashi config set lyrics.show_romanization true
+konokashi config validate
 ```
 
-Application state is stored under `$XDG_DATA_HOME/lyriflux`, and cache data under
-`$XDG_CACHE_HOME/lyriflux`. Configuration and databases are created with private
+Application state is stored under `$XDG_DATA_HOME/konokashi`, and cache data under
+`$XDG_CACHE_HOME/konokashi`. Configuration and databases are created with private
 permissions. Uninstalling the package or desktop launcher does not delete these
 directories.
 
@@ -164,11 +164,11 @@ a public issue; follow `SECURITY.md` instead.
 
 ## License
 
-LyriFlux is source-available under the
+KonoKashi is source-available under the
 [PolyForm Noncommercial License 1.0.0](LICENSE). It is free to use, study,
 modify, and redistribute for permitted noncommercial purposes under the license.
-The noncommercial restriction means LyriFlux should not be described as OSI Open
+The noncommercial restriction means KonoKashi should not be described as OSI Open
 Source.
 
-LyriFlux is the official project name. Forks and redistributed versions should
-not imply that they are official LyriFlux releases or endorsed by the project.
+KonoKashi is the official project name. Forks and redistributed versions should
+not imply that they are official KonoKashi releases or endorsed by the project.

@@ -1,6 +1,6 @@
-# Contributing to LyriFlux
+# Contributing to KonoKashi
 
-Thank you for considering a contribution. LyriFlux is Linux-first and under
+Thank you for considering a contribution. KonoKashi is Linux-first and under
 active development; focused bug fixes, tests, documentation improvements, and
 well-scoped proposals are welcome.
 
@@ -16,7 +16,7 @@ Use Linux and Python 3.11 or newer. From a fresh checkout:
 python -m venv .venv
 .venv/bin/python -m pip install --upgrade pip
 .venv/bin/python -m pip install -e '.[dev]'
-.venv/bin/lyriflux doctor
+.venv/bin/konokashi doctor
 ```
 
 Qt needs a working EGL/OpenGL runtime for desktop use. Building PyICU from source
@@ -48,7 +48,7 @@ Run from the repository root:
 .venv/bin/python -m ruff check .
 .venv/bin/python -m ruff format --check .
 .venv/bin/python -m mypy src
-.venv/bin/python scripts/build_release.py --output-dir /tmp/lyriflux-dist
+.venv/bin/python scripts/build_release.py --output-dir /tmp/konokashi-dist
 ```
 
 For a focused documentation-only change, explain which checks were run and why

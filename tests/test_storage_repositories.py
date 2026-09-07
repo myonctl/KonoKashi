@@ -7,14 +7,14 @@ from pathlib import Path
 
 import pytest
 
-from lyriflux.application.resolve_track import TrackResolver
-from lyriflux.application.source_identity import SourceIdentityResolver
-from lyriflux.domain.identity import (
+from konokashi.application.resolve_track import TrackResolver
+from konokashi.application.source_identity import SourceIdentityResolver
+from konokashi.domain.identity import (
     GenericMprisIdentity,
     LocalFileIdentity,
     YouTubeIdentity,
 )
-from lyriflux.domain.lyrics import (
+from konokashi.domain.lyrics import (
     ApprovalState,
     ContentProvenance,
     LyricDocument,
@@ -29,13 +29,13 @@ from lyriflux.domain.lyrics import (
     RepresentationKind,
     TimingProvenance,
 )
-from lyriflux.domain.tracks import (
+from konokashi.domain.tracks import (
     ApprovedTrackIdentity,
     Confidence,
     PlayerSelectionConfig,
 )
-from lyriflux.infrastructure.storage.bootstrap import open_storage
-from lyriflux.infrastructure.storage.errors import (
+from konokashi.infrastructure.storage.bootstrap import open_storage
+from konokashi.infrastructure.storage.errors import (
     InvalidStoredDataError,
     StorageError,
     StorageValidationError,

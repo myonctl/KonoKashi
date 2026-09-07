@@ -4,14 +4,14 @@ from dataclasses import replace
 
 import pytest
 
-from lyriflux.application.desktop_state import (
+from konokashi.application.desktop_state import (
     DesktopLyricsState,
     DesktopStateController,
 )
-from lyriflux.application.lyrics_sync import synchronize
-from lyriflux.application.sync_state import build_sync_snapshot
-from lyriflux.domain.identity import YouTubeIdentity
-from lyriflux.domain.lyrics import (
+from konokashi.application.lyrics_sync import synchronize
+from konokashi.application.sync_state import build_sync_snapshot
+from konokashi.domain.identity import YouTubeIdentity
+from konokashi.domain.lyrics import (
     ContentProvenance,
     LyricDocumentKind,
     LyricRepresentation,
@@ -19,17 +19,17 @@ from lyriflux.domain.lyrics import (
     LyricsResolutionStatus,
     RepresentationKind,
 )
-from lyriflux.domain.representations import (
+from konokashi.domain.representations import (
     EffectiveRepresentationLine,
     RepresentationDisplaySettings,
 )
-from lyriflux.domain.synchronization import (
+from konokashi.domain.synchronization import (
     AudioOutputLatency,
     LyricTimingCalibration,
     PlaybackState,
     SynchronizationCalibration,
 )
-from lyriflux.domain.tracks import Confidence, ResolvedTrack, TrackCandidate
+from konokashi.domain.tracks import Confidence, ResolvedTrack, TrackCandidate
 from tests.stage2_helpers import fixture_snapshot
 from tests.test_lyrics_sync import document, estimate
 

@@ -1,6 +1,6 @@
 # Changelog
 
-All notable user-visible changes are recorded here. LyriFlux has no public
+All notable user-visible changes are recorded here. KonoKashi has no public
 release yet.
 
 ## Unreleased

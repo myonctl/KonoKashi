@@ -1,0 +1,13 @@
+[Desktop Entry]
+Type=Application
+Version=1.5
+Name=KonoKashi
+GenericName=Synchronized Lyrics
+Comment=Show synchronized multilingual lyrics for MPRIS players
+Exec=@KONOKASHI_EXECUTABLE@ desktop
+Icon=@KONOKASHI_ICON@
+Terminal=false
+Categories=AudioVideo;Audio;
+Keywords=lyrics;music;MPRIS;synchronized;multilingual;
+DBusActivatable=false
+StartupNotify=true

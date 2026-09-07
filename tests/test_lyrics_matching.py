@@ -4,12 +4,12 @@ from __future__ import annotations
 
 import pytest
 
-from lyriflux.domain.lyrics import (
+from konokashi.domain.lyrics import (
     LyricsMatchConfidence,
     LyricsProviderCandidate,
     LyricsQuery,
 )
-from lyriflux.domain.lyrics_matching import assess_candidate
+from konokashi.domain.lyrics_matching import assess_candidate
 
 
 def _candidate(

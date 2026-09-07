@@ -2,24 +2,24 @@
 
 from dataclasses import replace
 
-from lyriflux.application.lyrics_sync import synchronize
-from lyriflux.application.sync_state import (
+from konokashi.application.lyrics_sync import synchronize
+from konokashi.application.sync_state import (
     SourceGenerationGuard,
     SynchronizationPublisher,
     build_sync_snapshot,
 )
-from lyriflux.domain.identity import YouTubeIdentity
-from lyriflux.domain.lyrics import ApprovalState, ContentProvenance, RepresentationKind
-from lyriflux.domain.representations import (
+from konokashi.domain.identity import YouTubeIdentity
+from konokashi.domain.lyrics import ApprovalState, ContentProvenance, RepresentationKind
+from konokashi.domain.representations import (
     EffectiveRepresentationLine,
     RepresentationUncertainty,
 )
-from lyriflux.domain.synchronization import (
+from konokashi.domain.synchronization import (
     AudioOutputLatency,
     LyricTimingCalibration,
     SynchronizationCalibration,
 )
-from lyriflux.domain.tracks import Confidence, ResolvedTrack, TrackCandidate
+from konokashi.domain.tracks import Confidence, ResolvedTrack, TrackCandidate
 from tests.stage2_helpers import fixture_snapshot
 from tests.test_lyrics_sync import document, estimate
 
@@ -91,7 +91,7 @@ def test_snapshot_retains_explained_missing_representation_diagnostics() -> None
         None,
         ContentProvenance.GENERATED,
         ApprovalState.UNREVIEWED,
-        "LyriFlux language routing",
+        "KonoKashi language routing",
         "1",
         RepresentationUncertainty.AMBIGUOUS,
         ("Han-only document lacks sufficient language evidence",),

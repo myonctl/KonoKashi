@@ -6,17 +6,17 @@ from pathlib import Path
 
 import pytest
 
-from lyriflux.application.source_identity import (
+from konokashi.application.source_identity import (
     SourceIdentityResolver,
     extract_youtube_video_id,
 )
-from lyriflux.domain.identity import (
+from konokashi.domain.identity import (
     GenericMprisIdentity,
     LocalFileIdentity,
     PersistenceScope,
     YouTubeIdentity,
 )
-from lyriflux.infrastructure.metadata.local_paths import (
+from konokashi.infrastructure.metadata.local_paths import (
     FilesystemLocalPathCanonicalizer,
 )
 from tests.stage2_helpers import PredictableLocalPaths, snapshot

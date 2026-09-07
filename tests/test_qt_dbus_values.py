@@ -8,9 +8,9 @@ import pytest
 from PySide6.QtCore import QObject
 from PySide6.QtDBus import QDBusObjectPath, QDBusSignature, QDBusVariant
 
-from lyriflux.infrastructure.mpris import qt_dbus_values
-from lyriflux.infrastructure.mpris.backend import MprisBackendError, MprisPropertyRead
-from lyriflux.infrastructure.mpris.qt_dbus_values import (
+from konokashi.infrastructure.mpris import qt_dbus_values
+from konokashi.infrastructure.mpris.backend import MprisBackendError, MprisPropertyRead
+from konokashi.infrastructure.mpris.qt_dbus_values import (
     PROPERTIES_SLOT,
     SEEKED_SLOT,
     PlayerSignalReceiver,

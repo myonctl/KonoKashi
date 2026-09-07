@@ -5,12 +5,12 @@ from pathlib import Path
 
 import pytest
 
-from lyriflux.domain.synchronization import (
+from konokashi.domain.synchronization import (
     LyricDocumentTiming,
     OutputDeviceCalibration,
 )
-from lyriflux.infrastructure.storage.bootstrap import open_storage
-from lyriflux.infrastructure.storage.errors import StorageValidationError
+from konokashi.infrastructure.storage.bootstrap import open_storage
+from konokashi.infrastructure.storage.errors import StorageValidationError
 from tests.test_storage_repositories import _multilingual_document
 
 

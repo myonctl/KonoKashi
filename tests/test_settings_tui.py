@@ -13,20 +13,20 @@ import pytest
 from textual.pilot import Pilot
 from textual.widgets import Button, Input, Label, OptionList, Static
 
-from lyriflux import cli
-from lyriflux.application.settings import (
+from konokashi import cli
+from konokashi.application.settings import (
     SETTINGS_SCHEMA,
     SettingCategory,
     SettingType,
     SettingValue,
 )
-from lyriflux.application.settings_service import (
+from konokashi.application.settings_service import (
     CanonicalSettingsService,
     SettingsReloadResult,
 )
-from lyriflux.infrastructure.configuration.toml_file import TomlSettingsFile
-from lyriflux.presentation.tui.settings_app import SettingsApp
-from lyriflux.presentation.tui.settings_runtime import config_signature
+from konokashi.infrastructure.configuration.toml_file import TomlSettingsFile
+from konokashi.presentation.tui.settings_app import SettingsApp
+from konokashi.presentation.tui.settings_runtime import config_signature
 
 Scenario = Callable[[SettingsApp, Pilot[int]], Awaitable[None]]
 
@@ -764,7 +764,7 @@ def test_cli_dispatches_canonical_settings_command(
         return 7
 
     monkeypatch.setattr(
-        "lyriflux.presentation.tui.settings_app.run_settings_tui",
+        "konokashi.presentation.tui.settings_app.run_settings_tui",
         fake_run_settings_tui,
     )
     database = tmp_path / "state.sqlite3"

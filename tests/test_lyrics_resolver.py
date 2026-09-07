@@ -5,9 +5,9 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
-from lyriflux.application.resolve_lyrics import LyricsResolver, provider_cache_key
-from lyriflux.domain.identity import LocalFileIdentity, YouTubeIdentity
-from lyriflux.domain.lyrics import (
+from konokashi.application.resolve_lyrics import LyricsResolver, provider_cache_key
+from konokashi.domain.identity import LocalFileIdentity, YouTubeIdentity
+from konokashi.domain.lyrics import (
     ApprovalState,
     ContentProvenance,
     LocalLyricsResult,
@@ -28,12 +28,12 @@ from lyriflux.domain.lyrics import (
     RepresentationKind,
     TimingProvenance,
 )
-from lyriflux.domain.models import PlayerCapabilities, PlayerSnapshot, RawTrackMetadata
-from lyriflux.domain.tracks import Confidence, ResolvedTrack, TrackCandidate
-from lyriflux.infrastructure.lyrics.provider_documents import (
+from konokashi.domain.models import PlayerCapabilities, PlayerSnapshot, RawTrackMetadata
+from konokashi.domain.tracks import Confidence, ResolvedTrack, TrackCandidate
+from konokashi.infrastructure.lyrics.provider_documents import (
     ProviderLyricDocumentBuilder,
 )
-from lyriflux.infrastructure.storage.bootstrap import open_storage
+from konokashi.infrastructure.storage.bootstrap import open_storage
 
 NOW = datetime(2026, 8, 13, 14, tzinfo=UTC)
 

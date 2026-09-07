@@ -1,8 +1,8 @@
-pkgbase = lyriflux
+pkgbase = konokashi
 	pkgdesc = Local-first synchronized multilingual lyrics for Linux MPRIS players
 	pkgver = 1.0.0
 	pkgrel = 1
-	url = https://github.com/myonctl/LyriFlux
+	url = https://github.com/myonctl/KonoKashi
 	arch = any
 	license = PolyForm-Noncommercial-1.0.0
 	checkdepends = python-pytest
@@ -24,7 +24,7 @@ pkgbase = lyriflux
 	depends = python-unidic-lite>=1.0.8
 	optdepends = playerctl: optional MPRIS debugging
 	optdepends = pipewire: optional audio timing diagnostics
-	source = lyriflux-1.0.0.tar.gz
-	sha256sums = 33fc7740a3a5e4c5e92104ac4a21671e1d8eaa45f510ceb59d1363a1db83c9a4
+	source = konokashi-1.0.0.tar.gz
+	sha256sums = 0a4fbad74232442ff760d87b4a08da33ee78d06a75a0011eccd0b272dcf8b2d9
 
-pkgname = lyriflux
+pkgname = konokashi

@@ -1,9 +1,9 @@
 """Signal-driven lifecycle and property-event tests."""
 
-from lyriflux.domain.models import PlayerEvent, PlayerEventKind
-from lyriflux.infrastructure.mpris.backend import MprisBackendError
-from lyriflux.infrastructure.mpris.metadata_mapper import full_service_name
-from lyriflux.infrastructure.mpris.player_registry import MprisMonitor
+from konokashi.domain.models import PlayerEvent, PlayerEventKind
+from konokashi.infrastructure.mpris.backend import MprisBackendError
+from konokashi.infrastructure.mpris.metadata_mapper import full_service_name
+from konokashi.infrastructure.mpris.player_registry import MprisMonitor
 from tests.mpris_fakes import FakeMprisBackend
 
 

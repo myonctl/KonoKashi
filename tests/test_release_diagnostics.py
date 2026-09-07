@@ -8,25 +8,25 @@ from pathlib import Path
 
 import pytest
 
-from lyriflux import cli
-from lyriflux.application.ports import DiagnosticCheck, DiagnosticStatus
-from lyriflux.application.release_diagnostics import (
+from konokashi import cli
+from konokashi.application.ports import DiagnosticCheck, DiagnosticStatus
+from konokashi.application.release_diagnostics import (
     build_release_diagnostic_export,
 )
-from lyriflux.application.storage_diagnostics import StorageStatus
+from konokashi.application.storage_diagnostics import StorageStatus
 
 
 def test_export_drops_paths_free_form_errors_and_private_content() -> None:
     private = "/home/person/Music/secret-track.flac"
     report = build_release_diagnostic_export(
-        lyriflux_version="1.0.0",
+        konokashi_version="1.0.0",
         checks=(
             DiagnosticCheck(
                 "data-dir", DiagnosticStatus.FAILURE, f"not writable ({private})"
             ),
         ),
         storage=StorageStatus(
-            path="/home/person/.local/share/lyriflux/lyriflux.sqlite3",
+            path="/home/person/.local/share/konokashi/konokashi.sqlite3",
             exists=True,
             current_schema_version=9,
             schema_version=9,

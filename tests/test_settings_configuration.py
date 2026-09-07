@@ -12,8 +12,8 @@ import pytest
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication
 
-from lyriflux import cli
-from lyriflux.application.settings import (
+from konokashi import cli
+from konokashi.application.settings import (
     SETTINGS_BY_KEY,
     SETTINGS_SCHEMA,
     ReloadBehavior,
@@ -22,17 +22,17 @@ from lyriflux.application.settings import (
     SettingScope,
     SettingsValidationError,
 )
-from lyriflux.application.settings_service import (
+from konokashi.application.settings_service import (
     CanonicalSettingsService,
     SettingsFileError,
 )
-from lyriflux.domain.library import LibrarySettings
-from lyriflux.domain.tracks import PlayerSelectionConfig
-from lyriflux.infrastructure.configuration.bootstrap import open_settings
-from lyriflux.infrastructure.configuration.paths import default_config_path
-from lyriflux.infrastructure.configuration.qt_watcher import QtSettingsWatcher
-from lyriflux.infrastructure.configuration.toml_file import TomlSettingsFile
-from lyriflux.infrastructure.storage.bootstrap import open_storage
+from konokashi.domain.library import LibrarySettings
+from konokashi.domain.tracks import PlayerSelectionConfig
+from konokashi.infrastructure.configuration.bootstrap import open_settings
+from konokashi.infrastructure.configuration.paths import default_config_path
+from konokashi.infrastructure.configuration.qt_watcher import QtSettingsWatcher
+from konokashi.infrastructure.configuration.toml_file import TomlSettingsFile
+from konokashi.infrastructure.storage.bootstrap import open_storage
 
 
 def _service(path: Path) -> CanonicalSettingsService:
@@ -46,11 +46,11 @@ def test_xdg_path_uses_absolute_override_and_home_fallback(tmp_path: Path) -> No
         default_config_path(
             environment={"XDG_CONFIG_HOME": str(tmp_path)}, home=Path("/unused")
         )
-        == tmp_path / "lyriflux" / "config.toml"
+        == tmp_path / "konokashi" / "config.toml"
     )
     assert (
         default_config_path(environment={"XDG_CONFIG_HOME": "relative"}, home=tmp_path)
-        == tmp_path / ".config" / "lyriflux" / "config.toml"
+        == tmp_path / ".config" / "konokashi" / "config.toml"
     )
 
 
@@ -222,7 +222,7 @@ def test_invalid_set_does_not_write_and_reset_preserves_unrelated_content(
 
 
 def test_symlink_edit_replaces_target_without_replacing_link(tmp_path: Path) -> None:
-    target = tmp_path / "dotfiles" / "lyriflux.toml"
+    target = tmp_path / "dotfiles" / "konokashi.toml"
     target.parent.mkdir()
     target.write_text("schema_version = 1\n", encoding="utf-8")
     link = tmp_path / "config.toml"
@@ -388,7 +388,7 @@ def test_config_cli_supports_path_validate_get_set_reset_and_defaults(
     assert cli.main(["config", "get", "library.metadata_workers"], **keyword) == 0
     assert "origin: config-file" in capsys.readouterr().out
     assert cli.main(["config", "validate"], **keyword) == 0
-    assert "Valid LyriFlux configuration" in capsys.readouterr().out
+    assert "Valid KonoKashi configuration" in capsys.readouterr().out
     assert cli.main(["config", "reset", "library.metadata_workers"], **keyword) == 0
     output = capsys.readouterr().out
     assert "library.metadata_workers = 4" in output

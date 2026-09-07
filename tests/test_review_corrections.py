@@ -9,16 +9,16 @@ from pathlib import Path
 
 import pytest
 
-from lyriflux.application.review_corrections import (
+from konokashi.application.review_corrections import (
     ReviewCorrectionError,
     ReviewCorrectionService,
 )
-from lyriflux.domain.identity import (
+from konokashi.domain.identity import (
     GenericMprisIdentity,
     LocalFileIdentity,
     YouTubeIdentity,
 )
-from lyriflux.domain.lyrics import (
+from konokashi.domain.lyrics import (
     ContentProvenance,
     LyricsAlternative,
     LyricsAlternativeResult,
@@ -29,14 +29,14 @@ from lyriflux.domain.lyrics import (
     LyricsResolutionResult,
     LyricsResolutionStatus,
 )
-from lyriflux.domain.models import PlayerCapabilities, PlayerSnapshot, RawTrackMetadata
-from lyriflux.domain.synchronization import LyricDocumentTiming
-from lyriflux.domain.tracks import Confidence, ResolvedTrack, TrackCandidate
-from lyriflux.infrastructure.lyrics.provider_documents import (
+from konokashi.domain.models import PlayerCapabilities, PlayerSnapshot, RawTrackMetadata
+from konokashi.domain.synchronization import LyricDocumentTiming
+from konokashi.domain.tracks import Confidence, ResolvedTrack, TrackCandidate
+from konokashi.infrastructure.lyrics.provider_documents import (
     ProviderLyricDocumentBuilder,
 )
-from lyriflux.infrastructure.storage.bootstrap import open_storage
-from lyriflux.infrastructure.storage.errors import StorageError
+from konokashi.infrastructure.storage.bootstrap import open_storage
+from konokashi.infrastructure.storage.errors import StorageError
 
 NOW = datetime(2026, 8, 23, 18, tzinfo=UTC)
 

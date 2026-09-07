@@ -5,10 +5,10 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import replace
 
-from lyriflux.application.playback_clock import PlaybackClock
-from lyriflux.application.sync_session import PlaybackSyncSession
-from lyriflux.domain.models import PlayerEvent, PlayerEventKind
-from lyriflux.domain.synchronization import (
+from konokashi.application.playback_clock import PlaybackClock
+from konokashi.application.sync_session import PlaybackSyncSession
+from konokashi.domain.models import PlayerEvent, PlayerEventKind
+from konokashi.domain.synchronization import (
     ClockUpdateKind,
     ObservationReason,
     PlaybackState,

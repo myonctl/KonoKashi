@@ -8,7 +8,7 @@ body:
     attributes:
       value: |
         Describe the user problem and the smallest useful outcome. Please keep
-        proposals consistent with LyriFlux's local-first privacy boundary.
+        proposals consistent with KonoKashi's local-first privacy boundary.
   - type: checkboxes
     id: checks
     attributes:

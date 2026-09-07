@@ -4,11 +4,11 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from lyriflux.infrastructure.storage.migrations import (
+from konokashi.infrastructure.storage.migrations import (
     CURRENT_SCHEMA_VERSION,
     MIGRATIONS,
 )
-from lyriflux.infrastructure.storage.sqlite import SQLiteDatabase
+from konokashi.infrastructure.storage.sqlite import SQLiteDatabase
 
 
 def test_schema_eight_upgrade_preserves_user_and_library_data(tmp_path: Path) -> None:

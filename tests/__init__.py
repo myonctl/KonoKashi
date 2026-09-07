@@ -1,1 +1,1 @@
-"""LyriFlux automated test package."""
+"""KonoKashi automated test package."""

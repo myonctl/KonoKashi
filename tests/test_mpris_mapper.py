@@ -8,7 +8,7 @@ from typing import cast
 
 import pytest
 
-from lyriflux.infrastructure.mpris.metadata_mapper import (
+from konokashi.infrastructure.mpris.metadata_mapper import (
     full_service_name,
     map_player_snapshot,
 )

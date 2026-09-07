@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Mapping, Sequence
 
-from lyriflux.infrastructure.mpris.backend import (
+from konokashi.infrastructure.mpris.backend import (
     MprisBackendError,
     MprisPropertyRead,
     PropertiesChangedHandler,

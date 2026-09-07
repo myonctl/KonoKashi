@@ -32,10 +32,10 @@ jobs:
         run: python -m pytest
       - name: Installed CLI smoke checks
         env:
-          DBUS_SESSION_BUS_ADDRESS: unix:path=/tmp/lyriflux-ci-session-bus
+          DBUS_SESSION_BUS_ADDRESS: unix:path=/tmp/konokashi-ci-session-bus
         run: |
-          lyriflux --version
-          lyriflux doctor
+          konokashi --version
+          konokashi doctor
 
   release-artifact:
     runs-on: ubuntu-latest
@@ -52,25 +52,25 @@ jobs:
       - name: Install release build tools
         run: python -m pip install ".[dev]"
       - name: Build and compare release artifacts
-        run: python scripts/build_release.py --output-dir /tmp/lyriflux-dist
+        run: python scripts/build_release.py --output-dir /tmp/konokashi-dist
       - name: Clean-environment artifact install and lifecycle gate
         env:
-          DBUS_SESSION_BUS_ADDRESS: unix:path=/tmp/lyriflux-ci-session-bus
-          XDG_CONFIG_HOME: /tmp/lyriflux-fresh/config
-          XDG_CACHE_HOME: /tmp/lyriflux-fresh/cache
-          XDG_DATA_HOME: /tmp/lyriflux-fresh/data
+          DBUS_SESSION_BUS_ADDRESS: unix:path=/tmp/konokashi-ci-session-bus
+          XDG_CONFIG_HOME: /tmp/konokashi-fresh/config
+          XDG_CACHE_HOME: /tmp/konokashi-fresh/cache
+          XDG_DATA_HOME: /tmp/konokashi-fresh/data
         run: |
-          python -m venv /tmp/lyriflux-fresh/venv
-          /tmp/lyriflux-fresh/venv/bin/python -m pip install /tmp/lyriflux-dist/*.whl
-          /tmp/lyriflux-fresh/venv/bin/lyriflux --version
-          /tmp/lyriflux-fresh/venv/bin/lyriflux doctor
-          /tmp/lyriflux-fresh/venv/bin/lyriflux storage migrate
-          /tmp/lyriflux-fresh/venv/bin/lyriflux storage backup /tmp/lyriflux-fresh/backup.sqlite3
-          /tmp/lyriflux-fresh/venv/bin/lyriflux diagnostics export --output /tmp/lyriflux-fresh/diagnostics.json
-          /tmp/lyriflux-fresh/venv/bin/lyriflux desktop-integration install
-          desktop-file-validate /tmp/lyriflux-fresh/data/applications/io.github.myonctl.LyriFlux.desktop
-          /tmp/lyriflux-fresh/venv/bin/lyriflux desktop-integration status
-          /tmp/lyriflux-fresh/venv/bin/lyriflux desktop-integration remove
-          test -f /tmp/lyriflux-fresh/data/lyriflux/lyriflux.sqlite3
-          /tmp/lyriflux-fresh/venv/bin/python -m pip uninstall --yes lyriflux
-          test -f /tmp/lyriflux-fresh/data/lyriflux/lyriflux.sqlite3
+          python -m venv /tmp/konokashi-fresh/venv
+          /tmp/konokashi-fresh/venv/bin/python -m pip install /tmp/konokashi-dist/*.whl
+          /tmp/konokashi-fresh/venv/bin/konokashi --version
+          /tmp/konokashi-fresh/venv/bin/konokashi doctor
+          /tmp/konokashi-fresh/venv/bin/konokashi storage migrate
+          /tmp/konokashi-fresh/venv/bin/konokashi storage backup /tmp/konokashi-fresh/backup.sqlite3
+          /tmp/konokashi-fresh/venv/bin/konokashi diagnostics export --output /tmp/konokashi-fresh/diagnostics.json
+          /tmp/konokashi-fresh/venv/bin/konokashi desktop-integration install
+          desktop-file-validate /tmp/konokashi-fresh/data/applications/io.github.myonctl.KonoKashi.desktop
+          /tmp/konokashi-fresh/venv/bin/konokashi desktop-integration status
+          /tmp/konokashi-fresh/venv/bin/konokashi desktop-integration remove
+          test -f /tmp/konokashi-fresh/data/konokashi/konokashi.sqlite3
+          /tmp/konokashi-fresh/venv/bin/python -m pip uninstall --yes konokashi
+          test -f /tmp/konokashi-fresh/data/konokashi/konokashi.sqlite3

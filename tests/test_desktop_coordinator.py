@@ -14,36 +14,36 @@ from PySide6.QtCore import Qt, QTimer
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication, QCheckBox
 
-from lyriflux import cli
-from lyriflux.application.frontend_session import FrontendLyricsBundle
-from lyriflux.application.playback_clock import PlaybackClock
-from lyriflux.application.settings import (
+from konokashi import cli
+from konokashi.application.frontend_session import FrontendLyricsBundle
+from konokashi.application.playback_clock import PlaybackClock
+from konokashi.application.settings import (
     DesktopInteractionSettings,
     validate_settings_values,
 )
-from lyriflux.application.settings_service import (
+from konokashi.application.settings_service import (
     CanonicalSettingsService,
     SettingsChange,
 )
-from lyriflux.application.sync_session import PlaybackSyncSession
-from lyriflux.domain.library import LibraryScanSummary
-from lyriflux.domain.lyrics import LyricsResolutionResult, LyricsResolutionStatus
-from lyriflux.domain.models import (
+from konokashi.application.sync_session import PlaybackSyncSession
+from konokashi.domain.library import LibraryScanSummary
+from konokashi.domain.lyrics import LyricsResolutionResult, LyricsResolutionStatus
+from konokashi.domain.models import (
     PlayerEvent,
     PlayerEventKind,
     PlayerInspection,
     PlayerListResult,
 )
-from lyriflux.domain.representations import RepresentationDisplaySettings
-from lyriflux.domain.tracks import (
+from konokashi.domain.representations import RepresentationDisplaySettings
+from konokashi.domain.tracks import (
     PlayerAssessment,
     PlayerSelectionResult,
     ResolvedTrack,
 )
-from lyriflux.infrastructure.configuration.toml_file import TomlSettingsFile
-from lyriflux.presentation.desktop.coordinator import DesktopCoordinator
-from lyriflux.presentation.desktop.main_window import MainWindow
-from lyriflux.presentation.desktop.review_dialog import (
+from konokashi.infrastructure.configuration.toml_file import TomlSettingsFile
+from konokashi.presentation.desktop.coordinator import DesktopCoordinator
+from konokashi.presentation.desktop.main_window import MainWindow
+from konokashi.presentation.desktop.review_dialog import (
     CorrectionActionKind,
     CorrectionActionRequest,
 )
@@ -287,7 +287,7 @@ def test_settings_window_reuses_one_instance_and_round_trips_gui_file_cli(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    target = tmp_path / "dotfiles" / "lyriflux.toml"
+    target = tmp_path / "dotfiles" / "konokashi.toml"
     target.parent.mkdir()
     target.write_text("# retained comment\nschema_version = 1\n", encoding="utf-8")
     path = tmp_path / "config.toml"
@@ -389,7 +389,7 @@ def test_large_library_job_keeps_qt_event_loop_responsive(
         return LibraryScanSummary(1, 10_000, 10_000, 0, 0, 0, 0, 0, 0, 0)
 
     monkeypatch.setattr(
-        "lyriflux.application.library_scan.LibraryScanService.scan", large_scan
+        "konokashi.application.library_scan.LibraryScanService.scan", large_scan
     )
     window = MainWindow()
     coordinator = DesktopCoordinator(

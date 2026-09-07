@@ -2,7 +2,7 @@
 
 ## Supported versions
 
-LyriFlux has no public release yet. Security fixes target the current `main`
+KonoKashi has no public release yet. Security fixes target the current `main`
 branch until a versioned support policy is published.
 
 ## Reporting a vulnerability

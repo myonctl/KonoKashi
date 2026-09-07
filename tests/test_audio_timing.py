@@ -1,7 +1,7 @@
 """Qualified automatic audio latency and device residual composition tests."""
 
-from lyriflux.application.audio_timing import AudioOutputTimingService
-from lyriflux.domain.synchronization import (
+from konokashi.application.audio_timing import AudioOutputTimingService
+from konokashi.domain.synchronization import (
     AudioLatencyProbeResult,
     AudioLatencyProbeStatus,
     AudioLatencyQuality,

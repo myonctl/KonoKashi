@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build, compare, inspect, and publish local LyriFlux release artifacts."""
+"""Build, compare, inspect, and publish local KonoKashi release artifacts."""
 
 from __future__ import annotations
 
@@ -18,24 +18,22 @@ from io import BytesIO
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
-APP_ID = "io.github.myonctl.LyriFlux"
+APP_ID = "io.github.myonctl.KonoKashi"
 REQUIRED_WHEEL_SUFFIXES = (
-    "lyriflux/cli.py",
-    "lyriflux/presentation/tui/settings_app.py",
-    f"lyriflux/resources/{APP_ID}.desktop.in",
-    f"lyriflux/resources/{APP_ID}.metainfo.xml",
-    f"lyriflux/resources/{APP_ID}.svg",
+    "konokashi/cli.py",
+    "konokashi/presentation/tui/settings_app.py",
+    f"konokashi/resources/{APP_ID}.desktop.in",
+    f"konokashi/resources/{APP_ID}.metainfo.xml",
+    f"konokashi/resources/{APP_ID}.svg",
 )
 REQUIRED_SDIST_SUFFIXES = (
     "LICENSE",
     "README.md",
     "pyproject.toml",
-    f"src/lyriflux/resources/{APP_ID}.desktop.in",
-    f"src/lyriflux/resources/{APP_ID}.metainfo.xml",
-    f"src/lyriflux/resources/{APP_ID}.svg",
+    f"src/konokashi/resources/{APP_ID}.desktop.in",
+    f"src/konokashi/resources/{APP_ID}.metainfo.xml",
+    f"src/konokashi/resources/{APP_ID}.svg",
 )
-FORBIDDEN_WHEEL_PREFIXES = ("lyricflow/",)
-FORBIDDEN_SDIST_PARTS = ("/src/lyricflow/",)
 
 
 class ReleaseBuildError(RuntimeError):
@@ -93,7 +91,7 @@ def _canonicalize_sdist(path: Path, epoch: int) -> None:
 
 
 def _build(output: Path, environment: dict[str, str], epoch: int) -> None:
-    with tempfile.TemporaryDirectory(prefix="lyriflux-release-source-") as source_name:
+    with tempfile.TemporaryDirectory(prefix="konokashi-release-source-") as source_name:
         source = Path(source_name) / "source"
         shutil.copytree(
             PROJECT_ROOT,
@@ -179,17 +177,21 @@ def _verify_contents(artifacts: dict[str, Path]) -> None:
         raise ReleaseBuildError(
             f"release artifacts are missing required files: {missing}"
         )
-    forbidden = sorted(
-        name for name in wheel_names if name.startswith(FORBIDDEN_WHEEL_PREFIXES)
-    ) + sorted(
-        name
+    wheel_packages = {
+        name.split("/", 1)[0]
+        for name in wheel_names
+        if name.count("/") >= 1 and name.endswith("/__init__.py")
+    }
+    source_packages = {
+        name.split("/src/", 1)[1].split("/", 1)[0]
         for name in source_names
-        if any(part in f"/{name}" for part in FORBIDDEN_SDIST_PARTS)
-    )
-    if forbidden:
+        if "/src/" in name and name.endswith("/__init__.py")
+    }
+    unexpected_packages = sorted((wheel_packages | source_packages) - {"konokashi"})
+    if unexpected_packages:
         raise ReleaseBuildError(
-            "release artifacts contain the legacy lyricflow package: "
-            + ", ".join(forbidden[:5])
+            "release artifacts contain an unexpected package namespace: "
+            + ", ".join(unexpected_packages[:5])
         )
 
 
@@ -207,8 +209,8 @@ def build_release(output_directory: Path, *, force: bool = False) -> tuple[Path,
         }
     )
     with (
-        tempfile.TemporaryDirectory(prefix="lyriflux-release-a-") as first_name,
-        tempfile.TemporaryDirectory(prefix="lyriflux-release-b-") as second_name,
+        tempfile.TemporaryDirectory(prefix="konokashi-release-a-") as first_name,
+        tempfile.TemporaryDirectory(prefix="konokashi-release-b-") as second_name,
     ):
         first_directory = Path(first_name)
         second_directory = Path(second_name)

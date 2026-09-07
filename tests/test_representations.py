@@ -7,10 +7,10 @@ from pathlib import Path
 
 import pytest
 
-from lyriflux.application.representation_diagnostics import render_representations
-from lyriflux.application.representations import RepresentationService
-from lyriflux.application.settings import DesktopInteractionSettings
-from lyriflux.domain.lyrics import (
+from konokashi.application.representation_diagnostics import render_representations
+from konokashi.application.representations import RepresentationService
+from konokashi.application.settings import DesktopInteractionSettings
+from konokashi.domain.lyrics import (
     ApprovalState,
     ContentProvenance,
     LyricDocument,
@@ -20,7 +20,7 @@ from lyriflux.domain.lyrics import (
     RepresentationKind,
     TimingProvenance,
 )
-from lyriflux.domain.representations import (
+from konokashi.domain.representations import (
     GenerationStatus,
     ImportedRepresentationLine,
     RepresentationDisplaySettings,
@@ -28,11 +28,11 @@ from lyriflux.domain.representations import (
     RomanizationProviderResult,
     RomanizationRequest,
 )
-from lyriflux.infrastructure.romanization.offline import (
+from konokashi.infrastructure.romanization.offline import (
     IcuHanLanguageEvidenceAdapter,
     OfflineRomanizationProvider,
 )
-from lyriflux.infrastructure.storage.bootstrap import open_storage
+from konokashi.infrastructure.storage.bootstrap import open_storage
 
 NOW = datetime(2026, 8, 13, 12, tzinfo=UTC)
 

@@ -1,9 +1,9 @@
 # AUR preparation
 
-`lyriflux` is the sole proposed package. This is a **local candidate, not ready
+`konokashi` is the sole proposed package. This is a **local candidate, not ready
 for AUR submission**. The project is source-available under
 `PolyForm-Noncommercial-1.0.0`, but no public source release exists.
-The recipe currently consumes the exact reviewed local `lyriflux-1.0.0.tar.gz`
+The recipe currently consumes the exact reviewed local `konokashi-1.0.0.tar.gz`
 source archive with a real SHA-256 checksum. It does not invent a public tag or
 download URL. Do not upload the source archive to an AUR Git repository.
 
@@ -16,7 +16,7 @@ updates. The existing internal `1.0.0` is not a stable release announcement.
 The package uses PEP 517 wheel construction and installs into makepkg's staging
 directory with Python installer. Neither build nor package functions download
 dependencies or modify the host Python installation. Runtime packages are
-declared individually; native dependencies remain separately packaged. LyriFlux's
+declared individually; native dependencies remain separately packaged. KonoKashi's
 own payload is architecture independent (`any`); x86_64 dependency resolution and
 installation must pass before submission. No provides/conflicts or VCS variant
 is necessary for the sole package name.
@@ -34,7 +34,7 @@ but is not proof of a resolvable or installable AUR dependency graph.
 
 The package check function exercises package identity, parsing, and all offline
 romanization adapters. The complete upstream suite is a separate release gate.
-After package installation, use the normal `lyriflux` and desktop launcher;
+After package installation, use the normal `konokashi` and desktop launcher;
 do not run the user-local desktop integration installer over pacman-owned files.
 Pacman removal should leave XDG configuration, database, cache, and music intact.
 

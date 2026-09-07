@@ -6,14 +6,14 @@ from pathlib import Path
 
 import pytest
 
-from lyriflux import cli
-from lyriflux.infrastructure.storage.migrations import CURRENT_SCHEMA_VERSION
+from konokashi import cli
+from konokashi.infrastructure.storage.migrations import CURRENT_SCHEMA_VERSION
 
 
 def test_storage_status_missing_then_migrate_then_current(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    path = tmp_path / "data with spaces" / "lyriflux.sqlite3"
+    path = tmp_path / "data with spaces" / "konokashi.sqlite3"
 
     assert cli.main(["storage", "status"], database_path=path) == 0
     missing = capsys.readouterr().out
@@ -113,8 +113,8 @@ def test_corrupt_storage_status_is_controlled_and_keeps_file(
 def test_storage_backup_is_verified_read_only_and_refuses_overwrite(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    database = tmp_path / "live" / "lyriflux.sqlite3"
-    backup = tmp_path / "backups" / "lyriflux.sqlite3"
+    database = tmp_path / "live" / "konokashi.sqlite3"
+    backup = tmp_path / "backups" / "konokashi.sqlite3"
     assert cli.main(["storage", "migrate"], database_path=database) == 0
     capsys.readouterr()
     before = database.read_bytes()

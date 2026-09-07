@@ -10,12 +10,12 @@ import pytest
 from mutagen import MutagenError
 from mutagen.flac import VCFLACDict
 
-from lyriflux.domain.identity import LocalFileIdentity, YouTubeIdentity
-from lyriflux.domain.lyrics import LocalLyricsStatus, LyricDocumentKind
-from lyriflux.domain.models import PlayerCapabilities, PlayerSnapshot, RawTrackMetadata
-from lyriflux.domain.tracks import Confidence, ResolvedTrack, TrackCandidate
-from lyriflux.infrastructure.lyrics.embedded import EmbeddedLyricsProvider
-from lyriflux.infrastructure.lyrics.local_sidecar import LocalSidecarLyricsProvider
+from konokashi.domain.identity import LocalFileIdentity, YouTubeIdentity
+from konokashi.domain.lyrics import LocalLyricsStatus, LyricDocumentKind
+from konokashi.domain.models import PlayerCapabilities, PlayerSnapshot, RawTrackMetadata
+from konokashi.domain.tracks import Confidence, ResolvedTrack, TrackCandidate
+from konokashi.infrastructure.lyrics.embedded import EmbeddedLyricsProvider
+from konokashi.infrastructure.lyrics.local_sidecar import LocalSidecarLyricsProvider
 
 NOW = datetime(2026, 8, 13, 12, tzinfo=UTC)
 

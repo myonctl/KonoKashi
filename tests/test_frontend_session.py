@@ -4,21 +4,21 @@ from __future__ import annotations
 
 from dataclasses import replace
 
-from lyriflux.application.frontend_session import FrontendSessionService
-from lyriflux.application.settings import DesktopInteractionSettings
-from lyriflux.domain.identity import YouTubeIdentity
-from lyriflux.domain.lyrics import (
+from konokashi.application.frontend_session import FrontendSessionService
+from konokashi.application.settings import DesktopInteractionSettings
+from konokashi.domain.identity import YouTubeIdentity
+from konokashi.domain.lyrics import (
     LyricsResolutionResult,
     LyricsResolutionStatus,
     RepresentationKind,
 )
-from lyriflux.domain.models import PlayerListResult
-from lyriflux.domain.representations import (
+from konokashi.domain.models import PlayerListResult
+from konokashi.domain.representations import (
     EffectiveRepresentationLine,
     RepresentationDisplaySettings,
 )
-from lyriflux.domain.synchronization import LyricDocumentTiming
-from lyriflux.domain.tracks import (
+from konokashi.domain.synchronization import LyricDocumentTiming
+from konokashi.domain.tracks import (
     Confidence,
     PlayerAssessment,
     PlayerSelectionResult,
@@ -81,7 +81,7 @@ class _Representations:
 
 class _Settings:
     def __init__(self) -> None:
-        from lyriflux.domain.tracks import PlayerSelectionConfig
+        from konokashi.domain.tracks import PlayerSelectionConfig
 
         self.player = PlayerSelectionConfig(preferred_players=("strawberry",))
         self.display = RepresentationDisplaySettings(True, True, False)

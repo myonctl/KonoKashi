@@ -8,8 +8,8 @@ from threading import Event, Thread
 import httpx
 import pytest
 
-from lyriflux.domain.lyrics import LyricsProviderStatus, LyricsQuery
-from lyriflux.infrastructure.lyrics.lrclib import LrclibLyricsProvider
+from konokashi.domain.lyrics import LyricsProviderStatus, LyricsQuery
+from konokashi.infrastructure.lyrics.lrclib import LrclibLyricsProvider
 
 
 def _record(**overrides: object) -> dict[str, object]:
@@ -65,7 +65,7 @@ def test_exact_request_uses_official_fields_duration_headers_and_injected_url() 
         "duration": "183.771",
     }
     assert request.headers["user-agent"] == (
-        "LyriFlux/1.0.0 (https://github.com/myonctl/LyriFlux)"
+        "KonoKashi/1.0.0 (https://github.com/myonctl/KonoKashi)"
     )
     assert request.headers["accept"] == "application/json"
     assert "authorization" not in request.headers

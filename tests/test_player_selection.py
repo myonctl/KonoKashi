@@ -6,8 +6,8 @@ import json
 
 import pytest
 
-from lyriflux.domain.models import PlayerListResult
-from lyriflux.domain.tracks import PlayerSelectionConfig
+from konokashi.domain.models import PlayerListResult
+from konokashi.domain.tracks import PlayerSelectionConfig
 from tests.stage2_helpers import (
     FIXTURES,
     fixture_snapshot,
@@ -18,7 +18,7 @@ from tests.stage2_helpers import (
 
 
 def selected_name(result: object) -> str | None:
-    from lyriflux.domain.tracks import PlayerSelectionResult
+    from konokashi.domain.tracks import PlayerSelectionResult
 
     assert isinstance(result, PlayerSelectionResult)
     if result.selected is None:

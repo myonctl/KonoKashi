@@ -121,7 +121,7 @@ def test_readme_is_product_first_and_honest_about_license() -> None:
     content = (REPOSITORY_ROOT / "README.md").read_text(encoding="utf-8")
     prose = " ".join(content.split())
 
-    assert content.startswith("# LyriFlux\n")
+    assert content.startswith("# KonoKashi\n")
     assert "usable and under active development" in content
     assert "## Installation from source" in content
     assert "source-available under the PolyForm Noncommercial License 1.0.0" in prose
@@ -144,12 +144,12 @@ def test_runtime_source_does_not_embed_a_maintainer_home_path() -> None:
 def test_appstream_metadata_matches_the_desktop_identity() -> None:
     metadata = (
         REPOSITORY_ROOT
-        / "src/lyriflux/resources/io.github.myonctl.LyriFlux.metainfo.xml"
+        / "src/konokashi/resources/io.github.myonctl.KonoKashi.metainfo.xml"
     ).read_text(encoding="utf-8")
 
-    assert "<id>io.github.myonctl.LyriFlux</id>" in metadata
+    assert "<id>io.github.myonctl.KonoKashi</id>" in metadata
     assert (
-        '<launchable type="desktop-id">io.github.myonctl.LyriFlux.desktop</launchable>'
+        '<launchable type="desktop-id">io.github.myonctl.KonoKashi.desktop</launchable>'
     ) in metadata
     assert "<metadata_license>CC0-1.0</metadata_license>" in metadata
     assert "<project_license>PolyForm-Noncommercial-1.0.0</project_license>" in metadata
@@ -170,7 +170,7 @@ def test_release_copy_excludes_maintainer_and_flatpak_worktrees() -> None:
 
 def test_flatpak_manifest_uses_narrow_runtime_permissions() -> None:
     manifest = (
-        REPOSITORY_ROOT / "packaging/flatpak/io.github.myonctl.LyriFlux.yaml"
+        REPOSITORY_ROOT / "packaging/flatpak/io.github.myonctl.KonoKashi.yaml"
     ).read_text(encoding="utf-8")
 
     assert "--talk-name=org.mpris.MediaPlayer2.*" in manifest
@@ -210,14 +210,14 @@ def test_accepted_cross_cutting_architecture_is_durable() -> None:
             "Retain PySide6",
             "Qt Quick/QML",
             "Textual",
-            "Do not create `lyrifluxd` now",
+            "Do not create `konokashid` now",
         )
     )
     assert all(
         phrase in settings
         for phrase in (
             "one canonical typed, versioned, validated settings schema/service",
-            "`lyriflux settings`",
+            "`konokashi settings`",
             "human-edited XDG configuration files",
             "last-known-good runtime state",
             "hot reload",
@@ -229,9 +229,9 @@ def test_accepted_cross_cutting_architecture_is_durable() -> None:
     assert all(
         phrase in product
         for phrase in (
-            "`lyriflux tui`",
-            "`lyriflux settings`",
-            "`lyriflux follow --json`",
+            "`konokashi tui`",
+            "`konokashi settings`",
+            "`konokashi follow --json`",
             "wallpaper/desktop-overlay modes",
         )
     )

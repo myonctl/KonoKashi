@@ -3,8 +3,8 @@
 from dataclasses import replace
 from datetime import UTC, datetime
 
-from lyriflux.application.lyrics_sync import active_lyrics_at, synchronize
-from lyriflux.domain.lyrics import (
+from konokashi.application.lyrics_sync import active_lyrics_at, synchronize
+from konokashi.domain.lyrics import (
     ApprovalState,
     ContentProvenance,
     LyricDocument,
@@ -13,7 +13,7 @@ from lyriflux.domain.lyrics import (
     LyricRepresentation,
     RepresentationKind,
 )
-from lyriflux.domain.synchronization import (
+from konokashi.domain.synchronization import (
     AudioOutputLatency,
     ClockQuality,
     LineTimingCalibration,

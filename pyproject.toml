@@ -3,14 +3,14 @@ requires = ["setuptools==84.0.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "lyriflux"
+name = "konokashi"
 version = "1.0.0"
 description = "Local-first synchronized lyrics for Linux MPRIS players"
 readme = "README.md"
 requires-python = ">=3.11"
 license = "PolyForm-Noncommercial-1.0.0"
 license-files = ["LICENSE"]
-authors = [{ name = "LyriFlux contributors" }]
+authors = [{ name = "KonoKashi contributors" }]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Environment :: X11 Applications :: Qt",
@@ -37,9 +37,9 @@ dependencies = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/myonctl/LyriFlux"
-Issues = "https://github.com/myonctl/LyriFlux/issues"
-Source = "https://github.com/myonctl/LyriFlux"
+Homepage = "https://github.com/myonctl/KonoKashi"
+Issues = "https://github.com/myonctl/KonoKashi/issues"
+Source = "https://github.com/myonctl/KonoKashi"
 
 [project.optional-dependencies]
 dev = [
@@ -51,13 +51,13 @@ dev = [
 ]
 
 [project.scripts]
-lyriflux = "lyriflux.cli:main"
+konokashi = "konokashi.cli:main"
 
 [tool.setuptools]
 package-dir = { "" = "src" }
 
 [tool.setuptools.package-data]
-lyriflux = ["resources/*.desktop.in", "resources/*.metainfo.xml", "resources/*.svg"]
+konokashi = ["resources/*.desktop.in", "resources/*.metainfo.xml", "resources/*.svg"]
 
 [tool.setuptools.packages.find]
 where = ["src"]

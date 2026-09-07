@@ -13,7 +13,7 @@ from PySide6.QtGui import QColor, QPalette
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication, QCheckBox, QSpinBox
 
-from lyriflux.application.settings import (
+from konokashi.application.settings import (
     SETTINGS_BY_KEY,
     SettingCategory,
     SettingOrigin,
@@ -21,7 +21,7 @@ from lyriflux.application.settings import (
     SettingType,
     validate_settings_values,
 )
-from lyriflux.presentation.desktop.settings_window import (
+from konokashi.presentation.desktop.settings_window import (
     OrderedStringListEditor,
     SettingsWindow,
 )
@@ -217,7 +217,7 @@ def test_config_path_is_copyable_and_folder_open_uses_qt_helper(
     window = _window(qt_app, path)
     opened: list[QUrl] = []
     monkeypatch.setattr(
-        "lyriflux.presentation.desktop.settings_window.QDesktopServices.openUrl",
+        "konokashi.presentation.desktop.settings_window.QDesktopServices.openUrl",
         lambda url: opened.append(url) or True,
     )
 

@@ -7,9 +7,9 @@ from pathlib import Path
 
 import pytest
 
-from lyriflux import cli
-from lyriflux.application.player_diagnostics import render_player_event
-from lyriflux.domain.models import (
+from konokashi import cli
+from konokashi.application.player_diagnostics import render_player_event
+from konokashi.domain.models import (
     InspectionFailure,
     PlayerEvent,
     PlayerEventKind,
@@ -17,7 +17,7 @@ from lyriflux.domain.models import (
     PlayerListResult,
     PlayerWatchStart,
 )
-from lyriflux.infrastructure.mpris.metadata_mapper import (
+from konokashi.infrastructure.mpris.metadata_mapper import (
     full_service_name,
     map_player_snapshot,
 )

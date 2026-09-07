@@ -6,14 +6,14 @@ from pathlib import Path
 
 import pytest
 
-from lyriflux import cli
-from lyriflux.domain.lyrics import (
+from konokashi import cli
+from konokashi.domain.lyrics import (
     LyricsProviderCandidate,
     LyricsProviderResult,
     LyricsProviderStatus,
     LyricsQuery,
 )
-from lyriflux.domain.models import PlayerInspection, PlayerListResult
+from konokashi.domain.models import PlayerInspection, PlayerListResult
 from tests.stage2_helpers import fixture_snapshot
 from tests.test_players_cli import FakeClient, FakeRuntime
 
