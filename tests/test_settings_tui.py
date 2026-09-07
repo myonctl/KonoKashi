@@ -330,10 +330,11 @@ def test_integer_control_applies_bounds_and_preserves_prior_value(
         app.query_one("#integer-value", Input).value = "8"
         await pilot.press("enter")
         await _wait_until(lambda: service.get("library.metadata_workers") == 8)
+        await _wait_until(lambda: not app._mutation_busy)
         editor = app.query_one("#integer-value", Input)
         editor.focus()
         await pilot.press("ctrl+a", "9", "enter")
-        await asyncio.sleep(0.05)
+        await _wait_until(lambda: "Maximum" in _text(app.query_one("#status", Static)))
         assert service.get("library.metadata_workers") == 8
         assert "Maximum" in _text(app.query_one("#status", Static))
 
