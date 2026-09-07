@@ -11,6 +11,10 @@ not have a suitable result.
 
 LyriFlux is usable and under active development.
 
+The project is source-available under the PolyForm Noncommercial License 1.0.0.
+It is free to use, study, modify, and redistribute for permitted noncommercial
+purposes under that license.
+
 ## Why LyriFlux?
 
 - Follow timestamped lyrics in a native PySide6 desktop window.
@@ -132,6 +136,15 @@ are not all individually certified.
   trademark design.
 - No public release, AUR package, or Flathub package exists yet.
 
+## What's next
+
+- Deeper appearance and layout customization, including more flexible lyric
+  presentation and desktop or wallpaper-oriented modes.
+- Better correction tools for lyric text and per-line timing.
+- A full lyrics TUI and stable machine-readable event interface.
+- Additional providers and frontends after the Linux desktop experience and
+  packaging are stable.
+
 ## Documentation
 
 - `docs/PRODUCT_SPEC.md` — behavior and product boundaries
@@ -151,7 +164,11 @@ a public issue; follow `SECURITY.md` instead.
 
 ## License
 
-No open-source license has been selected yet. The current `LICENSE` reserves all
-rights, so public viewing of the source would not grant permission to copy,
-modify, or redistribute it. Open-source publication and downstream packaging are
-blocked until the maintainer explicitly selects a license.
+LyriFlux is source-available under the
+[PolyForm Noncommercial License 1.0.0](LICENSE). It is free to use, study,
+modify, and redistribute for permitted noncommercial purposes under the license.
+The noncommercial restriction means LyriFlux should not be described as OSI Open
+Source.
+
+LyriFlux is the official project name. Forks and redistributed versions should
+not imply that they are official LyriFlux releases or endorsed by the project.

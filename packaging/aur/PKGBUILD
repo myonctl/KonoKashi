@@ -6,7 +6,7 @@ pkgrel=1
 pkgdesc='Local-first synchronized multilingual lyrics for Linux MPRIS players'
 arch=('any')
 url='https://github.com/myonctl/LyriFlux'
-license=('LicenseRef-Proprietary')
+license=('PolyForm-Noncommercial-1.0.0')
 depends=(
   'hicolor-icon-theme'
   'python>=3.11'

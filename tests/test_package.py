@@ -45,6 +45,7 @@ def test_distribution_and_console_entry_point_are_canonically_named() -> None:
     )["project"]
 
     assert project["name"] == "lyriflux"
+    assert project["license"] == "PolyForm-Noncommercial-1.0.0"
     assert project["scripts"] == {"lyriflux": "lyriflux.cli:main"}
     assert isinstance(project["dependencies"], list)
     assert project["urls"]["Source"] == "https://github.com/myonctl/LyriFlux"

@@ -8,9 +8,9 @@ The manifest uses the current `io.qt.PySide.BaseApp` 6.11 branch and generated,
 hash-pinned Python sources. Its local `dir` source deliberately excludes Git,
 maintainer-private notes, environments, and build output. Before a Flathub
 submission, replace that source with an immutable public release archive and
-checksum; move the manifest to the submission repository's top level; select and
-declare the project license; and disclose AI-assisted packaging as required by
-the current Flathub generative-AI policy.
+checksum; move the manifest to the submission repository's top level; preserve
+the declared `PolyForm-Noncommercial-1.0.0` project license; and disclose
+AI-assisted packaging as required by the current Flathub generative-AI policy.
 
 Fugashi is built separately from the exact upstream v1.5.2 Git commit because
 its PyPI source build reported version `0.0.0` in this SDK. MeCab is also built

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 from pathlib import Path
 
@@ -49,6 +50,14 @@ def test_public_repository_documents_exist() -> None:
     ]
 
     assert missing == []
+
+
+def test_license_is_canonical_polyform_noncommercial_1_0_0() -> None:
+    content = (REPOSITORY_ROOT / "LICENSE").read_bytes()
+
+    assert hashlib.sha256(content).hexdigest() == (
+        "ffcca38841adb694b6f380647e15f17c446a4d1656fed51a1e2041d064c94cc8"
+    )
 
 
 def test_maintainer_only_documents_are_not_in_public_tree() -> None:
@@ -110,11 +119,14 @@ def test_github_actions_runs_the_required_quality_gate() -> None:
 
 def test_readme_is_product_first_and_honest_about_license() -> None:
     content = (REPOSITORY_ROOT / "README.md").read_text(encoding="utf-8")
+    prose = " ".join(content.split())
 
     assert content.startswith("# LyriFlux\n")
     assert "usable and under active development" in content
     assert "## Installation from source" in content
-    assert "No open-source license has been selected" in content
+    assert "source-available under the PolyForm Noncommercial License 1.0.0" in prose
+    assert "OSI Open Source" in prose
+    assert "## What's next" in content
     assert "AGENT_TODO.md" not in content
 
 
@@ -140,7 +152,7 @@ def test_appstream_metadata_matches_the_desktop_identity() -> None:
         '<launchable type="desktop-id">io.github.myonctl.LyriFlux.desktop</launchable>'
     ) in metadata
     assert "<metadata_license>CC0-1.0</metadata_license>" in metadata
-    assert "<project_license>LicenseRef-proprietary</project_license>" in metadata
+    assert "<project_license>PolyForm-Noncommercial-1.0.0</project_license>" in metadata
 
 
 def test_release_copy_excludes_maintainer_and_flatpak_worktrees() -> None:

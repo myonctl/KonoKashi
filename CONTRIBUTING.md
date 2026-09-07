@@ -4,9 +4,9 @@ Thank you for considering a contribution. LyriFlux is Linux-first and under
 active development; focused bug fixes, tests, documentation improvements, and
 well-scoped proposals are welcome.
 
-Until an open-source license is selected, source access does not grant permission
-to redistribute or publish modified copies. This policy will be updated before
-the repository becomes public.
+Contributions are accepted under the project's
+`PolyForm-Noncommercial-1.0.0` license. By submitting a contribution, you agree
+that it may be distributed under those terms. Read `LICENSE` before contributing.
 
 ## Development setup
 
