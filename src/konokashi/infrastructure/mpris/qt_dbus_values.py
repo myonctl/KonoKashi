@@ -21,6 +21,14 @@ from konokashi.infrastructure.mpris.backend import (
 )
 
 PropertyReader: TypeAlias = Callable[[str, str], MprisPropertyRead]
+AsyncPropertyReader: TypeAlias = Callable[
+    [
+        str,
+        str,
+        Callable[[MprisPropertyRead | None, BaseException | None], None],
+    ],
+    object,
+]
 
 PROPERTIES_SLOT = cast(
     bytes,
@@ -140,12 +148,20 @@ class PlayerSignalReceiver(QObject):
         properties_handler: PropertiesChangedHandler,
         seeked_handler: SeekedHandler,
         property_reader: PropertyReader | None = None,
+        async_property_reader: AsyncPropertyReader | None = None,
     ) -> None:
         super().__init__()
         self._service = service
         self._properties_handler = properties_handler
         self._seeked_handler = seeked_handler
         self._property_reader = property_reader
+        self._async_property_reader = async_property_reader
+        self._closed = False
+
+    def close(self) -> None:
+        """Suppress any asynchronous fallback completion after disconnection."""
+
+        self._closed = True
 
     @Slot(str, "QVariantMap", "QStringList")
     def propertiesChanged(
@@ -160,6 +176,9 @@ class PlayerSignalReceiver(QObject):
         try:
             plain_changed = plain_mapping(changed)
         except MprisBackendError as conversion_error:
+            if self._async_property_reader is not None:
+                self._refresh_after_decode_failure(interface, conversion_error)
+                return
             if self._property_reader is None:
                 self._properties_handler(
                     self._service,
@@ -208,6 +227,46 @@ class PlayerSignalReceiver(QObject):
             plain_invalidated,
             decode_diagnostics,
         )
+
+    def _refresh_after_decode_failure(
+        self,
+        interface: str,
+        conversion_error: MprisBackendError,
+    ) -> None:
+        """Recover an undecodable signal payload without blocking the Qt thread."""
+
+        reader = self._async_property_reader
+        if reader is None:
+            return
+
+        def completed(
+            refreshed: MprisPropertyRead | None,
+            refresh_error: BaseException | None,
+        ) -> None:
+            if self._closed:
+                return
+            if refresh_error is not None or refreshed is None:
+                self._properties_handler(
+                    self._service,
+                    interface,
+                    {},
+                    (),
+                    (
+                        f"PropertiesChanged payload could not be decoded "
+                        f"({conversion_error}); property refresh failed "
+                        f"({refresh_error or 'unknown error'})",
+                    ),
+                )
+                return
+            self._properties_handler(
+                self._service,
+                interface,
+                refreshed.values,
+                (),
+                refreshed.diagnostics,
+            )
+
+        reader(self._service, interface, completed)
 
     @Slot("qlonglong")
     def seeked(self, position: int) -> None:

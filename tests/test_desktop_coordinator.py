@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import os
+import subprocess
+import sys
 from collections.abc import Callable
 from pathlib import Path
 from threading import Event
@@ -15,6 +17,7 @@ from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication, QCheckBox
 
 from konokashi import cli
+from konokashi.application.clock_lifecycle import AdaptiveResampler
 from konokashi.application.frontend_session import FrontendLyricsBundle
 from konokashi.application.playback_clock import PlaybackClock
 from konokashi.application.settings import (
@@ -34,8 +37,10 @@ from konokashi.domain.models import (
     PlayerEventKind,
     PlayerInspection,
     PlayerListResult,
+    PlayerWatchStart,
 )
 from konokashi.domain.representations import RepresentationDisplaySettings
+from konokashi.domain.synchronization import PlaybackState, PositionObservation
 from konokashi.domain.tracks import (
     PlayerAssessment,
     PlayerSelectionResult,
@@ -72,6 +77,18 @@ class _Client:
             item for item in self.result.players if item.service_name == service_name
         )
 
+    def list_players_async(self, callback):  # type: ignore[no-untyped-def]
+        callback(self.result, None)
+        return _Pending()
+
+
+class _Pending:
+    def __init__(self) -> None:
+        self.cancelled = False
+
+    def cancel(self) -> None:
+        self.cancelled = True
+
 
 class _Monitor:
     def __init__(self) -> None:
@@ -79,6 +96,10 @@ class _Monitor:
 
     def close(self) -> None:
         self.closed = True
+
+    def start_async(self, _handler, callback):  # type: ignore[no-untyped-def]
+        callback(PlayerWatchStart(), None)
+        return _Pending()
 
 
 class _Clock:
@@ -95,6 +116,42 @@ class _Runtime:
         self.monitor = _Monitor()
         self.clock = _Clock()
         self.timing = None
+        self.desktop = self
+
+    def close(self) -> None:
+        self.monitor.close()
+
+
+class _DeferredTiming:
+    def __init__(self) -> None:
+        self.calls = []
+
+    def sample_async(
+        self,
+        snapshot,
+        session_id,
+        *,
+        reason,
+        callback,
+    ):  # type: ignore[no-untyped-def]
+        pending = _Pending()
+        self.calls.append((snapshot, session_id, reason, callback, pending))
+        return pending
+
+    def complete(self, index: int, position_us: int) -> None:
+        _snapshot_value, session_id, reason, callback, _pending = self.calls[index]
+        callback(
+            PositionObservation(
+                session_id,
+                position_us,
+                PlaybackState.PLAYING,
+                1.0,
+                index * 1_000_000,
+                index * 1_000_000 + 100_000,
+                reason,
+            ),
+            None,
+        )
 
 
 class _Frontend:
@@ -426,6 +483,21 @@ def test_large_library_job_keeps_qt_event_loop_responsive(
         window.close()
 
 
+def test_non_cooperative_worker_cannot_hold_desktop_process_shutdown() -> None:
+    environment = {**os.environ, "QT_QPA_PLATFORM": "offscreen"}
+
+    completed = subprocess.run(
+        [sys.executable, "-m", "tests.controlled_desktop_quit"],
+        check=False,
+        capture_output=True,
+        env=environment,
+        text=True,
+        timeout=3,
+    )
+
+    assert completed.returncode == 0, completed.stderr
+
+
 class _ReviewWindow(MainWindow):
     def __init__(self) -> None:
         super().__init__()
@@ -483,6 +555,57 @@ def _install_timed_source(
     coordinator._track = track
     coordinator._playback_session = session
     return session
+
+
+def test_position_requests_are_single_flight_and_seek_coalesces_a_fresh_sample(
+    qt_app: QApplication,
+) -> None:
+    window = MainWindow()
+    runtime = _Runtime()
+    timing = _DeferredTiming()
+    runtime.timing = timing
+    coordinator = DesktopCoordinator(qt_app, window, runtime=runtime)  # type: ignore[arg-type]
+    track = _track("xa4WrgqI7q0", "Track A")
+    token = coordinator.controller.begin_resolution(track)
+    assert token.generation > 0
+    clock = PlaybackClock(runtime.clock.monotonic_ns)
+    session = PlaybackSyncSession(
+        clock,
+        track.raw_snapshot,
+        f"desktop:{track.source_identity!r}",
+    )
+    coordinator._track = track
+    coordinator._playback_clock = clock
+    coordinator._playback_session = session
+    coordinator._scheduler = AdaptiveResampler()
+
+    coordinator._sync_tick()
+    coordinator._sync_tick()
+    coordinator._sync_tick()
+    assert len(timing.calls) == 1
+
+    coordinator._on_player_event(
+        PlayerEvent(
+            PlayerEventKind.SEEKED,
+            track.raw_snapshot.service_name,
+            position_us=4_000_000,
+        )
+    )
+    assert len(timing.calls) == 1
+    timing.complete(0, 1_000_000)
+    qt_app.processEvents()
+
+    assert len(timing.calls) == 2
+    assert timing.calls[1][2].value == "seek"
+    estimate = session.estimate(duration_us=None)
+    assert estimate is not None
+    assert estimate.position_us == 4_000_000
+
+    coordinator.close()
+    # Even a misbehaving adapter callback cannot mutate closed coordinator state.
+    timing.complete(1, 4_100_000)
+    assert coordinator._position_request is None
+    window.close()
 
 
 def test_unrelated_player_event_preserves_lyrics_when_selection_stays_same(

@@ -6,10 +6,12 @@ from collections.abc import Callable
 from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path
-from threading import Event
+from queue import Empty, Queue
+from threading import Condition, Event, Thread
+from time import monotonic
 from typing import Any, cast
 
-from PySide6.QtCore import QObject, QRunnable, QThreadPool, QTimer, Signal, Slot
+from PySide6.QtCore import QObject, QTimer, Signal, Slot
 from PySide6.QtWidgets import QApplication
 
 from konokashi.application.appearance import AppearanceProfile
@@ -22,7 +24,11 @@ from konokashi.application.frontend_session import (
 from konokashi.application.lyrics_sync import synchronize
 from konokashi.application.playback_clock import PlaybackClock
 from konokashi.application.player_selectors import stable_player_suggestions
-from konokashi.application.ports import MprisRuntimePort
+from konokashi.application.ports import (
+    DesktopMprisRuntimePort,
+    MprisRuntimePort,
+    PendingOperationPort,
+)
 from konokashi.application.review_corrections import ReviewCorrectionSnapshot
 from konokashi.application.settings import (
     SETTINGS_SCHEMA,
@@ -47,11 +53,17 @@ from konokashi.application.sync_state import (
 )
 from konokashi.domain.library import LibraryScanSummary
 from konokashi.domain.lyrics import LyricDocumentKind, LyricsResolutionStatus
-from konokashi.domain.models import PlayerEvent, PlayerEventKind
+from konokashi.domain.models import (
+    PlayerEvent,
+    PlayerEventKind,
+    PlayerListResult,
+    PlayerWatchStart,
+)
 from konokashi.domain.representations import RepresentationDisplaySettings
 from konokashi.domain.synchronization import (
     AudioOutputLatency,
     LyricTimingCalibration,
+    PositionObservation,
     PresentationLatency,
     SynchronizationCalibration,
 )
@@ -76,7 +88,7 @@ class _JobSignals(QObject):
     completed = Signal(int, object, object)
 
 
-class _FunctionJob(QRunnable):
+class _FunctionJob:
     """Run one bounded blocking application operation outside the UI thread."""
 
     def __init__(
@@ -85,19 +97,104 @@ class _FunctionJob(QRunnable):
         function: Callable[[], object],
         signals: _JobSignals,
     ) -> None:
-        super().__init__()
         self.job_id = job_id
         self._function = function
         self._signals = signals
 
-    @Slot()
     def run(self) -> None:
         try:
             result = self._function()
         except Exception as error:  # boundary converts to a controlled UI state
-            self._signals.completed.emit(self.job_id, None, error)
+            with suppress(RuntimeError):
+                self._signals.completed.emit(self.job_id, None, error)
         else:
-            self._signals.completed.emit(self.job_id, result, None)
+            with suppress(RuntimeError):
+                self._signals.completed.emit(self.job_id, result, None)
+
+
+class _DaemonWorkerPool:
+    """Bounded daemon workers that cannot make GUI process exit unbounded."""
+
+    _STOP = object()
+
+    def __init__(self, max_workers: int) -> None:
+        if max_workers <= 0:
+            raise ValueError("worker count must be positive")
+        self._queue: Queue[_FunctionJob | object] = Queue()
+        self._condition = Condition()
+        self._pending = 0
+        self._closed = False
+        self._workers = tuple(
+            Thread(
+                target=self._work,
+                name=f"konokashi-desktop-{index + 1}",
+                daemon=True,
+            )
+            for index in range(max_workers)
+        )
+        for worker in self._workers:
+            worker.start()
+
+    def start(self, job: _FunctionJob) -> None:
+        with self._condition:
+            if self._closed:
+                return
+            self._pending += 1
+        self._queue.put(job)
+
+    def clear(self) -> None:
+        """Discard queued work while allowing at most two running jobs to unwind."""
+
+        cleared = 0
+        while True:
+            try:
+                item = self._queue.get_nowait()
+            except Empty:
+                break
+            if item is self._STOP:
+                self._queue.put(item)
+                break
+            cleared += 1
+        if cleared:
+            with self._condition:
+                self._pending -= cleared
+                self._condition.notify_all()
+
+    def close(self) -> None:
+        """Stop accepting work and wake idle daemon workers without waiting."""
+
+        with self._condition:
+            if self._closed:
+                return
+            self._closed = True
+        self.clear()
+        for _worker in self._workers:
+            self._queue.put(self._STOP)
+
+    def waitForDone(self, timeout_ms: int) -> bool:
+        """Compatibility helper for deterministic tests and bounded handoff."""
+
+        deadline = monotonic() + max(0, timeout_ms) / 1_000
+        with self._condition:
+            while self._pending:
+                remaining = deadline - monotonic()
+                if remaining <= 0:
+                    return False
+                self._condition.wait(remaining)
+            return True
+
+    def _work(self) -> None:
+        while True:
+            item = self._queue.get()
+            if item is self._STOP:
+                return
+            assert isinstance(item, _FunctionJob)
+            try:
+                item.run()
+            finally:
+                with self._condition:
+                    self._pending -= 1
+                    self._condition.notify_all()
 
 
 @dataclass(frozen=True, slots=True)
@@ -135,6 +232,7 @@ class DesktopCoordinator(QObject):
         self._database_path = database_path
         self._config_path = config_path
         self._runtime: MprisRuntimePort = runtime or create_qt_mpris_runtime()
+        self._desktop_runtime: DesktopMprisRuntimePort = self._runtime.desktop
         self._controller = DesktopStateController()
         self._frontend: FrontendSessionPort | None = None
         self._settings_service: CanonicalSettingsService | None = None
@@ -150,6 +248,11 @@ class DesktopCoordinator(QObject):
         self._publisher: SynchronizationPublisher | None = None
         self._snapshot_subscription: SnapshotSubscription | None = None
         self._monitor_started = False
+        self._monitor_request: PendingOperationPort | None = None
+        self._selection_request: PendingOperationPort | None = None
+        self._position_request: PendingOperationPort | None = None
+        self._position_request_serial = 0
+        self._position_coalesced = False
         self._closed = False
         self._selection_serial = 0
         self._load_serial = 0
@@ -157,8 +260,7 @@ class DesktopCoordinator(QObject):
         self._library_cancellation: Event | None = None
         self._player_suggestions: tuple[str, ...] = ()
 
-        self._pool = QThreadPool(self)
-        self._pool.setMaxThreadCount(2)
+        self._pool = _DaemonWorkerPool(2)
         self._job_signals = _JobSignals(self)
         self._job_signals.completed.connect(self._job_completed)
         self._next_job_id = 1
@@ -197,7 +299,42 @@ class DesktopCoordinator(QObject):
 
         self._window.render_state(self._controller.state)
         try:
-            started = self._runtime.monitor.start(self._on_player_event)
+            completed = False
+
+            def monitor_started(
+                started: object | None,
+                error: BaseException | None,
+            ) -> None:
+                nonlocal completed
+                completed = True
+                self._monitor_request = None
+                if self._closed:
+                    return
+                if error is not None or not isinstance(started, PlayerWatchStart):
+                    diagnostic = str(error or "unknown monitor startup failure")
+                    self._window.render_state(
+                        self._controller.application_error(
+                            "Unable to monitor media players.", (diagnostic,)
+                        )
+                    )
+                    return
+                if started.error is not None:
+                    self._window.render_state(
+                        self._controller.application_error(
+                            "Unable to monitor media players.", (started.error,)
+                        )
+                    )
+                    return
+                self._monitor_started = True
+                self._idle_timer.start()
+                self._start_job(self._initialize_services, self._services_initialized)
+
+            request = self._desktop_runtime.monitor.start_async(
+                self._on_player_event,
+                monitor_started,
+            )
+            if not completed:
+                self._monitor_request = request
         except RuntimeError as error:
             self._window.render_state(
                 self._controller.application_error(
@@ -205,16 +342,6 @@ class DesktopCoordinator(QObject):
                 )
             )
             return
-        if started.error is not None:
-            self._window.render_state(
-                self._controller.application_error(
-                    "Unable to monitor media players.", (started.error,)
-                )
-            )
-            return
-        self._monitor_started = True
-        self._idle_timer.start()
-        self._start_job(self._initialize_services, self._services_initialized)
 
     def _initialize_services(self) -> _InitializedServices:
         storage = open_storage(self._database_path)
@@ -340,67 +467,93 @@ class DesktopCoordinator(QObject):
             return
         self._selection_serial += 1
         serial = self._selection_serial
-        try:
-            players = self._runtime.client.list_players()
-        except (MprisBackendError, RuntimeError) as error:
-            self._clear_source()
-            self._window.render_state(
-                self._controller.no_player((f"player discovery failed: {error}",))
-            )
-            return
-        self._player_suggestions = stable_player_suggestions(players)
-        if self._settings_window is not None:
-            self._settings_window.set_player_suggestions(self._player_suggestions)
-        frontend = self._frontend
+        if self._selection_request is not None:
+            self._selection_request.cancel()
+            self._selection_request = None
+        completed = False
 
-        def select() -> PlayerSelectionResult:
-            return frontend.select_track(players)
-
-        def selected(result: object | None, error: BaseException | None) -> None:
+        def players_discovered(
+            players: object | None,
+            error: BaseException | None,
+        ) -> None:
+            nonlocal completed
+            completed = True
+            self._selection_request = None
             if serial != self._selection_serial or self._closed:
                 return
-            if error is not None or not isinstance(result, PlayerSelectionResult):
-                diagnostic = (
-                    "unknown selection failure" if error is None else str(error)
-                )
+            if error is not None or not isinstance(players, PlayerListResult):
                 self._clear_source()
                 self._window.render_state(
                     self._controller.no_player(
-                        (f"player selection failed: {diagnostic}",)
+                        (f"player discovery failed: {error or 'unknown failure'}",)
                     )
                 )
                 return
-            if result.selected is None:
-                self._clear_source()
-                self._window.render_state(
-                    self._controller.no_player(
-                        (*result.warnings, *result.unavailable_diagnostics)
-                    )
-                )
+            self._player_suggestions = stable_player_suggestions(players)
+            if self._settings_window is not None:
+                self._settings_window.set_player_suggestions(self._player_suggestions)
+            frontend = self._frontend
+            if frontend is None:
                 return
-            selected_track = result.selected.track
-            session = self._playback_session
-            current_track = self._track
-            if (
-                session is not None
-                and current_track is not None
-                and selected_track.source_identity == current_track.source_identity
-                and selected_track.raw_snapshot.service_name
-                == current_track.raw_snapshot.service_name
-            ):
-                # Selection-affecting events can still resolve to the current
-                # source. Refresh its raw playback context without flashing a
-                # resolving state or performing provider/storage work again.
-                self._track = selected_track
-                session.replace_source(
-                    selected_track.raw_snapshot,
-                    _session_id(selected_track),
-                )
-                self._sync_tick()
-                return
-            self._begin_track(selected_track)
 
-        self._start_job(select, selected)
+            def select() -> PlayerSelectionResult:
+                return frontend.select_track(players)
+
+            def selected(result: object | None, error: BaseException | None) -> None:
+                if serial != self._selection_serial or self._closed:
+                    return
+                if error is not None or not isinstance(result, PlayerSelectionResult):
+                    diagnostic = (
+                        "unknown selection failure" if error is None else str(error)
+                    )
+                    self._clear_source()
+                    self._window.render_state(
+                        self._controller.no_player(
+                            (f"player selection failed: {diagnostic}",)
+                        )
+                    )
+                    return
+                if result.selected is None:
+                    self._clear_source()
+                    self._window.render_state(
+                        self._controller.no_player(
+                            (*result.warnings, *result.unavailable_diagnostics)
+                        )
+                    )
+                    return
+                selected_track = result.selected.track
+                session = self._playback_session
+                current_track = self._track
+                if (
+                    session is not None
+                    and current_track is not None
+                    and selected_track.source_identity == current_track.source_identity
+                    and selected_track.raw_snapshot.service_name
+                    == current_track.raw_snapshot.service_name
+                ):
+                    # Selection-affecting events can still resolve to the current
+                    # source. Refresh its raw playback context without flashing a
+                    # resolving state or performing provider/storage work again.
+                    self._track = selected_track
+                    session.replace_source(
+                        selected_track.raw_snapshot,
+                        _session_id(selected_track),
+                    )
+                    self._sync_tick()
+                    return
+                self._begin_track(selected_track)
+
+            self._start_job(select, selected)
+
+        try:
+            request = self._desktop_runtime.client.list_players_async(
+                players_discovered
+            )
+        except (MprisBackendError, RuntimeError) as error:
+            players_discovered(None, error)
+            return
+        if not completed:
+            self._selection_request = request
 
     def _begin_track(self, track: ResolvedTrack) -> None:
         self._review_serial += 1
@@ -486,29 +639,91 @@ class DesktopCoordinator(QObject):
         token = self._controller.current_token
         if session is None or scheduler is None or track is None or token is None:
             return
-        now_ns = self._runtime.clock.monotonic_ns()
+        now_ns = self._desktop_runtime.clock.monotonic_ns()
         scheduler.trigger(session.requested_reason, now_ns)
-        sampled = scheduler.due(now_ns)
-        update = None
-        if sampled:
-            try:
-                update = session.sample(self._runtime.timing)
-            except (MprisBackendError, RuntimeError) as error:
-                clock = self._playback_clock
-                if clock is not None:
-                    update = clock.mark_sampling_failure(
-                        f"Position sampling failed: {error}"
+        if scheduler.due(now_ns):
+            if self._position_request is None:
+                self._start_position_sample(session)
+            else:
+                # Timer and signal demand collapse into the next scheduler pass.
+                self._position_coalesced = True
+        self._project_sync_state()
+
+    def _start_position_sample(self, session: PlaybackSyncSession) -> None:
+        """Start at most one desktop Position request for the active source."""
+
+        request_context = session.begin_sample()
+        self._position_request_serial += 1
+        serial = self._position_request_serial
+        completed = False
+
+        def sampled(
+            observation: PositionObservation | None,
+            error: BaseException | None,
+        ) -> None:
+            nonlocal completed
+            completed = True
+            if serial != self._position_request_serial:
+                return
+            self._position_request = None
+            if self._closed or session is not self._playback_session:
+                return
+            update = None
+            if error is not None:
+                if session.sample_is_current(request_context):
+                    clock = self._playback_clock
+                    if clock is not None:
+                        update = clock.mark_sampling_failure(
+                            f"Position sampling failed: {error}"
+                        )
+            elif observation is not None:
+                update = session.complete_sample(request_context, observation)
+            if update is not None:
+                estimate = session.estimate(
+                    duration_us=(
+                        None
+                        if self._track is None
+                        else self._track.candidate.duration_us
                     )
+                )
+                scheduler = self._scheduler
+                if estimate is not None and scheduler is not None:
+                    scheduler.record(
+                        update,
+                        estimate.state,
+                        estimate.monotonic_ns,
+                        estimate.diagnostics.health,
+                    )
+            self._project_sync_state()
+            coalesced = self._position_coalesced
+            self._position_coalesced = False
+            if coalesced and not self._closed:
+                QTimer.singleShot(0, self._sync_tick)
+
+        try:
+            operation = self._desktop_runtime.timing.sample_async(
+                request_context.snapshot,
+                request_context.session_id,
+                reason=request_context.reason,
+                callback=sampled,
+            )
+        except (MprisBackendError, RuntimeError) as error:
+            sampled(None, error)
+            return
+        if not completed:
+            self._position_request = operation
+
+    def _project_sync_state(self) -> None:
+        """Interpolate and render locally without performing any D-Bus operation."""
+
+        session = self._playback_session
+        track = self._track
+        token = self._controller.current_token
+        if session is None or track is None or token is None:
+            return
         estimate = session.estimate(duration_us=track.candidate.duration_us)
         if estimate is None:
             return
-        if update is not None:
-            scheduler.record(
-                update,
-                estimate.state,
-                estimate.monotonic_ns,
-                estimate.diagnostics.health,
-            )
         if self._controller.update_playback(
             token.generation,
             estimate.state,
@@ -817,6 +1032,11 @@ class DesktopCoordinator(QObject):
 
     def _clear_sync_only(self) -> None:
         self._sync_timer.stop()
+        self._position_request_serial += 1
+        if self._position_request is not None:
+            self._position_request.cancel()
+        self._position_request = None
+        self._position_coalesced = False
         if self._snapshot_subscription is not None:
             self._snapshot_subscription.close()
         self._snapshot_subscription = None
@@ -944,10 +1164,19 @@ class DesktopCoordinator(QObject):
             self._library_cancellation = None
         self._selection_timer.stop()
         self._idle_timer.stop()
+        if self._monitor_request is not None:
+            self._monitor_request.cancel()
+            self._monitor_request = None
+        if self._selection_request is not None:
+            self._selection_request.cancel()
+            self._selection_request = None
         self._clear_source()
         self._pool.clear()
+        self._pool.close()
         self._jobs.clear()
         if self._monitor_started:
             with suppress(RuntimeError):
-                self._runtime.monitor.close()
+                self._desktop_runtime.monitor.close()
         self._monitor_started = False
+        with suppress(RuntimeError):
+            self._desktop_runtime.close()

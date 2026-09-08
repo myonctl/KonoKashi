@@ -41,6 +41,7 @@ from konokashi.infrastructure.mpris.player_registry import (
 from konokashi.infrastructure.mpris.qt_dbus_values import (
     PROPERTIES_SLOT,
     SEEKED_SLOT,
+    AsyncPropertyReader,
     PlayerSignalReceiver,
     plain_dbus_value,
     plain_mapping,
@@ -237,6 +238,12 @@ class QtDbusBackend:
     ) -> None:
         self._connection = connection or QDBusConnection.sessionBus()
         self._timeout_ms = timeout_ms
+        self._async_property_reader: AsyncPropertyReader | None = None
+
+    def set_async_property_reader(self, reader: AsyncPropertyReader) -> None:
+        """Install the desktop's non-blocking signal-payload recovery path."""
+
+        self._async_property_reader = reader
 
     def _ensure_connected(self) -> None:
         if self._connection.isConnected():
@@ -427,7 +434,8 @@ class QtDbusBackend:
             service,
             on_properties_changed,
             on_seeked,
-            self.read_properties,
+            self.read_properties if self._async_property_reader is None else None,
+            self._async_property_reader,
         )
         properties_connected = False
         seeked_connected = False
@@ -489,6 +497,7 @@ class QtDbusBackend:
             )
 
         def close() -> None:
+            receiver.close()
             properties_disconnected = self._connection.disconnect(
                 service,
                 MPRIS_OBJECT_PATH,
@@ -529,6 +538,19 @@ class QtMprisRuntime:
         self.monitor = MprisMonitor(backend)
         self.clock = LinuxClock()
         self.timing = MprisPositionSampler(backend, self.clock.monotonic_ns)
+        # Imported lazily to keep the synchronous adapter usable independently
+        # while the asynchronous module reuses its constants and error mapping.
+        from konokashi.infrastructure.mpris.qt_dbus_async import (
+            QtDesktopMprisRuntime,
+        )
+
+        self.desktop = QtDesktopMprisRuntime(
+            backend._connection,
+            backend,
+            self.clock,
+            timeout_ms=backend._timeout_ms,
+            parent=application,
+        )
 
     def exec(self) -> int:
         """Run Qt while periodically returning to Python for SIGINT delivery."""

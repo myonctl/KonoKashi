@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import replace
+from dataclasses import dataclass, replace
 
 from konokashi.application.playback_clock import PlaybackClock
 from konokashi.application.ports import PlayerPositionSamplerPort
@@ -14,6 +14,7 @@ from konokashi.domain.synchronization import (
     ObservationReason,
     PlaybackPositionEstimate,
     PlaybackState,
+    PositionObservation,
 )
 
 _REASON_PRIORITY = {
@@ -25,6 +26,17 @@ _REASON_PRIORITY = {
     ObservationReason.TRACK: 5,
     ObservationReason.SUSPEND_RESUME: 6,
 }
+
+
+@dataclass(frozen=True, slots=True)
+class PositionSampleRequest:
+    """Immutable context captured before an asynchronous Position request."""
+
+    snapshot: PlayerSnapshot
+    session_id: str
+    reason: ObservationReason
+    event_serial: int
+    generation: int
 
 
 class PlaybackSyncSession:
@@ -203,21 +215,51 @@ class PlaybackSyncSession:
     def sample(self, sampler: PlayerPositionSamplerPort) -> ClockUpdate:
         """Sample once without losing a higher-priority event received in-flight."""
 
-        sample_reason = self._reason
-        event_serial = self._event_serial
+        request = self.begin_sample()
         observation = sampler.sample(
+            request.snapshot,
+            request.session_id,
+            reason=request.reason,
+        )
+        return self.complete_sample(request, observation)
+
+    def begin_sample(self) -> PositionSampleRequest:
+        """Capture all source/event evidence needed to reject a late reply."""
+
+        return PositionSampleRequest(
             self._snapshot,
             self._session_id,
-            reason=sample_reason,
+            self._reason,
+            self._event_serial,
+            self._generation,
         )
-        if event_serial != self._event_serial:
+
+    def sample_is_current(self, request: PositionSampleRequest) -> bool:
+        """Return whether a reply/error still belongs to the selected source state."""
+
+        return (
+            request.event_serial == self._event_serial
+            and request.generation == self._generation
+            and request.session_id == self._session_id
+            and self._accept_position_events
+            and not self.requires_reload
+        )
+
+    def complete_sample(
+        self,
+        request: PositionSampleRequest,
+        observation: PositionObservation,
+    ) -> ClockUpdate:
+        """Accept one asynchronous reply only if no newer event superseded it."""
+
+        if not self.sample_is_current(request):
             return ClockUpdate(
                 ClockUpdateKind.REJECTED_STALE,
                 "an MPRIS event superseded the in-flight Position request",
                 correction_class=ClockCorrectionClass.REJECTED,
             )
         update = self._clock.observe(observation)
-        if self._reason is sample_reason:
+        if self._reason is request.reason:
             self._reason = ObservationReason.PERIODIC
         return update
 

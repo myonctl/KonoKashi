@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
@@ -109,6 +110,78 @@ class PlayerPositionSamplerPort(Protocol):
         """Return a bracketed observation or raise a controlled runtime error."""
 
 
+class PendingOperationPort(Protocol):
+    """Cancel one asynchronous adapter operation without a late callback."""
+
+    def cancel(self) -> None:
+        """Make cancellation idempotent and suppress any late completion."""
+
+
+PlayerListCallback = Callable[[PlayerListResult | None, BaseException | None], None]
+PositionSampleCallback = Callable[
+    [PositionObservation | None, BaseException | None], None
+]
+MonitorStartCallback = Callable[[PlayerWatchStart | None, BaseException | None], None]
+
+
+class AsyncPlayerDiscoveryPort(Protocol):
+    """Desktop-safe player discovery completed on the Qt owner thread."""
+
+    def list_players_async(self, callback: PlayerListCallback) -> PendingOperationPort:
+        """Enumerate and inspect players without blocking the caller."""
+
+
+class AsyncPlayerPositionSamplerPort(Protocol):
+    """Desktop-safe authoritative Position sampler."""
+
+    def sample_async(
+        self,
+        snapshot: PlayerSnapshot,
+        session_id: str,
+        *,
+        reason: ObservationReason,
+        callback: PositionSampleCallback,
+    ) -> PendingOperationPort:
+        """Start one bracketed Position request and complete asynchronously."""
+
+
+class AsyncPlayerMonitorPort(Protocol):
+    """Desktop monitor with asynchronous startup enumeration."""
+
+    def start_async(
+        self,
+        handler: PlayerEventHandler,
+        callback: MonitorStartCallback,
+    ) -> PendingOperationPort:
+        """Subscribe before asynchronously enumerating existing services."""
+
+    def close(self) -> None:
+        """Disconnect every lifecycle and player subscription."""
+
+
+class DesktopMprisRuntimePort(Protocol):
+    """Asynchronous MPRIS boundary used by the Qt desktop only."""
+
+    @property
+    def client(self) -> AsyncPlayerDiscoveryPort:
+        """Asynchronous discovery and inspection port."""
+
+    @property
+    def monitor(self) -> AsyncPlayerMonitorPort:
+        """Asynchronous-start event monitor."""
+
+    @property
+    def timing(self) -> AsyncPlayerPositionSamplerPort:
+        """Asynchronous Position sampling port."""
+
+    @property
+    def clock(self) -> ClockPort:
+        """Shared integer clock for request timing and scheduling."""
+
+    def close(self) -> None:
+        """Cancel pending calls and detach subscriptions."""
+
+
 class AudioLatencyProbePort(Protocol):
     """Read graph latency evidence without capturing or modifying audio."""
 
@@ -166,6 +239,10 @@ class MprisRuntimePort(Protocol):
     @property
     def clock(self) -> ClockPort:
         """Shared integer clock for sampling, deadlines, and suspend detection."""
+
+    @property
+    def desktop(self) -> DesktopMprisRuntimePort:
+        """Return the non-blocking Qt-native desktop MPRIS boundary."""
 
     def exec(self) -> int:
         """Run the event loop until stopped."""

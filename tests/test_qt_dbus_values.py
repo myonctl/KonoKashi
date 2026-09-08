@@ -206,6 +206,45 @@ def test_live_firefox_a_sv_shape_is_recovered_by_typed_property_refresh(
     assert properties[0][4] == ()
 
 
+def test_desktop_signal_fallback_refreshes_asynchronously_and_honors_close(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(qt_dbus_values, "QDBusArgument", _NoProgressArgument)
+    properties = []
+    pending = []
+
+    def async_read(service, interface, callback):  # type: ignore[no-untyped-def]
+        pending.append((service, interface, callback))
+        return object()
+
+    receiver = PlayerSignalReceiver(
+        "org.mpris.MediaPlayer2.test",
+        lambda *values: properties.append(values),
+        lambda _service, _position: None,
+        lambda *_arguments: pytest.fail("desktop fallback must not read synchronously"),
+        async_read,
+    )
+
+    receiver.propertiesChanged(
+        "org.mpris.MediaPlayer2.Player",
+        _NoProgressArgument(),
+        [],
+    )
+    assert len(pending) == 1
+    assert properties == []
+    pending[0][2](MprisPropertyRead({"PlaybackStatus": "Playing"}), None)
+    assert properties[0][2] == {"PlaybackStatus": "Playing"}
+
+    receiver.propertiesChanged(
+        "org.mpris.MediaPlayer2.Player",
+        _NoProgressArgument(),
+        [],
+    )
+    receiver.close()
+    pending[1][2](MprisPropertyRead({"PlaybackStatus": "Paused"}), None)
+    assert len(properties) == 1
+
+
 def test_qt_signal_receiver_exposes_plain_values_and_exact_slot_signatures() -> None:
     properties: list[tuple[str, str, object, tuple[str, ...], tuple[str, ...]]] = []
     seeks: list[tuple[str, object]] = []

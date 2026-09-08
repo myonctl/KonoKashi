@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 
 from konokashi.application.ports import PlayerEventHandler
 from konokashi.domain.models import (
@@ -208,14 +208,10 @@ class MprisMonitor:
     def start(self, handler: PlayerEventHandler) -> PlayerWatchStart:
         """Attach lifecycle first, then enumerate to close the startup race."""
 
-        if self._service_subscription is not None:
-            return PlayerWatchStart(error="watcher is already running")
-        self._handler = handler
+        listening = self.start_listening(handler)
+        if listening.error is not None:
+            return listening
         try:
-            self._service_subscription = self._backend.subscribe_service_changes(
-                self._service_registered,
-                self._service_unregistered,
-            )
             bus_names = self._backend.list_service_names()
         except MprisBackendError as error:
             message = str(error)
@@ -225,6 +221,29 @@ class MprisMonitor:
                 message = f"{message}; {cleanup_error}"
             return PlayerWatchStart(error=message)
 
+        return self.attach_initial_services(bus_names)
+
+    def start_listening(self, handler: PlayerEventHandler) -> PlayerWatchStart:
+        """Attach lifecycle signals without performing startup enumeration."""
+
+        if self._service_subscription is not None:
+            return PlayerWatchStart(error="watcher is already running")
+        self._handler = handler
+        try:
+            self._service_subscription = self._backend.subscribe_service_changes(
+                self._service_registered,
+                self._service_unregistered,
+            )
+        except MprisBackendError as error:
+            self._handler = None
+            return PlayerWatchStart(error=str(error))
+        return PlayerWatchStart()
+
+    def attach_initial_services(self, bus_names: Sequence[str]) -> PlayerWatchStart:
+        """Attach an asynchronously enumerated set after lifecycle subscription."""
+
+        if self._service_subscription is None:
+            return PlayerWatchStart(error="watcher is not running")
         for bus_name in sorted(set(bus_names)):
             if bus_name.startswith(MPRIS_PREFIX):
                 self._attach_player(bus_name, emit_appeared=False)
