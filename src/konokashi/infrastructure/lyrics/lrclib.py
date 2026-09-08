@@ -106,7 +106,14 @@ class LrclibLyricsProvider:
                     "are required",
                 ),
             )
-        params = {"track_name": query.title, "artist_name": query.artist_name}
+        if query.broad:
+            # LRCLIB full-text search can surface a provider-native title from a
+            # localized title plus artist. The application still scores every
+            # result and requires independent artist, phonetic, and duration
+            # evidence before accepting it.
+            params = {"q": f"{query.title} {query.artist_name}"}
+        else:
+            params = {"track_name": query.title, "artist_name": query.artist_name}
         if query.album and query.album.strip():
             params["album_name"] = query.album
         return self._request("/api/search", params, search=True)

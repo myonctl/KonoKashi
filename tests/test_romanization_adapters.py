@@ -17,6 +17,9 @@ from konokashi.infrastructure.romanization.offline import (
     IcuHanLanguageEvidenceAdapter,
     OfflineRomanizationProvider,
 )
+from konokashi.infrastructure.romanization.title_aliases import (
+    OfflineTitleAliasProvider,
+)
 
 
 @pytest.mark.parametrize(
@@ -193,3 +196,10 @@ def test_missing_chinese_adapter_dependency_is_an_explained_failure(
     assert result.status is GenerationStatus.FAILED
     assert result.text is None
     assert result.diagnostics == ("Chinese Pinyin adapter failed: ImportError",)
+
+
+def test_title_alias_provider_exposes_phonetics_without_claiming_translation() -> None:
+    aliases = OfflineTitleAliasProvider().aliases("アンドロイドガール")
+
+    assert aliases == ("andoroidogaru",)
+    assert OfflineTitleAliasProvider().aliases("Android Girl") == ()

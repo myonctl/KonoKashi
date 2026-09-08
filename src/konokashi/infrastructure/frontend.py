@@ -22,6 +22,9 @@ from konokashi.infrastructure.romanization.offline import (
     IcuHanLanguageEvidenceAdapter,
     OfflineRomanizationProvider,
 )
+from konokashi.infrastructure.romanization.title_aliases import (
+    OfflineTitleAliasProvider,
+)
 from konokashi.infrastructure.storage.bootstrap import StorageRepositories
 
 
@@ -51,6 +54,7 @@ def create_frontend_session(
             lyrics=storage.lyrics,
             matches=storage.lyrics_matches,
             provider_cache=storage.provider_cache,
+            title_aliases=OfflineTitleAliasProvider().aliases,
         ),
         RepresentationService(
             OfflineRomanizationProvider(),

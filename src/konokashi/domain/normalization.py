@@ -22,6 +22,10 @@ _QUOTE_TRANSLATION = str.maketrans(
     }
 )
 _FEATURING = re.compile(r"\b(?:feat(?:uring)?|ft)\.?\s+", re.IGNORECASE)
+_RECORDING_DECORATION = re.compile(
+    r"\b(?:live|remix|cover|instrumental|acoustic|nightcore|version|edit|mix)\b",
+    re.IGNORECASE,
+)
 _LEADING_BROWSER_COUNT = re.compile(r"^\(\d+\)\s+")
 _BROWSER_YOUTUBE_SUFFIX = re.compile(r"\s+-\s+youtube\s*$", re.IGNORECASE)
 _PRESENTATION_GROUP = re.compile(
@@ -41,6 +45,13 @@ _PRESENTATION_BARE = re.compile(
     re.IGNORECASE,
 )
 _TOPIC_SUFFIX = re.compile(r"\s+-\s+.+?\s+-\s+topic\s*$", re.IGNORECASE)
+_VERSION_GROUP = re.compile(r"^(?P<base>.+?)\s*[\[(](?P<qualifier>[^\[\]()]+)[\])]\s*$")
+_VERSION_QUALIFIER = re.compile(
+    r"^(?:radio\s+(?:edit|version)|edit|extended\s+mix|original\s+mix|"
+    r"(?:.+?\s+)?remix|(?:\d{4}\s+)?remaster(?:ed)?|live|acoustic|"
+    r"instrumental|demo|vip|cover|club\s+mix|single\s+version|album\s+version)$",
+    re.IGNORECASE,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -49,6 +60,28 @@ class NormalizedValue:
 
     value: str
     transformations: tuple[str, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class TitleVersion:
+    """Raw title and an optional conservatively parsed recording qualifier."""
+
+    raw_title: str
+    base_title: str
+    qualifier: str | None
+
+
+def parse_title_version(value: str) -> TitleVersion:
+    """Split only a trailing group confidently describing a recording version."""
+
+    normalized = normalize_text(value).value
+    match = _VERSION_GROUP.fullmatch(normalized)
+    if match is None:
+        return TitleVersion(value, normalized, None)
+    qualifier = " ".join(match.group("qualifier").split())
+    if _VERSION_QUALIFIER.fullmatch(qualifier) is None:
+        return TitleVersion(value, normalized, None)
+    return TitleVersion(value, match.group("base").strip(), qualifier)
 
 
 def normalize_text(value: str) -> NormalizedValue:
@@ -125,6 +158,41 @@ def parse_youtube_title(
         title_text = without_youtube.rstrip()
 
     parts = re.split(r"\s+-\s+", title_text, maxsplit=1)
+    reported_keys = {
+        comparison_key(artist) for artist in reported_artists or () if artist.strip()
+    }
+    quotation = re.fullmatch(r"(.+?)\s*[「『](.+?)[」』](.*)", title_text)
+    if quotation is not None:
+        suffix = quotation.group(3).strip()
+        if suffix and not _FEATURING.match(suffix):
+            return None
+        if _RECORDING_DECORATION.search(suffix):
+            return None
+        parts = [quotation.group(1).strip(), quotation.group(2).strip()]
+        transformations.append("parsed Japanese artist/title quotation")
+        if suffix:
+            transformations.append(f"preserved featured performer credit: {suffix}")
+    elif len(parts) == 2:
+        # Only reverse the conventional order when the reported artist
+        # corroborates the right-hand side. A title's internal hyphen is not
+        # evidence of a different artist.
+        if (
+            comparison_key(parts[1]) in reported_keys
+            and comparison_key(parts[0]) not in reported_keys
+        ):
+            parts.reverse()
+            transformations.append("reported artist corroborates title/artist order")
+    elif len(reported_keys) == 1 and _FEATURING.search(title_text):
+        # A credit-bearing browser title plus one reported artist supplies a
+        # bounded alternative to a separator; ordinary unstructured videos
+        # continue to have no inferred musical artist.
+        parts = [
+            next(artist for artist in reported_artists or () if artist.strip()),
+            title_text,
+        ]
+        transformations.append(
+            "used reported artist with explicit featured performer credit"
+        )
     if len(parts) != 2 or not parts[0].strip() or not parts[1].strip():
         return None
     artist_value = normalize_artist(parts[0].strip())
@@ -158,6 +226,18 @@ def parse_youtube_title(
     cleaned_title = _remove_presentation_suffix(candidate_title)
     transformations.extend(cleaned_title.transformations)
     final_title = cleaned_title.value.strip().strip('"').strip()
+    credit = _FEATURING.search(final_title)
+    if credit is not None and credit.start() > 0:
+        base = final_title[: credit.start()].rstrip()
+        # Do not strip parenthesized recording/version descriptions; only a
+        # trailing, unparenthesized performer credit is a title decoration.
+        if not any(char in base for char in "([") and not _RECORDING_DECORATION.search(
+            final_title[credit.start() :]
+        ):
+            transformations.append(
+                f"preserved featured performer credit: {final_title[credit.start() :]}"
+            )
+            final_title = base
     if not artist_value.value or not final_title:
         return None
     return TrackCandidate(

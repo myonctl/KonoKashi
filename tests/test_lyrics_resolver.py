@@ -193,6 +193,7 @@ def _resolver(
     provider: _FakeProvider,
     *,
     local_sources: tuple[_LocalSource, ...] = (),
+    title_aliases: object | None = None,
 ) -> LyricsResolver:
     storage = open_storage(path)
     return LyricsResolver(
@@ -204,6 +205,7 @@ def _resolver(
         provider_cache=storage.provider_cache,
         now=lambda: NOW,
         sleeper=lambda _seconds: None,
+        title_aliases=(title_aliases if callable(title_aliases) else None),
     )
 
 
@@ -499,7 +501,7 @@ def test_explicitly_expired_provider_cache_is_not_reused(tmp_path: Path) -> None
     assert result.cache_hit is False
     assert result.network_used is True
     assert len(provider.exact_queries) == 1
-    assert len(provider.search_queries) == 1
+    assert [query.broad for query in provider.search_queries] == [False, False, True]
 
 
 def test_offline_can_reassess_raw_cache_without_a_saved_active_match(
@@ -772,3 +774,187 @@ def test_rate_limit_and_invalid_local_are_distinct_states(tmp_path: Path) -> Non
         local_sources=(invalid_local,),
     ).resolve(_track(artists=()), offline=True)
     assert invalid.status is LyricsResolutionStatus.INVALID_LOCAL_LYRICS
+
+
+def test_exact_version_candidate_outranks_base_title_fallback(tmp_path: Path) -> None:
+    track = _track(
+        title="Party With Us (Radio Edit)",
+        artists=("S3RL",),
+        album=None,
+        duration_us=180_000_000,
+    )
+    provider = _FakeProvider(
+        search=LyricsProviderResult(
+            LyricsProviderStatus.RESULTS,
+            (
+                _candidate(
+                    "base",
+                    title="Party With Us",
+                    artist="S3RL",
+                    album=None,
+                    duration_ms=180_000,
+                ),
+                _candidate(
+                    "exact",
+                    title="Party With Us (Radio Edit)",
+                    artist="S3RL",
+                    album=None,
+                    duration_ms=180_000,
+                ),
+            ),
+            raw_payload=b"version candidates",
+        )
+    )
+
+    result = _resolver(tmp_path / "version-rank.sqlite3", provider).resolve(track)
+
+    assert result.status is LyricsResolutionStatus.FOUND_TIMED
+    assert result.document is not None
+    assert result.document.provider_record_id == "exact"
+
+
+def test_synchronized_candidate_outranks_equivalent_plain_candidate(
+    tmp_path: Path,
+) -> None:
+    track = _track(
+        title="Song", artists=("Artist",), album=None, duration_us=180_000_000
+    )
+    provider = _FakeProvider(
+        search=LyricsProviderResult(
+            LyricsProviderStatus.RESULTS,
+            (
+                _candidate(
+                    "plain",
+                    title="Song",
+                    artist="Artist",
+                    album=None,
+                    duration_ms=180_000,
+                    synced=None,
+                ),
+                _candidate(
+                    "synced",
+                    title="Song",
+                    artist="Artist",
+                    album=None,
+                    duration_ms=180_000,
+                ),
+            ),
+            raw_payload=b"equivalent candidates",
+        )
+    )
+
+    result = _resolver(tmp_path / "sync-rank.sqlite3", provider).resolve(track)
+
+    assert result.status is LyricsResolutionStatus.FOUND_TIMED
+    assert result.document is not None
+    assert result.document.provider_record_id == "synced"
+
+
+def test_base_title_with_wrong_recording_duration_downgrades_to_plain_text(
+    tmp_path: Path,
+) -> None:
+    track = _track(
+        title="Party With Us (Radio Edit)",
+        artists=("S3RL",),
+        album=None,
+        duration_us=180_000_000,
+    )
+    candidate = _candidate(
+        "base",
+        title="Party With Us",
+        artist="S3RL",
+        album=None,
+        duration_ms=240_000,
+    )
+    provider = _FakeProvider(
+        search=LyricsProviderResult(
+            LyricsProviderStatus.RESULTS,
+            (candidate,),
+            raw_payload=b"base title",
+        )
+    )
+
+    result = _resolver(tmp_path / "version-text.sqlite3", provider).resolve(track)
+
+    assert result.status is LyricsResolutionStatus.FOUND_UNTIMED
+    assert result.document is not None
+    assert result.document.kind is LyricDocumentKind.PLAIN
+    assert "discarded synchronized timing" in " ".join(result.diagnostics)
+
+
+def test_base_title_without_plain_fallback_rejects_untrusted_sync_timing(
+    tmp_path: Path,
+) -> None:
+    track = _track(
+        title="Party With Us (Radio Edit)",
+        artists=("S3RL",),
+        album=None,
+        duration_us=180_000_000,
+    )
+    provider = _FakeProvider(
+        search=LyricsProviderResult(
+            LyricsProviderStatus.RESULTS,
+            (
+                _candidate(
+                    "synced-only",
+                    title="Party With Us",
+                    artist="S3RL",
+                    album=None,
+                    duration_ms=240_000,
+                    plain=None,
+                ),
+            ),
+            raw_payload=b"untrusted timing",
+        )
+    )
+
+    result = _resolver(tmp_path / "version-reject.sqlite3", provider).resolve(track)
+
+    assert result.status is LyricsResolutionStatus.AMBIGUOUS
+    assert result.document is None
+    assert "timing was not trusted" in " ".join(result.diagnostics)
+
+
+def test_broad_artist_catalogue_can_resolve_cross_script_phonetic_title(
+    tmp_path: Path,
+) -> None:
+    class BroadOnlyProvider(_FakeProvider):
+        def search(self, query: LyricsQuery) -> LyricsProviderResult:
+            self.search_queries.append(query)
+            if not query.broad:
+                return LyricsProviderResult(
+                    LyricsProviderStatus.NO_RESULT, raw_payload=b""
+                )
+            return LyricsProviderResult(
+                LyricsProviderStatus.RESULTS,
+                (
+                    _candidate(
+                        "android-girl",
+                        title="アンドロイドガール",
+                        artist="DECO*27",
+                        album=None,
+                        duration_ms=215_200,
+                    ),
+                ),
+                raw_payload=b"cross script",
+            )
+
+    track = _track(
+        title="Android Girl",
+        artists=("DECO*27",),
+        album=None,
+        duration_us=215_441_000,
+    )
+    provider = BroadOnlyProvider()
+    result = _resolver(
+        tmp_path / "cross-script.sqlite3",
+        provider,
+        title_aliases=lambda _title: ("andoroidogaru",),
+    ).resolve(track)
+
+    assert result.status is LyricsResolutionStatus.FOUND_TIMED
+    assert result.document is not None
+    assert result.document.source_title == "アンドロイドガール"
+    assert [query.broad for query in provider.search_queries] == [False, True]
+    assert "transliteration" in " ".join(result.evidence)
+    assert "broader artist catalogue" in " ".join(result.diagnostics)

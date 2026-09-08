@@ -4,7 +4,17 @@ from __future__ import annotations
 
 from html import escape
 
-from PySide6.QtCore import QEvent, QSize, Qt, QTimer, Signal
+from PySide6.QtCore import (
+    Property,
+    QAbstractAnimation,
+    QEasingCurve,
+    QEvent,
+    QPropertyAnimation,
+    QSize,
+    Qt,
+    QTimer,
+    Signal,
+)
 from PySide6.QtGui import (
     QAction,
     QColor,
@@ -20,11 +30,11 @@ from PySide6.QtWidgets import (
     QDialog,
     QDialogButtonBox,
     QFrame,
+    QGraphicsOpacityEffect,
     QHBoxLayout,
     QLabel,
-    QMainWindow,
+    QMessageBox,
     QPlainTextEdit,
-    QProgressBar,
     QPushButton,
     QSizePolicy,
     QStackedWidget,
@@ -47,10 +57,14 @@ from konokashi.application.review_corrections import ReviewCorrectionSnapshot
 from konokashi.application.settings import DesktopInteractionSettings
 from konokashi.domain.representations import RepresentationDisplaySettings
 from konokashi.domain.synchronization import ClockHealth, PlaybackState
+from konokashi.presentation.desktop.application_menu import ApplicationMenu
+from konokashi.presentation.desktop.progress import PlaybackProgress
 from konokashi.presentation.desktop.review_dialog import (
     CorrectionActionRequest,
     ReviewCorrectionDialog,
 )
+from konokashi.presentation.desktop.window_surface import DesktopWindowSurface
+from konokashi.presentation.desktop.workspace import DesktopWorkspace, PanelId
 
 
 def _plain_label(text: str = "") -> QLabel:
@@ -226,7 +240,13 @@ class _LyricGroupWidget(QWidget):
                 appearance.opacity.secondary_representation,
             ),
         ):
-            label.setFont(_styled_font(label, style, scale * emphasis))
+            label.setFont(
+                _styled_font(
+                    label,
+                    style,
+                    scale * emphasis * appearance.lyric_scale_percent / 100,
+                )
+            )
             semantic_color = _semantic_color(
                 color, round(opacity * appearance.opacity.content / 100)
             )
@@ -365,6 +385,83 @@ class LyricBand(QWidget):
         self.setVisible(bool(_group_text(visible_groups)))
 
 
+class LyricTransitionViewport(QWidget):
+    """Move one stable lyric stack with bounded, coalescing Qt animations."""
+
+    def __init__(
+        self,
+        previous: LyricBand,
+        active: LyricBand,
+        following: LyricBand,
+        parent: QWidget | None = None,
+    ) -> None:
+        super().__init__(parent)
+        self.setAccessibleName("Timed lyrics")
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        self.setMaximumWidth(1_040)
+        self._offset = 0
+        self._content = QWidget(self)
+        lyric_layout = QVBoxLayout(self._content)
+        self.lyric_layout = lyric_layout
+        lyric_layout.setContentsMargins(0, 0, 0, 0)
+        lyric_layout.addStretch(1)
+        lyric_layout.addWidget(previous)
+        lyric_layout.addWidget(active)
+        lyric_layout.addWidget(following)
+        lyric_layout.addStretch(1)
+
+        self._movement = QPropertyAnimation(self, b"lyricOffset", self)
+        self._movement.setEasingCurve(QEasingCurve.Type.OutCubic)
+        self._active_effect = QGraphicsOpacityEffect(active)
+        self._active_effect.setOpacity(1.0)
+        active.setGraphicsEffect(self._active_effect)
+        self._emphasis = QPropertyAnimation(self._active_effect, b"opacity", self)
+        self._emphasis.setEasingCurve(QEasingCurve.Type.OutCubic)
+
+    def lyric_offset(self) -> int:
+        return self._offset
+
+    def set_lyric_offset(self, value: int) -> None:
+        self._offset = value
+        self._content.move(0, value)
+
+    lyricOffset = Property(int, lyric_offset, set_lyric_offset)
+
+    @property
+    def animation_running(self) -> bool:
+        return self._movement.state() is QAbstractAnimation.State.Running
+
+    @property
+    def active_opacity(self) -> float:
+        return self._active_effect.opacity()
+
+    def transition(self, direction: int, duration_ms: int, emphasis_ms: int) -> None:
+        """Start at most one transition; newer lyric state replaces stale motion."""
+
+        self._movement.stop()
+        self._emphasis.stop()
+        self.set_lyric_offset(0)
+        self._active_effect.setOpacity(1.0)
+        if direction == 0 or duration_ms <= 0:
+            return
+
+        distance = min(96, max(28, self.height() // 7))
+        self._movement.setDuration(duration_ms)
+        self._movement.setStartValue(direction * distance)
+        self._movement.setEndValue(0)
+        self._movement.start()
+        if emphasis_ms > 0:
+            self._emphasis.setDuration(emphasis_ms)
+            self._emphasis.setStartValue(0.78)
+            self._emphasis.setEndValue(1.0)
+            self._emphasis.start()
+
+    def resizeEvent(self, event: QResizeEvent) -> None:
+        self._content.resize(event.size())
+        self._content.move(0, self._offset)
+        super().resizeEvent(event)
+
+
 class DiagnosticsDialog(QDialog):
     """Bounded details surface that keeps diagnostics out of the lyric view."""
 
@@ -398,10 +495,11 @@ class DiagnosticsDialog(QDialog):
         layout.addWidget(buttons)
 
 
-class MainWindow(QMainWindow):
+class MainWindow(DesktopWindowSurface):
     """Responsive, palette-aware main window driven only by application state."""
 
     settings_requested = Signal()
+    setting_requested = Signal(str, object)
     review_requested = Signal()
     correction_requested = Signal(object)
     library_scan_requested = Signal()
@@ -434,12 +532,15 @@ class MainWindow(QMainWindow):
         self.setMinimumSize(420, 420)
         self.resize(760, 720)
 
-        root = QWidget()
+        root = DesktopWorkspace()
+        self.workspace = root
         root.setAccessibleName("KonoKashi main view")
-        layout = QVBoxLayout(root)
+        layout = root.panel_layout
         self._root_layout = layout
 
-        header = QBoxLayout(QBoxLayout.Direction.LeftToRight)
+        metadata_panel = QWidget()
+        header = QBoxLayout(QBoxLayout.Direction.LeftToRight, metadata_panel)
+        header.setContentsMargins(0, 0, 0, 0)
         self._header_layout = header
         metadata_widget = QWidget()
         self._metadata_widget = metadata_widget
@@ -481,7 +582,7 @@ class MainWindow(QMainWindow):
         actions.addWidget(self.details_button)
         actions.addWidget(self.library_button)
         header.addWidget(actions_widget)
-        layout.addLayout(header)
+        root.add_panel(PanelId.METADATA, metadata_panel)
 
         rule = QFrame()
         self._header_rule = rule
@@ -511,19 +612,10 @@ class MainWindow(QMainWindow):
         timed_page_layout = QHBoxLayout(timed_page)
         timed_page_layout.setContentsMargins(0, 0, 0, 0)
         timed_page_layout.addStretch(1)
-        lyric_column = QWidget()
-        lyric_column.setMaximumWidth(1_040)
-        lyric_column.setSizePolicy(
-            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding
+        lyric_column = LyricTransitionViewport(
+            self.previous_band, self.active_band, self.next_band
         )
-        lyric_layout = QVBoxLayout(lyric_column)
-        self._lyric_layout = lyric_layout
-        lyric_layout.setContentsMargins(0, 0, 0, 0)
-        lyric_layout.addStretch(1)
-        lyric_layout.addWidget(self.previous_band)
-        lyric_layout.addWidget(self.active_band)
-        lyric_layout.addWidget(self.next_band)
-        lyric_layout.addStretch(1)
+        self._lyric_layout = lyric_column.lyric_layout
         timed_page_layout.addWidget(lyric_column, 100)
         timed_page_layout.addStretch(1)
         self.content_stack.addWidget(timed_page)
@@ -551,7 +643,7 @@ class MainWindow(QMainWindow):
         static_page_layout.addLayout(static_row, 1)
         self.content_stack.addWidget(static_page)
         self._static_page = static_page
-        layout.addWidget(self.content_stack, 1)
+        root.add_panel(PanelId.LYRICS, self.content_stack, stretch=1)
 
         self.playback_widget = QWidget()
         progress_row = QHBoxLayout(self.playback_widget)
@@ -559,7 +651,7 @@ class MainWindow(QMainWindow):
         progress_row.setContentsMargins(0, 0, 0, 0)
         self.playback_label = _plain_label("Unknown")
         self.playback_label.setAccessibleName("Playback state")
-        self.progress = QProgressBar()
+        self.progress = PlaybackProgress()
         self.progress.setRange(0, 1000)
         self.progress.setTextVisible(False)
         self.progress.setAccessibleName("Playback progress")
@@ -568,20 +660,40 @@ class MainWindow(QMainWindow):
         progress_row.addWidget(self.playback_label)
         progress_row.addWidget(self.progress, 1)
         progress_row.addWidget(self.time_label)
-        layout.addWidget(self.playback_widget)
+        root.add_panel(PanelId.PROGRESS, self.playback_widget)
 
         self.source_label = _plain_label("")
         self.source_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.source_label.setWordWrap(True)
         self.source_label.setAccessibleName("Lyrics source and synchronization health")
         self.source_label.setForegroundRole(QPalette.ColorRole.PlaceholderText)
-        layout.addWidget(self.source_label)
+        root.add_panel(PanelId.STATUS, self.source_label)
 
-        self.settings_action = QAction("Settings", self)
+        self.settings_action = QAction("&Settings…", self)
         self.settings_action.setShortcut(QKeySequence("Ctrl+,"))
         self.settings_action.setShortcutContext(Qt.ShortcutContext.WindowShortcut)
         self.settings_action.triggered.connect(self._open_settings)
         self.addAction(self.settings_action)
+
+        self.review_action = QAction("&Review track and lyrics…", self)
+        self.review_action.triggered.connect(self.review_requested)
+        self.details_action = QAction("&Diagnostics…", self)
+        self.details_action.triggered.connect(self._open_details)
+        self.scan_action = QAction("Scan &library", self)
+        self.scan_action.triggered.connect(self._toggle_library_scan)
+        self.quit_action = QAction("&Quit", self)
+        self.quit_action.triggered.connect(self.close)
+        self.application_menu = ApplicationMenu(
+            self.settings_action,
+            self.review_action,
+            self.details_action,
+            self.scan_action,
+            self.quit_action,
+            self,
+        )
+        self.application_menu.setting_requested.connect(self.setting_requested)
+        self.application_menu.about_requested.connect(self._about)
+        self.setMenuBar(self.application_menu)
 
         self.setCentralWidget(root)
         self._apply_responsive_typography(
@@ -654,7 +766,11 @@ class MainWindow(QMainWindow):
             button.setFont(font)
 
         self.static_lyrics.setFont(
-            _styled_font(self.static_lyrics, appearance.original, scale)
+            _styled_font(
+                self.static_lyrics,
+                appearance.original,
+                scale * appearance.lyric_scale_percent / 100,
+            )
         )
         self.previous_band.set_responsive_size(
             max(9.0, self._base_point_size * 1.05 * scale),
@@ -713,6 +829,7 @@ class MainWindow(QMainWindow):
         """Apply one resolved semantic profile without touching playback state."""
 
         self._appearance = appearance
+        self.application_menu.project(appearance)
         scale = self._applied_typography_scale or self._responsive_scale(
             self.width(), self.height()
         )
@@ -738,10 +855,12 @@ class MainWindow(QMainWindow):
             _semantic_color(appearance.colors.accent),
         )
         self.setPalette(palette)
+        self.set_background_color(palette.color(QPalette.ColorRole.Window))
         central = self.centralWidget()
         if central is not None:
-            central.setAutoFillBackground(True)
+            central.setAutoFillBackground(False)
             central.setPalette(palette)
+        self.static_lyrics.viewport().setAutoFillBackground(False)
 
         _apply_text_palette(
             self.title_label,
@@ -779,6 +898,7 @@ class MainWindow(QMainWindow):
             _semantic_color(appearance.colors.progress, appearance.opacity.content),
         )
         self.progress.setPalette(progress_palette)
+        self.progress.set_profile(appearance)
 
         lyric_alignment = _qt_alignment(appearance.lyric_alignment)
         text_option = self.static_lyrics.document().defaultTextOption()
@@ -808,6 +928,8 @@ class MainWindow(QMainWindow):
     def render_state(self, state: DesktopViewState) -> None:
         """Render one immutable semantic state without external side effects."""
 
+        previous_state = self._state
+        transition_direction = self._lyric_transition_direction(previous_state, state)
         self._state = state
         self.title_label.setText(state.title or "KonoKashi")
         self.artist_label.setText(" · ".join(state.artists))
@@ -877,7 +999,39 @@ class MainWindow(QMainWindow):
                 DesktopLyricsState.ERROR,
             }
         )
+        self.review_action.setEnabled(self.review_button.isEnabled())
+        self.details_action.setEnabled(self.details_button.isEnabled())
         self._apply_visibility()
+        self._lyric_column.transition(
+            transition_direction,
+            appearance.motion.effective_transition_ms,
+            appearance.motion.effective_emphasis_transition_ms,
+        )
+
+    @staticmethod
+    def _lyric_transition_direction(
+        previous: DesktopViewState, current: DesktopViewState
+    ) -> int:
+        """Return adjacent direction only; seeks and source changes snap promptly."""
+
+        if (
+            previous.state is not DesktopLyricsState.TIMED
+            or current.state is not DesktopLyricsState.TIMED
+            or previous.generation != current.generation
+            or previous.title != current.title
+            or previous.artists != current.artists
+            or previous.player != current.player
+        ):
+            return 0
+        old_active = tuple(group.line_id for group in previous.active)
+        new_active = tuple(group.line_id for group in current.active)
+        if not new_active or new_active == old_active:
+            return 0
+        if previous.next and previous.next[0].line_id in new_active:
+            return 1
+        if previous.previous and previous.previous[-1].line_id in new_active:
+            return -1
+        return 0
 
     def update_playback(self, state: DesktopViewState) -> None:
         """Refresh progress/status fields without rebuilding lyric layout."""
@@ -942,6 +1096,15 @@ class MainWindow(QMainWindow):
     def _open_settings(self) -> None:
         self.settings_requested.emit()
 
+    def _about(self) -> None:
+        from konokashi import __version__
+
+        QMessageBox.about(
+            self,
+            "About KonoKashi",
+            f"KonoKashi {__version__}\nLocal-first synchronized lyrics for Linux.",
+        )
+
     def _open_details(self) -> None:
         DiagnosticsDialog(self._state, self).exec()
 
@@ -956,6 +1119,7 @@ class MainWindow(QMainWindow):
 
         self.library_button.setProperty("scanRunning", running)
         self.library_button.setText("Cancel scan" if running else "Scan library")
+        self.scan_action.setText("Cancel &scan" if running else "Scan &library")
         self.library_button.setToolTip(escape(message))
         self.library_button.setAccessibleDescription(message)
 

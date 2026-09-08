@@ -57,16 +57,17 @@ class SettingScope(Enum):
 class SettingCategory(Enum):
     """Stable semantic grouping shared by settings frontends."""
 
-    PLAYERS = "Players"
+    PLAYERS = "Players / MPRIS"
     LYRICS = "Lyrics"
     DESKTOP = "Desktop"
     LIBRARY = "Library"
-    APPEARANCE = "Appearance"
+    APPEARANCE = "Presets & Defaults"
     TYPOGRAPHY = "Typography"
     COLORS = "Colors"
-    LAYOUT = "Layout"
+    LAYOUT = "Spacing"
     VISIBILITY = "Visibility"
     MOTION = "Motion"
+    PROGRESS = "Progress"
 
 
 class ReloadBehavior(Enum):
@@ -105,6 +106,19 @@ class SettingDefinition:
     choices: tuple[str, ...] = ()
     string_format: SettingStringFormat = SettingStringFormat.PLAIN
 
+    @property
+    def section(self) -> str:
+        """Shared navigation context derived from the canonical semantic key."""
+
+        parts = self.key.split(".")
+        if self.key == "appearance.typography.lyric_scale_percent":
+            return "Quick adjustments"
+        if parts[:2] == ["appearance", "typography"]:
+            return parts[2].replace("_", " ").title() if len(parts) > 3 else "Emphasis"
+        if parts[0] == "appearance" and len(parts) > 2:
+            return parts[1].replace("_", " ").title()
+        return self.category.value
+
 
 def _appearance_definition(
     key: str,
@@ -132,7 +146,15 @@ def _appearance_definition(
         SettingScope.GLOBAL,
         ReloadBehavior.LIVE,
         title,
-        category,
+        SettingCategory.PROGRESS
+        if key
+        in {
+            "appearance.colors.progress",
+            "appearance.visibility.progress",
+            "appearance.visibility.timestamps",
+            "appearance.spacing.progress",
+        }
+        else category,
         description,
         minimum,
         maximum,
@@ -152,7 +174,8 @@ SETTINGS_SCHEMA: tuple[SettingDefinition, ...] = (
         ReloadBehavior.LIVE,
         "Preferred players",
         SettingCategory.PLAYERS,
-        "Ordered MPRIS player selectors preferred after playback state.",
+        "Prefer these players, from top to bottom, among equally active players. "
+        "Use stable names such as strawberry; ignored players are always excluded.",
     ),
     SettingDefinition(
         "players.ignored",
@@ -162,7 +185,8 @@ SETTINGS_SCHEMA: tuple[SettingDefinition, ...] = (
         ReloadBehavior.LIVE,
         "Ignored players",
         SettingCategory.PLAYERS,
-        "MPRIS player selectors excluded before selection scoring.",
+        "Never select these players, even if also preferred. Order does not matter. "
+        "Use stable names such as plasma-browser-integration.",
     ),
     SettingDefinition(
         "lyrics.display.original",
@@ -281,7 +305,7 @@ SETTINGS_SCHEMA: tuple[SettingDefinition, ...] = (
             f"appearance.typography.{layer}.weight",
             f"{title} font weight",
             SettingCategory.TYPOGRAPHY,
-            "Portable CSS-style font weight from 100 through 900.",
+            "Choose how light or bold this text appears in the selected font.",
             minimum=100,
             maximum=900,
         )
@@ -369,7 +393,8 @@ SETTINGS_SCHEMA: tuple[SettingDefinition, ...] = (
             (
                 "appearance.colors.background",
                 "Background color",
-                "Content background color; alpha is combined with background opacity.",
+                "Window background color; alpha combines with background opacity "
+                "for transparency.",
             ),
             (
                 "appearance.colors.foreground",
@@ -421,7 +446,8 @@ SETTINGS_SCHEMA: tuple[SettingDefinition, ...] = (
             (
                 "appearance.opacity.background",
                 "Background opacity",
-                "Opacity percentage combined with background color alpha.",
+                "Window background transparency: 100 is opaque, 0 is transparent. "
+                "Text stays independent.",
             ),
             (
                 "appearance.opacity.inactive_line",
@@ -610,8 +636,9 @@ SETTINGS_SCHEMA: tuple[SettingDefinition, ...] = (
         for key, title, description, minimum, maximum in (
             (
                 "appearance.motion.transition_ms",
-                "Lyric transition duration",
-                "Bounded lyric movement transition duration in milliseconds.",
+                "Animation speed",
+                "Choose how quickly lyrics settle into focus. Custom accepts an "
+                "exact duration.",
                 0,
                 1000,
             ),
@@ -626,9 +653,9 @@ SETTINGS_SCHEMA: tuple[SettingDefinition, ...] = (
     ),
     _appearance_definition(
         "appearance.motion.smooth_scrolling",
-        "Smooth lyric scrolling",
+        "Lyric transitions",
         SettingCategory.MOTION,
-        "Allow bounded smooth movement when the active lyric changes.",
+        "Choose Instant or Smooth movement when the active lyric changes.",
     ),
     _appearance_definition(
         "appearance.motion.reduced",
@@ -636,6 +663,56 @@ SETTINGS_SCHEMA: tuple[SettingDefinition, ...] = (
         SettingCategory.MOTION,
         "Disable nonessential movement regardless of other motion preferences.",
     ),
+)
+
+SETTINGS_SCHEMA += (
+    _appearance_definition(
+        "appearance.typography.lyric_scale_percent",
+        "Lyrics scale",
+        SettingCategory.APPEARANCE,
+        "Scale all lyric layers together. 100% is normal; "
+        "menus and metadata stay unchanged.",
+        minimum=50,
+        maximum=200,
+    ),
+    _appearance_definition(
+        "appearance.progress.thickness",
+        "Progress thickness",
+        SettingCategory.PROGRESS,
+        "Height of the playback progress bar in logical pixels.",
+        minimum=1,
+        maximum=24,
+    ),
+    _appearance_definition(
+        "appearance.progress.track_color",
+        "Progress track color",
+        SettingCategory.PROGRESS,
+        "Unfilled progress track color, including optional alpha.",
+        string_format=SettingStringFormat.COLOR,
+    ),
+    _appearance_definition(
+        "appearance.progress.opacity",
+        "Progress opacity",
+        SettingCategory.PROGRESS,
+        "Opacity of both the progress fill and track; timestamps stay independent.",
+        minimum=0,
+        maximum=100,
+    ),
+    _appearance_definition(
+        "appearance.progress.corner_radius",
+        "Progress corner radius",
+        SettingCategory.PROGRESS,
+        "Use zero for square ends; rounding is limited to half the bar thickness.",
+        minimum=0,
+        maximum=12,
+    ),
+)
+
+SETTINGS_SCHEMA = tuple(
+    definition
+    for category in SettingCategory
+    for definition in SETTINGS_SCHEMA
+    if definition.category is category
 )
 
 SETTINGS_BY_KEY = MappingProxyType(
@@ -842,6 +919,17 @@ def _validate_value(definition: SettingDefinition, value: object) -> str | None:
         or any(type(item) is not str for item in value)
     ):
         return f"Expected an array of strings, got {_render_bad_value(value)}."
+    if expected is SettingType.STRING_LIST and isinstance(value, (list, tuple)):
+        strings = cast(list[str] | tuple[str, ...], value)
+        if any(not item.strip() for item in strings):
+            return "Collection entries must not be blank."
+        if any("\x00" in item or len(item) > 256 for item in strings):
+            return (
+                "Collection entries must be at most 256 characters and contain no NUL."
+            )
+        keys = tuple(item.strip().casefold() for item in strings)
+        if len(set(keys)) != len(keys):
+            return "Collection entries must not contain duplicates."
     if type(value) is int:
         if definition.minimum is not None and value < definition.minimum:
             return f"Expected an integer of at least {definition.minimum}, got {value}."

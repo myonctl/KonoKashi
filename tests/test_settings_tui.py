@@ -147,7 +147,7 @@ def test_schema_drives_all_categories_types_and_details(tmp_path: Path) -> None:
 
     async def scenario(app: SettingsApp, _pilot: Pilot[int]) -> None:
         categories = app.query_one("#categories", OptionList)
-        assert categories.option_count == len(SettingCategory) == 10
+        assert categories.option_count == len(SettingCategory) == 11
         seen: list[str] = []
         for index, category in enumerate(SettingCategory):
             app.action_category(index)

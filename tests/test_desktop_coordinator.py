@@ -18,6 +18,7 @@ from konokashi import cli
 from konokashi.application.frontend_session import FrontendLyricsBundle
 from konokashi.application.playback_clock import PlaybackClock
 from konokashi.application.settings import (
+    SETTINGS_SCHEMA,
     DesktopInteractionSettings,
     validate_settings_values,
 )
@@ -47,6 +48,7 @@ from konokashi.presentation.desktop.review_dialog import (
     CorrectionActionKind,
     CorrectionActionRequest,
 )
+from konokashi.presentation.desktop.settings_window import OrderedStringListEditor
 from tests.test_desktop_state import _snapshot, _track
 from tests.test_desktop_widgets import _review_snapshot
 
@@ -632,5 +634,119 @@ def test_player_event_rejects_selection_result_captured_before_the_event(
     assert coordinator.controller.state.title == "Current B"
     assert coordinator.controller.state.state.value == "no-result"
     assert frontend.load_calls == [track_b]
+    coordinator.close()
+    window.close()
+
+
+def test_menu_visibility_and_preset_use_canonical_service_without_opening_settings(
+    qt_app: QApplication, tmp_path: Path
+) -> None:
+    from konokashi.application.appearance import AppearancePreset
+
+    window = MainWindow()
+    coordinator = _ImmediateCoordinator(qt_app, window)
+    path = tmp_path / "config.toml"
+    service = CanonicalSettingsService(TomlSettingsFile(path))
+    service.initialize()
+    coordinator._settings_service = service
+    coordinator._settings_subscription = service.subscribe(
+        lambda change: coordinator.settings_change_observed.emit(change)
+    )
+    window.application_menu.visibility_actions["progress"].trigger()
+    assert service.get("appearance.visibility.progress") is False
+    assert not window.appearance_profile.visibility.progress
+    assert coordinator._settings_window is not None
+    assert not coordinator._settings_window.isVisible()
+    window.application_menu.preset_actions[AppearancePreset.COMPACT].trigger()
+    assert service.get("appearance.preset") == "compact"
+    reopened = CanonicalSettingsService(TomlSettingsFile(path))
+    reopened.initialize()
+    assert reopened.current.appearance == window.appearance_profile
+    service.set("appearance.visibility.progress", True)
+    assert window.application_menu.visibility_actions["progress"].isChecked()
+    coordinator.close()
+    window.close()
+
+
+def test_reset_appearance_is_atomic_and_preserves_unrelated_settings(
+    qt_app: QApplication, tmp_path: Path
+) -> None:
+    window = MainWindow()
+    coordinator = _ImmediateCoordinator(qt_app, window)
+    path = tmp_path / "config.toml"
+    service = CanonicalSettingsService(TomlSettingsFile(path))
+    service.initialize()
+    service.set("appearance.colors.background", "#12345678")
+    service.set("appearance.typography.lyric_scale_percent", 150)
+    service.set("lyrics.display.translated", True)
+    service.set("players.preferred", ("strawberry",))
+    service.set("library.roots", (str(tmp_path),))
+    coordinator._settings_service = service
+    coordinator._settings_subscription = service.subscribe(
+        lambda change: coordinator.settings_change_observed.emit(change)
+    )
+    coordinator._ensure_settings_window()
+
+    coordinator._reset_appearance()
+
+    for definition in SETTINGS_SCHEMA:
+        if definition.key.startswith("appearance."):
+            assert service.get(definition.key) == definition.default
+    assert service.get("lyrics.display.translated") is True
+    assert service.get("players.preferred") == ("strawberry",)
+    assert service.get("library.roots") == (str(tmp_path),)
+    restarted = CanonicalSettingsService(TomlSettingsFile(path))
+    restarted.initialize()
+    for definition in SETTINGS_SCHEMA:
+        if definition.key.startswith("appearance."):
+            assert restarted.get(definition.key) == definition.default
+    assert restarted.get("lyrics.display.translated") is True
+    coordinator.close()
+    window.close()
+
+
+def test_every_gui_collection_persists_reloads_and_projects_external_updates(
+    qt_app: QApplication, tmp_path: Path
+) -> None:
+    window = MainWindow()
+    coordinator = _ImmediateCoordinator(qt_app, window)
+    path = tmp_path / "config.toml"
+    service = CanonicalSettingsService(TomlSettingsFile(path))
+    service.initialize()
+    coordinator._settings_service = service
+    coordinator._settings_subscription = service.subscribe(
+        lambda change: coordinator.settings_change_observed.emit(change)
+    )
+    settings = coordinator._ensure_settings_window()
+    values = {
+        "players.preferred": "strawberry",
+        "players.ignored": "firefox",
+        "library.roots": str(tmp_path),
+    }
+
+    for key, value in values.items():
+        editor = settings.rows[key].editor
+        assert isinstance(editor, OrderedStringListEditor)
+        editor.input.setText(value)
+        editor.add_button.click()
+        assert service.get(key) == (value,)
+
+    preferred = settings.rows["players.preferred"].editor
+    assert isinstance(preferred, OrderedStringListEditor)
+    preferred.input.setText("vlc")
+    preferred.add_button.click()
+    preferred.up_button.click()
+    assert service.get("players.preferred") == ("vlc", "strawberry")
+
+    restarted = CanonicalSettingsService(TomlSettingsFile(path))
+    restarted.initialize()
+    assert restarted.get("players.preferred") == ("vlc", "strawberry")
+    assert restarted.get("players.ignored") == ("firefox",)
+    assert restarted.get("library.roots") == (str(tmp_path),)
+
+    service.set("players.ignored", ("plasma-browser-integration",))
+    ignored = settings.rows["players.ignored"].editor
+    assert isinstance(ignored, OrderedStringListEditor)
+    assert ignored.value() == ("plasma-browser-integration",)
     coordinator.close()
     window.close()

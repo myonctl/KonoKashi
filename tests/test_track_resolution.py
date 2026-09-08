@@ -10,6 +10,7 @@ from konokashi.domain.normalization import (
     comparison_key,
     normalize_artist,
     normalize_text,
+    parse_title_version,
     parse_youtube_title,
 )
 from konokashi.domain.tracks import ApprovedTrackIdentity, Confidence
@@ -103,6 +104,38 @@ def test_musically_meaningful_version_markers_are_preserved(
 
     assert candidate is not None
     assert candidate.title == version_title
+
+
+@pytest.mark.parametrize(
+    ("title", "base", "qualifier"),
+    [
+        ("Party With Us (Radio Edit)", "Party With Us", "Radio Edit"),
+        ("Song [Extended Mix]", "Song", "Extended Mix"),
+        ("Song (Producer Remix)", "Song", "Producer Remix"),
+        ("Song (2024 Remastered)", "Song", "2024 Remastered"),
+        ("Song (Live)", "Song", "Live"),
+        ("Song (VIP)", "Song", "VIP"),
+    ],
+)
+def test_structural_recording_qualifier_preserves_raw_base_and_qualifier(
+    title: str, base: str, qualifier: str
+) -> None:
+    parsed = parse_title_version(title)
+
+    assert parsed.raw_title == title
+    assert parsed.base_title == base
+    assert parsed.qualifier == qualifier
+
+
+@pytest.mark.parametrize(
+    "title", ["Song (Chapter One)", "Song [From the Film]", "(Parenthetical Song)"]
+)
+def test_arbitrary_parenthetical_title_is_not_stripped(title: str) -> None:
+    parsed = parse_title_version(title)
+
+    assert parsed.raw_title == title
+    assert parsed.base_title == title
+    assert parsed.qualifier is None
 
 
 def test_comparison_key_tolerates_case_punctuation_and_artist_separator() -> None:
@@ -209,3 +242,39 @@ def test_user_approved_override_wins_for_same_stable_source() -> None:
     assert resolved.automatic_candidate.artists == ("S3RL feat. JessKah",)
     assert resolved.automatic_confidence is Confidence.HIGH
     assert "user-approved correction" in resolved.evidence[-1]
+
+
+@pytest.mark.parametrize(
+    "raw_title",
+    [
+        "DECO*27 - Android Girl feat. Hatsune Miku",
+        "DECO*27 - Android Girl ft. Hatsune Miku",
+        "DECO*27 — Android Girl featuring Hatsune Miku",
+        "Android Girl - DECO*27",
+        "Android Girl feat. Hatsune Miku",
+        "DECO*27「Android Girl」feat. Hatsune Miku",
+    ],
+)
+def test_browser_credit_patterns_preserve_artist_and_title(raw_title: str) -> None:
+    candidate = parse_youtube_title(raw_title, ("DECO*27",))
+    assert candidate is not None
+    assert candidate.title == "Android Girl"
+    assert candidate.artists == ("DECO*27",)
+    assert candidate.transformations
+
+
+def test_browser_parser_preserves_internal_title_hyphen_and_recording_version() -> None:
+    candidate = parse_youtube_title("Artist - Long-Term Song (live)", ("Artist",))
+    assert candidate is not None
+    assert candidate.title == "Long-Term Song (live)"
+    assert parse_youtube_title("Long-Term Song", ("Uploader",)) is None
+    assert parse_youtube_title("Artist「Song」 live version", ("Artist",)) is None
+
+
+@pytest.mark.parametrize("version", ["live", "remix", "cover", "instrumental"])
+def test_feature_credit_cleanup_does_not_erase_recording_versions(version: str) -> None:
+    candidate = parse_youtube_title(
+        f"Artist - Song feat. Guest ({version})", ("Artist",)
+    )
+    assert candidate is not None
+    assert version in candidate.title

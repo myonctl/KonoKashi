@@ -157,6 +157,8 @@ class LyricsQuery:
     artists: tuple[str, ...]
     album: str | None
     duration_ms: int | None
+    broad: bool = False
+    source_confidence: str | None = None
 
     @property
     def artist_name(self) -> str:

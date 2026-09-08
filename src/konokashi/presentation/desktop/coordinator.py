@@ -21,6 +21,7 @@ from konokashi.application.frontend_session import (
 )
 from konokashi.application.lyrics_sync import synchronize
 from konokashi.application.playback_clock import PlaybackClock
+from konokashi.application.player_selectors import stable_player_suggestions
 from konokashi.application.ports import MprisRuntimePort
 from konokashi.application.review_corrections import ReviewCorrectionSnapshot
 from konokashi.application.settings import (
@@ -154,6 +155,7 @@ class DesktopCoordinator(QObject):
         self._load_serial = 0
         self._review_serial = 0
         self._library_cancellation: Event | None = None
+        self._player_suggestions: tuple[str, ...] = ()
 
         self._pool = QThreadPool(self)
         self._pool.setMaxThreadCount(2)
@@ -176,6 +178,7 @@ class DesktopCoordinator(QObject):
         self._sync_timer.timeout.connect(self._sync_tick)
 
         self._window.settings_requested.connect(self._open_settings_window)
+        self._window.setting_requested.connect(self._change_setting)
         self._window.review_requested.connect(self._load_review)
         self._window.correction_requested.connect(self._apply_correction)
         self._window.library_scan_requested.connect(self._start_library_scan)
@@ -345,6 +348,9 @@ class DesktopCoordinator(QObject):
                 self._controller.no_player((f"player discovery failed: {error}",))
             )
             return
+        self._player_suggestions = stable_player_suggestions(players)
+        if self._settings_window is not None:
+            self._settings_window.set_player_suggestions(self._player_suggestions)
         frontend = self._frontend
 
         def select() -> PlayerSelectionResult:
@@ -593,6 +599,14 @@ class DesktopCoordinator(QObject):
 
     @Slot()
     def _open_settings_window(self) -> None:
+        settings_window = self._ensure_settings_window()
+        settings_window.show()
+        settings_window.raise_()
+        settings_window.activateWindow()
+
+    def _ensure_settings_window(self) -> SettingsWindow:
+        if self._settings_window is not None:
+            return self._settings_window
         service = self._settings_service
         path = (
             service.path
@@ -605,22 +619,23 @@ class DesktopCoordinator(QObject):
             settings_window.reset_requested.connect(self._reset_setting)
             settings_window.reset_appearance_requested.connect(self._reset_appearance)
             self._settings_window = settings_window
+            settings_window.set_player_suggestions(self._player_suggestions)
         if service is not None:
             self._settings_window.set_snapshot(service.current)
             self._settings_window.set_diagnostics(service.diagnostics)
         else:
             self._settings_window.set_loading()
-        self._settings_window.show()
-        self._settings_window.raise_()
-        self._settings_window.activateWindow()
+        return self._settings_window
 
     @Slot(str, object)
     def _change_setting(self, key: str, value: object) -> None:
         service = self._settings_service
-        settings_window = self._settings_window
-        if service is None or settings_window is None:
+        if service is None:
+            self._window.application_menu.project(self._window.appearance_profile)
             return
+        settings_window = self._ensure_settings_window()
         if not settings_window.mark_pending(key):
+            self._window.application_menu.project(service.current.appearance)
             return
         self._start_job(
             lambda: service.set(key, cast(SettingValue, value)),
@@ -653,7 +668,6 @@ class DesktopCoordinator(QObject):
             definition.key
             for definition in SETTINGS_SCHEMA
             if definition.key.startswith("appearance.")
-            or definition.key.startswith("lyrics.display.")
         )
         self._start_job(
             lambda: service.reset_many(keys),

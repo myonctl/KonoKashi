@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from enum import Enum
 
-from konokashi.domain.models import PlayerSnapshot
+from konokashi.domain.models import PlayerListResult, PlayerSnapshot
 
 _MPRIS_BUS_PREFIX = "org.mpris.MediaPlayer2."
 
@@ -70,3 +70,21 @@ def player_selector_matches(snapshot: PlayerSnapshot, selector: str) -> bool:
         and snapshot.desktop_entry is not None
         and snapshot.desktop_entry.casefold() == expected.casefold()
     )
+
+
+def stable_player_suggestions(result: PlayerListResult) -> tuple[str, ...]:
+    """Return stable service-family selectors without transient D-Bus suffixes."""
+
+    suggestions: dict[str, str] = {}
+    for inspection in result.players:
+        snapshot = inspection.snapshot
+        service_name = (
+            snapshot.service_name if snapshot is not None else inspection.service_name
+        )
+        suffix = _service_suffix(service_name).strip()
+        instance_at = suffix.casefold().find(".instance")
+        if instance_at >= 0:
+            suffix = suffix[:instance_at]
+        if suffix:
+            suggestions.setdefault(suffix.casefold(), suffix)
+    return tuple(sorted(suggestions.values(), key=str.casefold))

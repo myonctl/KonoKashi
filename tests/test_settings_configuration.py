@@ -55,7 +55,7 @@ def test_xdg_path_uses_absolute_override_and_home_fallback(tmp_path: Path) -> No
 
 
 def test_schema_has_stable_complete_metadata() -> None:
-    assert len(SETTINGS_SCHEMA) == len(SETTINGS_BY_KEY) == 75
+    assert len(SETTINGS_SCHEMA) == len(SETTINGS_BY_KEY) == 80
     assert {item.scope for item in SETTINGS_SCHEMA} == {
         SettingScope.GLOBAL,
         SettingScope.DESKTOP,
@@ -78,7 +78,7 @@ def test_schema_has_stable_complete_metadata() -> None:
         "library.automatic_downloads",
         "library.metadata_workers",
     } < set(SETTINGS_BY_KEY)
-    assert sum(key.startswith("appearance.") for key in SETTINGS_BY_KEY) == 66
+    assert sum(key.startswith("appearance.") for key in SETTINGS_BY_KEY) == 71
     workers = SETTINGS_BY_KEY["library.metadata_workers"]
     assert (workers.minimum, workers.maximum) == (1, 8)
 
@@ -131,6 +131,11 @@ def test_malformed_toml_retains_default_last_known_good(tmp_path: Path) -> None:
         ("schema_version = 1\n[players]\nprefered = []\n", "Did you mean"),
         ("schema_version = 1\n[library]\nmetadata_workers = 9\n", "at most 8"),
         ('schema_version = 1\n[library]\nroots = ["relative"]\n', "absolute"),
+        ('schema_version = 1\n[players]\npreferred = ["  "]\n', "blank"),
+        (
+            'schema_version = 1\n[players]\npreferred = ["Firefox", "firefox"]\n',
+            "duplicates",
+        ),
     ],
 )
 def test_validation_is_actionable(tmp_path: Path, content: str, expected: str) -> None:

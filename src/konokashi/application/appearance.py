@@ -117,6 +117,16 @@ class MotionPreferences:
 
 
 @dataclass(frozen=True, slots=True)
+class ProgressAppearance:
+    """Presentation-neutral geometry and track treatment for playback progress."""
+
+    thickness: int
+    track_color: str
+    opacity: int
+    corner_radius: int
+
+
+@dataclass(frozen=True, slots=True)
 class AppearanceProfile:
     """Resolved immutable semantics shared by every current/future frontend."""
 
@@ -136,6 +146,8 @@ class AppearanceProfile:
     visibility: AppearanceVisibility
     context: LyricContext
     motion: MotionPreferences
+    progress: ProgressAppearance
+    lyric_scale_percent: int
 
 
 _COLOR_PATTERN = re.compile(r"^#[0-9A-Fa-f]{6}(?:[0-9A-Fa-f]{2})?$")
@@ -152,6 +164,11 @@ def normalize_color(value: str) -> str:
 DEFAULT_APPEARANCE_VALUES: Mapping[str, bool | int | str] = MappingProxyType(
     {
         "appearance.preset": "default",
+        "appearance.typography.lyric_scale_percent": 100,
+        "appearance.progress.thickness": 4,
+        "appearance.progress.track_color": "#FFFFFF20",
+        "appearance.progress.opacity": 100,
+        "appearance.progress.corner_radius": 2,
         "appearance.typography.original.family": "",
         "appearance.typography.original.size": 22,
         "appearance.typography.original.weight": 600,
@@ -393,6 +410,13 @@ def resolve_appearance(
             cast(int, resolved["appearance.motion.emphasis_transition_ms"]),
             cast(bool, resolved["appearance.motion.reduced"]),
         ),
+        ProgressAppearance(
+            cast(int, resolved["appearance.progress.thickness"]),
+            cast(str, resolved["appearance.progress.track_color"]),
+            cast(int, resolved["appearance.progress.opacity"]),
+            cast(int, resolved["appearance.progress.corner_radius"]),
+        ),
+        cast(int, resolved["appearance.typography.lyric_scale_percent"]),
     )
 
 

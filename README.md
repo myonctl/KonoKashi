@@ -76,7 +76,7 @@ prepared but are not published.
    Browser Integration.
 2. Launch KonoKashi from the application menu.
 3. Open Settings in the desktop app to choose players, lyric layers, appearance,
-   layout, and music-library roots.
+   spacing, and music-library roots.
 4. Use the review controls when a recording or lyric match needs correction.
 
 Useful diagnostics:
@@ -114,6 +114,9 @@ and `large-display` presets remain customizable. For example:
 [appearance]
 preset = "large-display"
 
+[appearance.typography]
+lyric_scale_percent = 125
+
 [appearance.typography.original]
 family = "Noto Sans CJK JP"
 size = 48
@@ -130,9 +133,51 @@ lyrics = "center"
 Colors use `#RRGGBB` or `#RRGGBBAA` and are normalized on application writes.
 An unavailable font name remains configured while Qt/fontconfig supplies a
 graceful multilingual fallback. The desktop Appearance reset removes the whole
-profile and lyric-visibility overrides; individual values can also be reset in
+appearance profile only; individual values can also be reset in
 either settings frontend or with `konokashi config reset KEY`. Invalid external
 edits are rejected atomically and the last-known-good appearance stays active.
+
+Desktop Settings keeps **Search settings…** visible above the categories. Press
+Ctrl+F to search names, descriptions, canonical keys, categories, and sections
+across all settings, including collapsed branches and advanced controls. Native
+tree navigation groups Functionality and Appearance beneath disclosure arrows;
+Workspace and Advanced describe their current bounded capabilities. Escape clears
+the query, then leaves the search field.
+Edits preserve the current category, scroll position, and keyboard focus.
+Wheel gestures over numeric and choice editors scroll the page without changing
+their values. **Reset Appearance…** asks for confirmation, with Cancel selected
+by default; individual resets remain immediate.
+
+**Lyrics scale** in Appearance adjusts original, romanized, and translated lyrics
+together from 50% to 200% (100% by default). It multiplies configured lyric sizes
+while preserving their relationships and leaves menus and metadata unchanged.
+Typography offers installed or manual font families, a multilingual live preview,
+and named weights from Thin through Black while preserving exact configured
+values. Motion offers Instant or Smooth lyric transitions plus Slow, Normal, Fast,
+and exact custom speed choices. Smooth mode animates only adjacent line changes;
+seeks and track changes settle immediately, and Reduce motion disables movement.
+
+Preferred and ignored MPRIS players use collection editors with discovered stable
+service-family suggestions and manual entry. Preferred order breaks ties between
+equally active players; ignored entries always take precedence. Transient D-Bus
+instance suffixes are not suggested.
+
+The **Progress** category contains the bar visibility, thickness, fill and track
+colors, opacity, corner radius, spacing, and timestamp visibility. Set the corner
+radius to zero for square ends. Hiding the bar leaves timestamps independently
+controllable; a track without a known duration has no progress bar.
+
+Background color alpha and **Background opacity** combine to make the ordinary
+desktop window transparent. They leave text opacity independent; whole-window
+opacity, which would also fade text and controls, is not used. Settings and native
+menus remain opaque and accessible. Wayland supports live updates; other platforms
+need an alpha-capable composited surface and fall back to opaque painting when
+Qt reports no alpha buffer.
+
+Press Alt to focus the native application menu. File includes Settings (Ctrl+,),
+library scanning, and Quit (Ctrl+Q); View controls component visibility and
+appearance presets. Lyrics opens track/lyrics review, and Help provides diagnostics
+and About. View changes persist through the same canonical configuration.
 
 Application state is stored under `$XDG_DATA_HOME/konokashi`, and cache data under
 `$XDG_CACHE_HOME/konokashi`. Configuration and databases are created with private

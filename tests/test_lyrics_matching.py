@@ -70,7 +70,6 @@ def test_feat_notation_normalizes_without_using_uploader_as_artist() -> None:
 @pytest.mark.parametrize(
     "provider_title",
     [
-        "Elevate",
         "Elevate (Live)",
         "Elevate (Extended Mix)",
         "Elevate (Remix)",
@@ -86,6 +85,198 @@ def test_version_marker_mismatch_is_low(provider_title: str) -> None:
 
     assert assessment.confidence is LyricsMatchConfidence.LOW
     assert any("version markers conflict" in item for item in assessment.evidence)
+
+
+def test_radio_edit_recognizes_unqualified_base_title_as_text_relation() -> None:
+    query = LyricsQuery("Party With Us (Radio Edit)", ("S3RL",), None, 180_000)
+    assessment = assess_candidate(
+        query,
+        _candidate(
+            title="Party With Us",
+            artist="S3RL",
+            album=None,
+            duration_ms=180_500,
+        ),
+    )
+
+    assert assessment.title_relation == "base-title"
+    assert assessment.text_confidence is LyricsMatchConfidence.HIGH
+    assert assessment.timing_confidence is LyricsMatchConfidence.HIGH
+    assert assessment.confidence is LyricsMatchConfidence.HIGH
+
+
+def test_base_title_keeps_text_and_timing_confidence_independent() -> None:
+    query = LyricsQuery("Party With Us (Radio Edit)", ("S3RL",), None, 180_000)
+    assessment = assess_candidate(
+        query,
+        _candidate(
+            title="Party With Us",
+            artist="S3RL",
+            album=None,
+            duration_ms=240_000,
+        ),
+    )
+
+    assert assessment.text_confidence is LyricsMatchConfidence.HIGH
+    assert assessment.timing_confidence is LyricsMatchConfidence.LOW
+    assert assessment.confidence is LyricsMatchConfidence.HIGH
+
+
+def test_cross_script_phonetic_match_requires_artist_and_duration_corroboration() -> (
+    None
+):
+    query = LyricsQuery("Android Girl", ("DECO*27",), None, 215_441)
+    candidate = _candidate(
+        title="アンドロイドガール",
+        artist="DECO*27",
+        album=None,
+        duration_ms=215_200,
+    )
+    accepted = assess_candidate(
+        query, candidate, provider_title_aliases=("andoroidogaru",)
+    )
+    wrong_artist = assess_candidate(
+        query,
+        _candidate(
+            title="アンドロイドガール",
+            artist="Another Artist",
+            album=None,
+            duration_ms=215_200,
+        ),
+        provider_title_aliases=("andoroidogaru",),
+    )
+    wrong_duration = assess_candidate(
+        query,
+        _candidate(
+            title="アンドロイドガール",
+            artist="DECO*27",
+            album=None,
+            duration_ms=260_000,
+        ),
+        provider_title_aliases=("andoroidogaru",),
+    )
+
+    assert accepted.title_relation == "phonetic-transliteration"
+    assert accepted.confidence is LyricsMatchConfidence.HIGH
+    assert "transliteration" in " ".join(accepted.evidence)
+    assert wrong_artist.confidence is LyricsMatchConfidence.LOW
+    assert wrong_duration.confidence is LyricsMatchConfidence.LOW
+
+
+def test_realistic_cross_script_duration_variance_remains_bounded() -> None:
+    query = LyricsQuery("Android Girl", ("DECO*27",), None, 215_441)
+    candidate = _candidate(
+        title="アンドロイドガール",
+        artist="DECO*27",
+        album=None,
+        duration_ms=211_000,
+    )
+
+    assessment = assess_candidate(
+        query, candidate, provider_title_aliases=("andoroidogaru",)
+    )
+
+    assert assessment.duration_difference_ms == 4_441
+    assert assessment.confidence is LyricsMatchConfidence.HIGH
+    assert assessment.timing_confidence is LyricsMatchConfidence.HIGH
+
+
+def test_neighboring_native_title_and_weak_phonetic_coincidence_are_rejected() -> None:
+    query = LyricsQuery("Android Girl", ("DECO*27",), None, 215_441)
+    neighbor = assess_candidate(
+        query,
+        _candidate(
+            title="シンセカイ案内所",
+            artist="DECO*27",
+            album=None,
+            duration_ms=215_000,
+        ),
+        provider_title_aliases=("shinseikai annaijo",),
+    )
+    weak = assess_candidate(
+        query,
+        _candidate(
+            title="アンドロメダ",
+            artist="DECO*27",
+            album=None,
+            duration_ms=215_000,
+        ),
+        provider_title_aliases=("andoromeda",),
+    )
+
+    assert neighbor.confidence is LyricsMatchConfidence.LOW
+    assert weak.confidence is LyricsMatchConfidence.LOW
+
+
+def test_low_source_confidence_caps_automatic_candidate() -> None:
+    query = LyricsQuery(
+        "Song",
+        ("Artist",),
+        None,
+        180_000,
+        source_confidence="Low",
+    )
+    assessment = assess_candidate(
+        query,
+        _candidate(title="Song", artist="Artist", album=None, duration_ms=180_000),
+    )
+
+    assert assessment.confidence is LyricsMatchConfidence.MEDIUM
+    assert "metadata confidence is Low" in " ".join(assessment.evidence)
+
+
+@pytest.mark.parametrize(
+    ("local_title", "provider_title"),
+    [
+        ("Song (Radio Edit)", "Song (Extended Mix)"),
+        ("Song (Live)", "Song"),
+        ("Song (Remix)", "Song"),
+        ("Song (Instrumental)", "Song"),
+    ],
+)
+def test_incompatible_or_content_changing_versions_do_not_inherit_automatically(
+    local_title: str, provider_title: str
+) -> None:
+    assessment = assess_candidate(
+        LyricsQuery(local_title, ("Artist",), None, 180_000),
+        _candidate(
+            title=provider_title,
+            artist="Artist",
+            album=None,
+            duration_ms=180_000,
+        ),
+    )
+
+    assert assessment.confidence is LyricsMatchConfidence.LOW
+
+
+def test_raw_exact_title_relation_outranks_normalized_equivalence() -> None:
+    query = LyricsQuery("Song (Radio Edit)", ("Artist",), None, 180_000)
+
+    assert (
+        assess_candidate(
+            query,
+            _candidate(
+                title="Song (Radio Edit)",
+                artist="Artist",
+                album=None,
+                duration_ms=180_000,
+            ),
+        ).title_relation
+        == "exact-raw"
+    )
+    assert (
+        assess_candidate(
+            query,
+            _candidate(
+                title="song [radio edit]",
+                artist="Artist",
+                album=None,
+                duration_ms=180_000,
+            ),
+        ).title_relation
+        == "normalized"
+    )
 
 
 @pytest.mark.parametrize(

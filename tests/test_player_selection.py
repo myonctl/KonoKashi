@@ -6,6 +6,7 @@ import json
 
 import pytest
 
+from konokashi.application.player_selectors import stable_player_suggestions
 from konokashi.domain.models import PlayerListResult
 from konokashi.domain.tracks import PlayerSelectionConfig
 from tests.stage2_helpers import (
@@ -32,6 +33,21 @@ def test_zero_players_has_no_selection() -> None:
     assert result.selected is None
     assert result.alternatives == ()
     assert result.suppressed == ()
+
+
+def test_discovered_player_suggestions_remove_transient_instance_suffixes() -> None:
+    result = player_list(
+        snapshot("org.mpris.MediaPlayer2.firefox.instance_123"),
+        snapshot("org.mpris.MediaPlayer2.firefox.instance_456"),
+        snapshot("org.mpris.MediaPlayer2.plasma-browser-integration"),
+        snapshot("strawberry"),
+    )
+
+    assert stable_player_suggestions(result) == (
+        "firefox",
+        "plasma-browser-integration",
+        "strawberry",
+    )
 
 
 def test_one_playing_player_is_selected_with_explanation() -> None:

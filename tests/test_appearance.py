@@ -84,7 +84,7 @@ def test_default_profile_is_typed_complete_and_frontend_neutral() -> None:
     assert appearance.colors.accent == "#39B9C7"
     assert appearance.lyric_alignment is TextAlignment.CENTER
     assert appearance.context.previous == appearance.context.following == 2
-    assert len(SETTINGS_BY_KEY) == 75
+    assert len(SETTINGS_BY_KEY) == 80
 
 
 @pytest.mark.parametrize(
@@ -422,3 +422,97 @@ def test_playback_ticks_do_not_reconstruct_appearance(
 
     assert calls == 0
     window.close()
+
+
+@pytest.mark.parametrize(
+    ("key", "value"),
+    [
+        ("appearance.progress.thickness", 0),
+        ("appearance.progress.thickness", 25),
+        ("appearance.progress.opacity", 101),
+        ("appearance.progress.corner_radius", -1),
+        ("appearance.progress.track_color", "red"),
+    ],
+)
+def test_progress_rejects_invalid_semantics(key: str, value: object) -> None:
+    with pytest.raises(SettingsValidationError):
+        _snapshot(**{key: value})
+
+
+def test_progress_persists_projects_and_resets(
+    qt_app: QApplication, tmp_path: Path
+) -> None:
+    path = tmp_path / "config.toml"
+    service = CanonicalSettingsService(TomlSettingsFile(path))
+    service.initialize()
+    values = {
+        "appearance.progress.thickness": 12,
+        "appearance.progress.track_color": "#0000FF",
+        "appearance.progress.opacity": 50,
+        "appearance.progress.corner_radius": 0,
+        "appearance.colors.progress": "#FF0000",
+        "appearance.visibility.progress": False,
+    }
+    service.set_many(values)
+    restarted = CanonicalSettingsService(TomlSettingsFile(path))
+    restarted.initialize()
+    assert restarted.current.appearance == service.current.appearance
+    window = MainWindow(appearance=restarted.current.appearance)
+    window.render_state(_state())
+    window.show()
+    qt_app.processEvents()
+    assert window.progress.height() == 12
+    assert not window.progress.isVisible()
+    restarted.set("appearance.visibility.progress", True)
+    window.set_appearance_profile(restarted.current.appearance)
+    qt_app.processEvents()
+    assert window.progress.isVisible()
+    # Inspect the actual paint, including independent filled/unfilled colors.
+    image = window.progress.grab().toImage()
+    fill = image.pixelColor(2, 6)
+    track = image.pixelColor(image.width() - 2, 6)
+    assert fill.red() > fill.blue()
+    assert track.blue() > track.red()
+    restarted.reset_many(tuple(values))
+    window.set_appearance_profile(restarted.current.appearance)
+    assert window.progress.height() == 4
+    assert restarted.current.appearance == default_settings_snapshot().appearance
+    window.close()
+
+
+@pytest.mark.parametrize("percent", [50, 75, 100, 150, 200])
+def test_lyric_scale_multiplies_all_layers_without_changing_metadata(
+    qt_app: QApplication, percent: int
+) -> None:
+    window = MainWindow()
+    window.render_state(_state())
+    group = window.active_band._group_widgets[0]
+    labels = (group.original, group.romanized, group.translation)
+    sizes = tuple(label.font().pointSizeF() for label in labels)
+    metadata_size = window.title_label.font().pointSizeF()
+    profile = _snapshot(
+        **{"appearance.typography.lyric_scale_percent": percent}
+    ).appearance
+    window.set_appearance_profile(profile)
+    for label, size in zip(labels, sizes, strict=True):
+        assert label.font().pointSizeF() == pytest.approx(size * percent / 100)
+    assert window.title_label.font().pointSizeF() == metadata_size
+    assert profile.original.size == 22
+    assert profile.romanization.size == 16
+    window.close()
+
+
+def test_lyric_scale_validates_persists_and_resets(tmp_path: Path) -> None:
+    key = "appearance.typography.lyric_scale_percent"
+    for invalid in (49, 201):
+        with pytest.raises(SettingsValidationError):
+            _snapshot(**{key: invalid})
+    path = tmp_path / "config.toml"
+    service = CanonicalSettingsService(TomlSettingsFile(path))
+    service.initialize()
+    service.set(key, 150)
+    restarted = CanonicalSettingsService(TomlSettingsFile(path))
+    restarted.initialize()
+    assert restarted.current.appearance.lyric_scale_percent == 150
+    restarted.reset(key)
+    assert restarted.current.appearance.lyric_scale_percent == 100

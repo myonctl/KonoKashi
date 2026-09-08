@@ -534,6 +534,10 @@ def test_keyboard_focus_order_and_escape_dialog_behavior(
         assert dialog.isVisible()
         QTest.keyClick(dialog, Qt.Key.Key_Escape)
         qt_app.processEvents()
+        if isinstance(dialog, SettingsWindow):
+            assert dialog.categories.hasFocus()
+            QTest.keyClick(dialog, Qt.Key.Key_Escape)
+            qt_app.processEvents()
         assert not dialog.isVisible()
     window.close()
 
@@ -714,4 +718,137 @@ def test_lyric_transitions_reuse_the_existing_widget_tree(
     qt_app.processEvents()
 
     assert {id(widget) for widget in window.findChildren(QWidget)} == initial_widgets
+    window.close()
+
+
+def test_adjacent_lyric_change_animates_and_coalesces_without_losing_identity(
+    qt_app: QApplication,
+) -> None:
+    window = MainWindow()
+    first = _state()
+    second = replace(
+        first,
+        previous=(first.active[0],),
+        active=(first.next[0],),
+        next=(DesktopLyricGroup("after-next", "after next lyric"),),
+        position_us=43_000_000,
+    )
+    third = replace(
+        second,
+        previous=(second.active[0],),
+        active=(second.next[0],),
+        next=(DesktopLyricGroup("later", "later lyric"),),
+        position_us=44_000_000,
+    )
+    window.show()
+    window.render_state(first)
+    qt_app.processEvents()
+
+    window.render_state(second)
+    assert window.active_band.text() == "next lyric"
+    assert window._lyric_column.animation_running
+    assert window._lyric_column.lyric_offset() > 0
+
+    window.render_state(third)
+    assert window.active_band.text() == "after next lyric"
+    assert window._lyric_column.animation_running
+    QTest.qWait(window.appearance_profile.motion.transition_ms + 40)
+    assert not window._lyric_column.animation_running
+    assert window._lyric_column.lyric_offset() == 0
+    assert window._lyric_column.active_opacity == pytest.approx(1.0)
+    window.close()
+
+
+def test_seek_track_change_and_disabled_motion_snap_immediately(
+    qt_app: QApplication,
+) -> None:
+    window = MainWindow()
+    first = _state()
+    window.render_state(first)
+    window.show()
+    qt_app.processEvents()
+
+    seek = replace(
+        first,
+        previous=(DesktopLyricGroup("distant-before", "distant before"),),
+        active=(DesktopLyricGroup("distant", "seek target"),),
+        next=(DesktopLyricGroup("distant-after", "distant after"),),
+        position_us=90_000_000,
+    )
+    window.render_state(seek)
+    assert not window._lyric_column.animation_running
+    assert window._lyric_column.lyric_offset() == 0
+
+    changed_track = replace(seek, generation=2, title="Another track")
+    window.render_state(changed_track)
+    assert not window._lyric_column.animation_running
+
+    no_motion = replace(
+        window.appearance_profile,
+        motion=replace(
+            window.appearance_profile.motion,
+            smooth_scrolling=False,
+            reduced_motion=True,
+        ),
+    )
+    window.set_appearance_profile(no_motion)
+    adjacent = replace(
+        changed_track,
+        previous=changed_track.active,
+        active=changed_track.next,
+        next=(DesktopLyricGroup("final", "final"),),
+    )
+    window.render_state(adjacent)
+    assert not window._lyric_column.animation_running
+    assert window._lyric_column.active_opacity == pytest.approx(1.0)
+    window.close()
+
+
+def test_native_menu_alt_navigation_and_shortcuts(qt_app: QApplication) -> None:
+    window = MainWindow()
+    settings: list[bool] = []
+    window.settings_requested.connect(lambda: settings.append(True))
+    window.show()
+    qt_app.processEvents()
+    menu = window.application_menu
+    assert [action.text() for action in menu.actions()] == [
+        "&File",
+        "&View",
+        "&Lyrics",
+        "&Help",
+    ]
+    QTest.keyClick(window, Qt.Key.Key_Alt)
+    assert menu.hasFocus()
+    assert menu.activeAction() is menu.actions()[0]
+    QTest.keyClick(menu, Qt.Key.Key_Right)
+    assert menu.activeAction() is menu.actions()[1]
+    QTest.keyClick(menu, Qt.Key.Key_Escape)
+    QTest.keyClick(window, Qt.Key.Key_Comma, Qt.KeyboardModifier.ControlModifier)
+    assert settings == [True]
+    assert window.settings_action.shortcut().toString() == "Ctrl+,"
+    assert window.quit_action.shortcut().toString() == "Ctrl+Q"
+    assert not any(
+        action.shortcut().toString() == "Ctrl+F" for action in window.actions()
+    )
+    QTest.keyClick(window, Qt.Key.Key_Q, Qt.KeyboardModifier.ControlModifier)
+    assert not window.isVisible()
+
+
+def test_workspace_owns_stable_panels_across_projection(qt_app: QApplication) -> None:
+    from konokashi.presentation.desktop.workspace import PanelId
+
+    window = MainWindow()
+    workspace = window.workspace
+    assert workspace.panel_ids == tuple(PanelId)
+    panels = tuple(workspace.panel(identity) for identity in PanelId)
+    assert workspace.panel(PanelId.LYRICS) is window.content_stack
+    assert workspace.panel(PanelId.PROGRESS) is window.playback_widget
+    assert workspace.panel(PanelId.STATUS) is window.source_label
+    assert all(panel.parentWidget() is workspace for panel in panels)
+    window.render_state(_state())
+    window.update_playback(_state())
+    window.set_appearance_profile(window.appearance_profile)
+    assert tuple(workspace.panel(identity) for identity in PanelId) == panels
+    with pytest.raises(ValueError, match="already registered"):
+        workspace.add_panel(PanelId.LYRICS, window.content_stack)
     window.close()
