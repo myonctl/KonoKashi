@@ -23,6 +23,7 @@ from konokashi.application.settings import (
 )
 from konokashi.presentation.desktop.settings_window import (
     OrderedStringListEditor,
+    SemanticStringEditor,
     SettingsWindow,
 )
 
@@ -48,9 +49,10 @@ def test_every_canonical_setting_appears_once_in_actual_category_and_type(
     window = _window(qt_app, tmp_path / "config.toml")
 
     assert set(window.rows) == set(SETTINGS_BY_KEY)
-    assert [window.categories.item(index).text() for index in range(4)] == [
-        category.value for category in SettingCategory
-    ]
+    assert [
+        window.categories.item(index).text()
+        for index in range(window.categories.count())
+    ] == [category.value for category in SettingCategory]
     for key, row in window.rows.items():
         definition = SETTINGS_BY_KEY[key]
         assert row.definition is definition
@@ -62,6 +64,8 @@ def test_every_canonical_setting_appears_once_in_actual_category_and_type(
             assert isinstance(row.editor, QSpinBox)
             assert row.editor.minimum() == definition.minimum
             assert row.editor.maximum() == definition.maximum
+        elif definition.value_type is SettingType.STRING:
+            assert isinstance(row.editor, SemanticStringEditor)
         else:
             assert isinstance(row.editor, OrderedStringListEditor)
         assert row.origin_label.text() == "Default"
@@ -103,6 +107,27 @@ def test_snapshot_sets_current_values_origins_defaults_and_reset_state(
         assert window.rows[key].reset_button.isEnabled()
         assert "config-file" in window.rows[key].origin_label.text()
     assert snapshot.resolved("players.ignored").origin is SettingOrigin.DEFAULT
+    window.close()
+
+
+def test_appearance_string_controls_emit_canonical_keys_and_global_reset(
+    qt_app: QApplication, tmp_path: Path
+) -> None:
+    window = _window(qt_app, tmp_path / "config.toml")
+    changes: list[tuple[str, object]] = []
+    resets: list[str] = []
+    window.change_requested.connect(lambda key, value: changes.append((key, value)))
+    window.reset_appearance_requested.connect(lambda: resets.append("appearance"))
+
+    row = window.rows["appearance.colors.active_lyric"]
+    assert isinstance(row.editor, SemanticStringEditor)
+    assert row.editor.input is not None
+    row.editor.input.setText("#AABBCC")
+    row.editor.input.editingFinished.emit()
+    QTest.mouseClick(window.reset_appearance_button, Qt.MouseButton.LeftButton)
+
+    assert changes == [("appearance.colors.active_lyric", "#AABBCC")]
+    assert resets == ["appearance"]
     window.close()
 
 

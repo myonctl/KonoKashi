@@ -8,10 +8,12 @@ from pathlib import Path
 from typing import cast
 
 from PySide6.QtCore import QSignalBlocker, Qt, QUrl, Signal
-from PySide6.QtGui import QDesktopServices
+from PySide6.QtGui import QColor, QDesktopServices, QFontDatabase
 from PySide6.QtWidgets import (
     QApplication,
     QCheckBox,
+    QColorDialog,
+    QComboBox,
     QDialog,
     QDialogButtonBox,
     QFrame,
@@ -29,6 +31,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from konokashi.application.appearance import default_appearance_profile
 from konokashi.application.settings import (
     SETTINGS_SCHEMA,
     ReloadBehavior,
@@ -38,6 +41,7 @@ from konokashi.application.settings import (
     SettingOrigin,
     SettingsDiagnostic,
     SettingsSnapshot,
+    SettingStringFormat,
     SettingType,
 )
 
@@ -160,6 +164,120 @@ class OrderedStringListEditor(QWidget):
         self.down_button.setEnabled(editing_enabled and 0 <= row < count - 1)
 
 
+class SemanticStringEditor(QWidget):
+    """Choice, font-family, and validated text editor over one string value."""
+
+    value_changed = Signal(str)
+
+    def __init__(
+        self, definition: SettingDefinition, parent: QWidget | None = None
+    ) -> None:
+        super().__init__(parent)
+        self.definition = definition
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        self.combo: QComboBox | None = None
+        self.input: QLineEdit | None = None
+        self.color_button: QPushButton | None = None
+        if (
+            definition.choices
+            or definition.string_format is SettingStringFormat.FONT_FAMILY
+        ):
+            combo = QComboBox()
+            combo.setAccessibleName(definition.title)
+            combo.setAccessibleDescription(definition.description)
+            if definition.choices:
+                for value in definition.choices:
+                    combo.addItem(value.replace("-", " ").title(), value)
+            else:
+                combo.addItems(tuple(QFontDatabase.families()))
+            combo.setEditable(not definition.choices)
+            line_edit = combo.lineEdit()
+            if line_edit is not None:
+                line_edit.setPlaceholderText("System default")
+                line_edit.editingFinished.connect(self._emit_combo)
+            else:
+                combo.currentIndexChanged.connect(
+                    lambda: self.value_changed.emit(self.value())
+                )
+            self.combo = combo
+            layout.addWidget(combo, 1)
+        else:
+            line = QLineEdit()
+            line.setAccessibleName(definition.title)
+            line.setAccessibleDescription(definition.description)
+            line.editingFinished.connect(lambda: self.value_changed.emit(line.text()))
+            self.input = line
+            layout.addWidget(line, 1)
+            if definition.string_format is SettingStringFormat.COLOR:
+                button = QPushButton("Choose…")
+                button.setAccessibleName(f"Choose {definition.title}")
+                button.clicked.connect(self._choose_color)
+                self.color_button = button
+                layout.addWidget(button)
+
+    def value(self) -> str:
+        if self.combo is not None:
+            if self.definition.choices:
+                return str(self.combo.currentData())
+            return self.combo.currentText()
+        assert self.input is not None
+        return self.input.text()
+
+    def set_value(self, value: str) -> None:
+        if self.combo is not None:
+            with QSignalBlocker(self.combo):
+                index = (
+                    self.combo.findData(value)
+                    if self.definition.choices
+                    else self.combo.findText(value)
+                )
+                if index >= 0:
+                    self.combo.setCurrentIndex(index)
+                elif self.combo.isEditable():
+                    self.combo.setEditText(value)
+            return
+        assert self.input is not None
+        with QSignalBlocker(self.input):
+            self.input.setText(value)
+
+    def set_editing_enabled(self, enabled: bool) -> None:
+        if self.combo is not None:
+            self.combo.setEnabled(enabled)
+        if self.input is not None:
+            self.input.setEnabled(enabled)
+        if self.color_button is not None:
+            self.color_button.setEnabled(enabled)
+
+    def focus_widgets(self) -> tuple[QWidget, ...]:
+        widgets: list[QWidget] = []
+        if self.combo is not None:
+            widgets.append(self.combo)
+        if self.input is not None:
+            widgets.append(self.input)
+        if self.color_button is not None:
+            widgets.append(self.color_button)
+        return tuple(widgets)
+
+    def _emit_combo(self) -> None:
+        self.value_changed.emit(self.value())
+
+    def _choose_color(self) -> None:
+        assert self.input is not None
+        initial = QColor(self.input.text())
+        fallback = QColor(default_appearance_profile().colors.accent)
+        dialog = QColorDialog(initial if initial.isValid() else fallback, self)
+        dialog.setOption(QColorDialog.ColorDialogOption.ShowAlphaChannel, True)
+        if dialog.exec() != QColorDialog.DialogCode.Accepted:
+            return
+        color = dialog.selectedColor()
+        value = color.name(QColor.NameFormat.HexArgb)
+        # QColor emits #AARRGGBB while canonical TOML uses #RRGGBBAA.
+        canonical = f"#{value[3:]}{value[1:3]}".upper()
+        self.input.setText(canonical)
+        self.value_changed.emit(canonical)
+
+
 class SettingRow(QFrame):
     """One schema entry, typed editor, metadata, and individual reset."""
 
@@ -193,7 +311,9 @@ class SettingRow(QFrame):
         description.setAccessibleName(f"Description for {definition.title}")
         layout.addWidget(description)
 
-        self.editor: QCheckBox | QSpinBox | OrderedStringListEditor
+        self.editor: (
+            QCheckBox | QSpinBox | OrderedStringListEditor | SemanticStringEditor
+        )
         if definition.value_type is SettingType.BOOLEAN:
             checkbox = QCheckBox("Enabled")
             checkbox.setAccessibleName(definition.title)
@@ -216,6 +336,12 @@ class SettingRow(QFrame):
                 lambda: self.change_requested.emit(self.definition.key, spin.value())
             )
             self.editor = spin
+        elif definition.value_type is SettingType.STRING:
+            string_editor = SemanticStringEditor(definition)
+            string_editor.value_changed.connect(
+                lambda value: self.change_requested.emit(self.definition.key, value)
+            )
+            self.editor = string_editor
         else:
             list_editor = OrderedStringListEditor(definition.title)
             list_editor.setAccessibleDescription(definition.description)
@@ -254,6 +380,8 @@ class SettingRow(QFrame):
         elif isinstance(self.editor, QSpinBox):
             with QSignalBlocker(self.editor):
                 self.editor.setValue(cast(int, resolved.value))
+        elif isinstance(self.editor, SemanticStringEditor):
+            self.editor.set_value(cast(str, resolved.value))
         else:
             self.editor.set_value(cast(tuple[str, ...], resolved.value))
         is_default_value = resolved.value == resolved.definition.default
@@ -271,7 +399,7 @@ class SettingRow(QFrame):
         self.set_editing_enabled(True)
 
     def set_editing_enabled(self, enabled: bool) -> None:
-        if isinstance(self.editor, OrderedStringListEditor):
+        if isinstance(self.editor, (OrderedStringListEditor, SemanticStringEditor)):
             self.editor.set_editing_enabled(enabled)
         else:
             self.editor.setEnabled(enabled)
@@ -293,6 +421,7 @@ class SettingsWindow(QDialog):
 
     change_requested = Signal(str, object)
     reset_requested = Signal(str)
+    reset_appearance_requested = Signal()
 
     def __init__(
         self,
@@ -390,6 +519,15 @@ class SettingsWindow(QDialog):
         root.addWidget(self.no_results)
 
         footer = QHBoxLayout()
+        self.reset_appearance_button = QPushButton("Reset appearance")
+        self.reset_appearance_button.setAccessibleName(
+            "Reset all appearance settings to defaults"
+        )
+        self.reset_appearance_button.setToolTip(
+            "Remove the preset and every appearance override, including lyric layers"
+        )
+        self.reset_appearance_button.clicked.connect(self.reset_appearance_requested)
+        footer.addWidget(self.reset_appearance_button)
         path_label = _plain_label("Configuration:")
         footer.addWidget(path_label)
         self.path_display = QLineEdit(str(config_path))
@@ -422,11 +560,14 @@ class SettingsWindow(QDialog):
                         row.editor.down_button,
                     )
                 )
+            elif isinstance(row.editor, SemanticStringEditor):
+                focus_order.extend(row.editor.focus_widgets())
             else:
                 focus_order.append(row.editor)
             focus_order.append(row.reset_button)
         focus_order.extend(
             (
+                self.reset_appearance_button,
                 self.path_display,
                 self.copy_path_button,
                 self.open_location_button,
@@ -483,6 +624,7 @@ class SettingsWindow(QDialog):
     def _set_all_editing_enabled(self, enabled: bool) -> None:
         for row in self.rows.values():
             row.set_editing_enabled(enabled)
+        self.reset_appearance_button.setEnabled(enabled)
 
     def _filter(self, query: str) -> None:
         visible_categories: list[int] = []

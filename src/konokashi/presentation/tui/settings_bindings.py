@@ -15,6 +15,11 @@ NAVIGATION_BINDINGS = [
     Binding("2", "category(1)", "Lyrics", show=False),
     Binding("3", "category(2)", "Desktop", show=False),
     Binding("4", "category(3)", "Library", show=False),
+    Binding("5", "category(4)", "Appearance", show=False),
+    Binding("6", "category(5)", "Typography", show=False),
+    Binding("7", "category(6)", "Colors", show=False),
+    Binding("8", "category(7)", "Layout", show=False),
+    Binding("9", "category(8)", "Visibility", show=False),
 ]
 
 
@@ -24,13 +29,13 @@ def help_text() -> str:
     return (
         "Move around\n"
         "  ↑/↓ or j/k   Navigate settings or categories\n"
-        f"  {keys['category(0)']}-{keys['category(3)']}            Choose a category\n"
+        f"  {keys['category(0)']}-{keys['category(8)']}            Choose a category\n"
         "  Tab / Shift+Tab   Move focus; Enter opens the editor\n\n"
         "Find and edit\n"
         "  /            Search titles, descriptions or canonical keys\n"
         "  Enter        Leave search for the selected result\n"
         "  Enter/Space  Toggle a focused switch or press a button\n"
-        "  Numbers and lists save with Apply; Esc cancels a draft\n"
+        "  Numbers, text and lists save with Apply; invalid drafts are retained\n"
         f"  {keys['reset_selected']}            Reset the selected setting "
         "to its default\n\n"
         "Help and exit\n"

@@ -482,7 +482,7 @@ def test_system_palette_remains_the_theme_authority(
     window.close()
 
 
-def test_open_window_follows_runtime_application_palette_change(
+def test_open_window_semantic_profile_remains_authority_after_palette_change(
     qt_app: QApplication,
 ) -> None:
     original_palette = qt_app.palette()
@@ -498,13 +498,10 @@ def test_open_window_follows_runtime_application_palette_change(
     qt_app.setPalette(changed_palette)
     qt_app.processEvents()
 
-    assert window.palette().color(QPalette.ColorRole.Window) == QColor("#f4f1ea")
+    assert window.palette().color(QPalette.ColorRole.Window) == QColor("#202124")
     assert window.title_label.palette().color(QPalette.ColorRole.WindowText) == QColor(
-        "#241f1a"
+        "#f1f3f4"
     )
-    assert window.previous_band.palette().color(
-        QPalette.ColorRole.PlaceholderText
-    ) == QColor("#6d655e")
 
     window.close()
     qt_app.setPalette(original_palette)

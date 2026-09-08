@@ -123,7 +123,7 @@ class TomlSettingsFile:
                             f"Cannot create `{key}` because `{name}` is not a table."
                         )
                     table = child
-                encoded: bool | int | list[str]
+                encoded: bool | int | str | list[str]
                 encoded = list(value) if isinstance(value, tuple) else value
                 if table.get(parts[-1]) != encoded:
                     table[parts[-1]] = encoded
@@ -133,26 +133,36 @@ class TomlSettingsFile:
             return changed
 
     def reset(self, key: str) -> bool:
+        return self.reset_many((key,))
+
+    def reset_many(self, keys: tuple[str, ...]) -> bool:
+        """Remove a group of values with one comment-preserving atomic write."""
+
         with self.transaction():
             document = self._editable_document()
-            parents: list[tuple[Container | Table, str, Container | Table]] = []
-            table: Container | Table = document
-            parts = key.split(".")
-            for name in parts[:-1]:
-                child = table.get(name)
-                if not isinstance(child, (Table, Container)):
-                    return False
-                parents.append((table, name, child))
-                table = child
-            if parts[-1] not in table:
-                return False
-            del table[parts[-1]]
-            for parent, name, child in reversed(parents):
-                if len(child) != 0:
-                    break
-                del parent[name]
-            self._write(document.as_string())
-            return True
+            changed = False
+            for key in keys:
+                parents: list[tuple[Container | Table, str, Container | Table]] = []
+                table: Container | Table = document
+                parts = key.split(".")
+                for name in parts[:-1]:
+                    child = table.get(name)
+                    if not isinstance(child, (Table, Container)):
+                        break
+                    parents.append((table, name, child))
+                    table = child
+                else:
+                    if parts[-1] not in table:
+                        continue
+                    del table[parts[-1]]
+                    changed = True
+                    for parent, name, child in reversed(parents):
+                        if len(child) != 0:
+                            break
+                        del parent[name]
+            if changed:
+                self._write(document.as_string())
+            return changed
 
     def render(self, values: Mapping[str, SettingValue]) -> str:
         document = tomlkit.document()

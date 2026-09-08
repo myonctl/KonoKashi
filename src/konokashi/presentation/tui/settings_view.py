@@ -44,16 +44,19 @@ OptionList > .option-list--option-highlighted { text-style: bold; }
 #detail-metadata { width: 1fr; color: $text-muted; margin-bottom: 1; }
 #editor-hint { height: auto; min-height: 1; color: $text-muted; }
 #editor-slot { width: 1fr; height: 3;
-    layers: boolean integer list; }
+    layers: boolean integer string list; }
 #boolean-row { layer: boolean; }
 #integer-row { layer: integer; }
+#string-row { layer: string; }
 #edit-list { layer: list; }
-#boolean-row, #integer-row { width: 1fr; height: 3; }
+#boolean-row, #integer-row, #string-row { width: 1fr; height: 3; }
 #detail-actions { height: 3; margin-top: 1; }
 #integer-value { width: 8; margin: 0 1; }
 #integer-minus, #integer-plus { width: 5; min-width: 5; }
 #integer-apply { margin-left: 1; }
 #integer-apply { min-width: 9; width: 9; }
+#string-value { width: 1fr; }
+#string-apply { min-width: 9; width: 9; margin-left: 1; }
 #boolean-label { padding: 1 1; }
 #edit-list { width: auto; min-width: 20; }
 #reset-setting { min-width: 18; margin-right: 1; }
@@ -147,6 +150,9 @@ class SettingsWorkspace(Vertical):
                         yield Input(id="integer-value", type="integer")
                         yield Button("+", id="integer-plus")
                         yield Button("Apply", id="integer-apply", variant="primary")
+                    with Horizontal(id="string-row", classes="hidden"):
+                        yield Input(id="string-value")
+                        yield Button("Apply", id="string-apply", variant="primary")
                     yield Button(
                         "Edit list…",
                         id="edit-list",
@@ -182,6 +188,7 @@ class SettingsWorkspace(Vertical):
         for selector, value_type in (
             ("#boolean-row", SettingType.BOOLEAN),
             ("#integer-row", SettingType.INTEGER),
+            ("#string-row", SettingType.STRING),
             ("#edit-list", SettingType.STRING_LIST),
         ):
             self._show_editor(selector, definition.value_type is value_type)
@@ -200,6 +207,15 @@ class SettingsWorkspace(Vertical):
                 f"{definition.minimum}-{definition.maximum} · "
                 "Enter or Apply saves · Esc cancels"
             )
+        elif definition.value_type is SettingType.STRING:
+            string = self.query_one("#string-value", Input)
+            string_value = str(resolved.value)
+            if string.value != string_value:
+                string.value = string_value
+            if definition.choices:
+                hint = "Choices: " + ", ".join(definition.choices)
+            else:
+                hint = "Enter or Apply validates and saves · Esc keeps the draft"
         else:
             hint = "Add or remove items in a draft · Apply saves"
             self.query_one("#edit-list", Button).label = (
@@ -221,7 +237,12 @@ class SettingsWorkspace(Vertical):
         self._update_text("#detail-metadata", " \n \n ")
         self._update_text("#editor-hint", "Esc or Clear returns to your category")
         self.query_one("#boolean-value", SettingSwitch).setting_key = ""
-        for selector in ("#boolean-row", "#integer-row", "#edit-list"):
+        for selector in (
+            "#boolean-row",
+            "#integer-row",
+            "#string-row",
+            "#edit-list",
+        ):
             self._show_editor(selector, False)
         self._reset_disabled_when_enabled = True
         for selector in (
@@ -230,6 +251,8 @@ class SettingsWorkspace(Vertical):
             "#integer-minus",
             "#integer-plus",
             "#integer-apply",
+            "#string-value",
+            "#string-apply",
             "#edit-list",
         ):
             self.query_one(selector).disabled = True
@@ -273,6 +296,8 @@ class SettingsWorkspace(Vertical):
             "#integer-minus",
             "#integer-plus",
             "#integer-apply",
+            "#string-value",
+            "#string-apply",
             "#edit-list",
         ):
             self.query_one(selector).disabled = not enabled

@@ -24,8 +24,8 @@ purposes under that license.
   layers.
 - Resolve local sidecar and embedded lyrics before querying LRCLIB.
 - Cache provider results and retain user-approved corrections locally.
-- Configure the same nine settings through the desktop GUI, a terminal settings
-  interface, the CLI, or an XDG TOML file.
+- Configure behavior and semantic appearance through the desktop GUI, terminal
+  settings interface, CLI, or one XDG TOML file.
 - Detect Strawberry and browser playback through Linux MPRIS, with conservative
   handling when player metadata is incomplete.
 
@@ -75,8 +75,8 @@ prepared but are not published.
 1. Start an MPRIS player such as Strawberry, or play media through KDE Plasma
    Browser Integration.
 2. Launch KonoKashi from the application menu.
-3. Open Settings in the desktop app to choose player, lyric layers, timing delay,
-   and music-library roots.
+3. Open Settings in the desktop app to choose players, lyric layers, appearance,
+   layout, and music-library roots.
 4. Use the review controls when a recording or lyric match needs correction.
 
 Useful diagnostics:
@@ -101,10 +101,38 @@ The canonical configuration is `$XDG_CONFIG_HOME/konokashi/config.toml` (normall
 ```bash
 konokashi settings
 konokashi config path
-konokashi config get lyrics.show_romanization
-konokashi config set lyrics.show_romanization true
+konokashi config get lyrics.display.romanized
+konokashi config set lyrics.display.romanized true
 konokashi config validate
 ```
+
+Appearance is one validated semantic profile shared by the desktop, Settings
+TUI, CLI, and TOML. Built-in `default`, `compact`, `lyric-only`, `current-line`,
+and `large-display` presets remain customizable. For example:
+
+```toml
+[appearance]
+preset = "large-display"
+
+[appearance.typography.original]
+family = "Noto Sans CJK JP"
+size = 48
+weight = 700
+
+[appearance.colors]
+active_lyric = "#55DDEE"
+background = "#101418E6"
+
+[appearance.alignment]
+lyrics = "center"
+```
+
+Colors use `#RRGGBB` or `#RRGGBBAA` and are normalized on application writes.
+An unavailable font name remains configured while Qt/fontconfig supplies a
+graceful multilingual fallback. The desktop Appearance reset removes the whole
+profile and lyric-visibility overrides; individual values can also be reset in
+either settings frontend or with `konokashi config reset KEY`. Invalid external
+edits are rejected atomically and the last-known-good appearance stays active.
 
 Application state is stored under `$XDG_DATA_HOME/konokashi`, and cache data under
 `$XDG_CACHE_HOME/konokashi`. Configuration and databases are created with private
@@ -115,8 +143,9 @@ directories.
 
 The synchronized lyric pipeline, local/provider lookup, offline cache,
 multilingual representation layers, review workflow, incremental music-library
-scanner, desktop UI, GUI settings, terminal settings interface, CLI, migrations,
-backup, and privacy-bounded diagnostics are functional.
+scanner, customizable desktop appearance/layout, GUI settings, terminal settings
+interface, CLI, migrations, backup, and privacy-bounded diagnostics are
+functional.
 
 Real-world verification has focused on Artix Linux with KDE Plasma, Strawberry,
 and Plasma Browser Integration. Standards-compliant MPRIS players may work but

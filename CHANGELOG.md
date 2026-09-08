@@ -11,6 +11,11 @@ release yet.
   issue, and pull-request guidance.
 - Public-release privacy, licensing, AUR, Flatpak, freedesktop, and packaging
   readiness audit.
+- Frontend-neutral appearance profiles with independent multilingual typography,
+  semantic RGB/RGBA colors and opacity, spacing, alignment, visibility, lyric
+  context, bounded motion preferences, and five declarative presets.
+- Live desktop appearance application, GUI color/font/preset controls, and
+  matching validated text controls in the terminal settings interface.
 
 ### Changed
 

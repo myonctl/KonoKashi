@@ -90,8 +90,9 @@ class SettingsApp(App[int]):
         watch_interval: float = DEFAULT_DISK_OBSERVE_INTERVAL,
     ) -> None:
         super().__init__()
+        default_accent = default_settings_snapshot().appearance.colors.accent
         self.register_theme(
-            Theme(name="konokashi", primary="#39b9c7", accent="#39b9c7")
+            Theme(name="konokashi", primary=default_accent, accent=default_accent)
         )
         self.theme = "konokashi"
         self._service = service
@@ -141,7 +142,7 @@ class SettingsApp(App[int]):
         )
         self.watch(search, "value", self._search_value_changed, init=False)
         self.watch(self.screen, "focused", self._focus_changed, init=False)
-        categories.border_title = "Categories · 1-4"
+        categories.border_title = "Categories · 1-9"
         settings.border_title = "Settings"
         categories.highlighted = 0
         self._refresh_setting_list()
@@ -218,6 +219,10 @@ class SettingsApp(App[int]):
     def _integer_submitted(self, _event: Input.Submitted) -> None:
         self._apply_integer()
 
+    @on(Input.Submitted, "#string-value")
+    def _string_submitted(self, _event: Input.Submitted) -> None:
+        self._apply_string()
+
     def on_button_pressed(self, event: Button.Pressed) -> None:
         button_id = event.button.id
         if button_id == "integer-minus":
@@ -226,6 +231,8 @@ class SettingsApp(App[int]):
             self._adjust_integer(1)
         elif button_id == "integer-apply":
             self._apply_integer()
+        elif button_id == "string-apply":
+            self._apply_string()
         elif button_id == "edit-list":
             self._open_list_editor()
         elif button_id == "reset-setting":
@@ -349,12 +356,12 @@ class SettingsApp(App[int]):
             hint = "Enter results · Esc clear / return · Search all categories"
         elif identifier == "categories":
             hint = "↑↓ / j k categories · Enter settings · Tab next panel"
-        elif identifier == "integer-value":
+        elif identifier in {"integer-value", "string-value"}:
             hint = "Enter saves · Esc discards draft · Tab next control"
         elif identifier == "boolean-value":
             hint = "Enter / Space toggles · Esc settings · r reset"
         else:
-            hint = "↑↓ / j k settings · Enter edit · 1-4 category · r reset"
+            hint = "↑↓ / j k settings · Enter edit · 1-9 category · r reset"
         self.query_one("#context-hint", Static).update(hint, layout=False)
 
     def _clear_search_or_refresh(self) -> None:
@@ -597,6 +604,7 @@ class SettingsApp(App[int]):
         selector = {
             SettingType.BOOLEAN: "#boolean-value",
             SettingType.INTEGER: "#integer-value",
+            SettingType.STRING: "#string-value",
             SettingType.STRING_LIST: "#edit-list",
         }[value_type]
         self.query_one(selector).focus()
@@ -620,6 +628,20 @@ class SettingsApp(App[int]):
             self._set_status(
                 f"Maximum for {definition.key} is {definition.maximum}.", error=True
             )
+            return
+        self._start_mutation(definition.key, value)
+
+    def _apply_string(self) -> None:
+        if not self._selected_key:
+            return
+        definition = self._snapshot.resolved(self._selected_key).definition
+        value = self.query_one("#string-value", Input).value
+        candidate = self._snapshot.plain_values()
+        candidate[definition.key] = value
+        try:
+            validate_settings_values(candidate)
+        except SettingsValidationError as error:
+            self._set_status(str(error), error=True)
             return
         self._start_mutation(definition.key, value)
 

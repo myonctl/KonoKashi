@@ -12,6 +12,7 @@ from typing import Any, cast
 from PySide6.QtCore import QObject, QRunnable, QThreadPool, QTimer, Signal, Slot
 from PySide6.QtWidgets import QApplication
 
+from konokashi.application.appearance import AppearanceProfile
 from konokashi.application.clock_lifecycle import AdaptiveResampler
 from konokashi.application.desktop_state import DesktopStateController
 from konokashi.application.frontend_session import (
@@ -23,6 +24,7 @@ from konokashi.application.playback_clock import PlaybackClock
 from konokashi.application.ports import MprisRuntimePort
 from konokashi.application.review_corrections import ReviewCorrectionSnapshot
 from konokashi.application.settings import (
+    SETTINGS_SCHEMA,
     DesktopInteractionSettings,
     SettingsSnapshot,
     SettingsValidationError,
@@ -103,6 +105,7 @@ class _InitializedServices:
     canonical: CanonicalSettingsService
     settings: RepresentationDisplaySettings
     interactions: DesktopInteractionSettings
+    appearance: AppearanceProfile
 
 
 def _session_id(track: ResolvedTrack) -> str:
@@ -219,6 +222,7 @@ class DesktopCoordinator(QObject):
             canonical,
             canonical.get_representation_display(),
             canonical.get_desktop_interaction(),
+            canonical.current.appearance,
         )
 
     def _services_initialized(
@@ -247,6 +251,7 @@ class DesktopCoordinator(QObject):
         self._controller.set_representation_settings(result.settings)
         self._window.set_representation_settings(result.settings)
         self._window.set_interaction_settings(result.interactions)
+        self._window.set_appearance_profile(result.appearance)
         for settings_diagnostic in result.canonical.diagnostics:
             self._window.render_state(
                 self._controller.add_diagnostic(settings_diagnostic.render())
@@ -316,6 +321,10 @@ class DesktopCoordinator(QObject):
                 self._window.render_state(self._controller.state)
         if "desktop.lyrics.selectable" in live_keys:
             self._window.set_interaction_settings(snapshot.desktop_interaction)
+        if any(key.startswith("appearance.") for key in live_keys) or (
+            live_keys & display_keys
+        ):
+            self._window.set_appearance_profile(snapshot.appearance)
         if live_keys & {"players.preferred", "players.ignored"}:
             self._refresh_selection()
 
@@ -594,6 +603,7 @@ class DesktopCoordinator(QObject):
             settings_window = SettingsWindow(path, self._window)
             settings_window.change_requested.connect(self._change_setting)
             settings_window.reset_requested.connect(self._reset_setting)
+            settings_window.reset_appearance_requested.connect(self._reset_appearance)
             self._settings_window = settings_window
         if service is not None:
             self._settings_window.set_snapshot(service.current)
@@ -627,6 +637,26 @@ class DesktopCoordinator(QObject):
             return
         self._start_job(
             lambda: service.reset(key),
+            self._settings_operation_finished,
+        )
+
+    @Slot()
+    def _reset_appearance(self) -> None:
+        service = self._settings_service
+        settings_window = self._settings_window
+        if service is None or settings_window is None:
+            return
+        marker = "appearance"
+        if not settings_window.mark_pending(marker):
+            return
+        keys = tuple(
+            definition.key
+            for definition in SETTINGS_SCHEMA
+            if definition.key.startswith("appearance.")
+            or definition.key.startswith("lyrics.display.")
+        )
+        self._start_job(
+            lambda: service.reset_many(keys),
             self._settings_operation_finished,
         )
 

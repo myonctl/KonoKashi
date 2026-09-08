@@ -55,7 +55,7 @@ def test_xdg_path_uses_absolute_override_and_home_fallback(tmp_path: Path) -> No
 
 
 def test_schema_has_stable_complete_metadata() -> None:
-    assert len(SETTINGS_SCHEMA) == len(SETTINGS_BY_KEY) == 9
+    assert len(SETTINGS_SCHEMA) == len(SETTINGS_BY_KEY) == 75
     assert {item.scope for item in SETTINGS_SCHEMA} == {
         SettingScope.GLOBAL,
         SettingScope.DESKTOP,
@@ -67,7 +67,7 @@ def test_schema_has_stable_complete_metadata() -> None:
     assert all(item.description.endswith(".") for item in SETTINGS_SCHEMA)
     assert all(item.title for item in SETTINGS_SCHEMA)
     assert {item.category for item in SETTINGS_SCHEMA} == set(SettingCategory)
-    assert set(SETTINGS_BY_KEY) == {
+    assert {
         "players.preferred",
         "players.ignored",
         "lyrics.display.original",
@@ -77,7 +77,8 @@ def test_schema_has_stable_complete_metadata() -> None:
         "library.roots",
         "library.automatic_downloads",
         "library.metadata_workers",
-    }
+    } < set(SETTINGS_BY_KEY)
+    assert sum(key.startswith("appearance.") for key in SETTINGS_BY_KEY) == 66
     workers = SETTINGS_BY_KEY["library.metadata_workers"]
     assert (workers.minimum, workers.maximum) == (1, 8)
 
@@ -389,6 +390,20 @@ def test_config_cli_supports_path_validate_get_set_reset_and_defaults(
     assert "origin: config-file" in capsys.readouterr().out
     assert cli.main(["config", "validate"], **keyword) == 0
     assert "Valid KonoKashi configuration" in capsys.readouterr().out
+    assert (
+        cli.main(
+            [
+                "config",
+                "set",
+                "appearance.colors.active_lyric",
+                '"#aabbcc"',
+            ],
+            **keyword,
+        )
+        == 0
+    )
+    assert "#AABBCC" in capsys.readouterr().out
+    assert 'active_lyric = "#AABBCC"' in path.read_text(encoding="utf-8")
     assert cli.main(["config", "reset", "library.metadata_workers"], **keyword) == 0
     output = capsys.readouterr().out
     assert "library.metadata_workers = 4" in output

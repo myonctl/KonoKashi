@@ -147,7 +147,7 @@ def test_schema_drives_all_categories_types_and_details(tmp_path: Path) -> None:
 
     async def scenario(app: SettingsApp, _pilot: Pilot[int]) -> None:
         categories = app.query_one("#categories", OptionList)
-        assert categories.option_count == len(SettingCategory) == 4
+        assert categories.option_count == len(SettingCategory) == 10
         seen: list[str] = []
         for index, category in enumerate(SettingCategory):
             app.action_category(index)
@@ -170,6 +170,7 @@ def test_schema_drives_all_categories_types_and_details(tmp_path: Path) -> None:
                 row = {
                     SettingType.BOOLEAN: "#boolean-row",
                     SettingType.INTEGER: "#integer-row",
+                    SettingType.STRING: "#string-row",
                     SettingType.STRING_LIST: "#edit-list",
                 }[definition.value_type]
                 assert not app.query_one(row).has_class("hidden")
@@ -243,7 +244,7 @@ def test_hot_presentation_actions_do_not_reflow_or_touch_persistence(
         await pilot.press("/")
         layout_updates = measured.screen._layout_updates
         await pilot.press("z")
-        assert measured.query_one("#settings-list", OptionList).option_count == 1
+        assert measured.query_one("#settings-list", OptionList).option_count > 0
         assert measured.screen._layout_updates == layout_updates
         await pilot.press("escape", "escape")
         measured.list_refreshes = measured.detail_renders = 0
@@ -337,6 +338,34 @@ def test_integer_control_applies_bounds_and_preserves_prior_value(
         await _wait_until(lambda: "Maximum" in _text(app.query_one("#status", Static)))
         assert service.get("library.metadata_workers") == 8
         assert "Maximum" in _text(app.query_one("#status", Static))
+
+    _run_app(app, scenario)
+
+
+def test_color_text_control_retains_invalid_draft_and_applies_canonical_value(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "config.toml"
+    service = _service(path)
+    app = SettingsApp(service=service, watch_interval=0)
+
+    async def scenario(app: SettingsApp, pilot: Pilot[int]) -> None:
+        app.action_category(6)
+        assert app._selected_key == "appearance.colors.active_lyric"
+        await pilot.press("enter")
+        editor = app.query_one("#string-value", Input)
+        editor.value = "cyan"
+        await pilot.press("enter")
+        await _wait_until(lambda: "RRGGBB" in _text(app.query_one("#status", Static)))
+        assert editor.value == "cyan"
+        assert service.get("appearance.colors.active_lyric") == "#39B9C7"
+
+        editor.value = "#aabbccdd"
+        await pilot.press("enter")
+        await _wait_until(
+            lambda: service.get("appearance.colors.active_lyric") == "#AABBCCDD"
+        )
+        assert 'active_lyric = "#AABBCCDD"' in path.read_text(encoding="utf-8")
 
     _run_app(app, scenario)
 

@@ -47,6 +47,8 @@ class SettingsConfigPort(Protocol):
 
     def reset(self, key: str) -> bool: ...
 
+    def reset_many(self, keys: tuple[str, ...]) -> bool: ...
+
     def render(self, values: Mapping[str, SettingValue]) -> str: ...
 
 
@@ -175,8 +177,8 @@ class CanonicalSettingsService:
         with self._config.transaction():
             raw = self._read_flattened()
             raw[key] = value
-            self._validate_flattened(raw)
-            self._config.update_many({key: value})
+            candidate = self._validate_flattened(raw)
+            self._config.update_many({key: candidate.get(key)})
             result = self.reload()
         if not result.applied:
             raise SettingsValidationError(result.diagnostics)
@@ -186,8 +188,8 @@ class CanonicalSettingsService:
         with self._config.transaction():
             raw = self._read_flattened()
             raw.update(values)
-            self._validate_flattened(raw)
-            self._config.update_many(values)
+            candidate = self._validate_flattened(raw)
+            self._config.update_many({key: candidate.get(key) for key in values})
             result = self.reload()
         if not result.applied:
             raise SettingsValidationError(result.diagnostics)
@@ -201,6 +203,24 @@ class CanonicalSettingsService:
         with self._config.transaction():
             self._read_flattened()
             self._config.reset(key)
+            result = self.reload()
+        if not result.applied:
+            raise SettingsValidationError(result.diagnostics)
+        return result
+
+    def reset_many(self, keys: tuple[str, ...]) -> SettingsReloadResult:
+        """Remove a bounded group of known overrides in one atomic transaction."""
+
+        unknown = tuple(key for key in keys if key not in SETTINGS_BY_KEY)
+        if unknown:
+            raise SettingsValidationError(
+                tuple(
+                    unknown_setting_diagnostic(key, path=self.path) for key in unknown
+                )
+            )
+        with self._config.transaction():
+            self._read_flattened()
+            self._config.reset_many(keys)
             result = self.reload()
         if not result.applied:
             raise SettingsValidationError(result.diagnostics)

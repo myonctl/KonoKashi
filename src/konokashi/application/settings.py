@@ -10,6 +10,14 @@ from pathlib import Path
 from types import MappingProxyType
 from typing import TypeAlias, cast
 
+from konokashi.application.appearance import (
+    DEFAULT_APPEARANCE_VALUES,
+    AppearancePreset,
+    AppearanceProfile,
+    TextAlignment,
+    normalize_color,
+    resolve_appearance,
+)
 from konokashi.domain.library import LibrarySettings
 from konokashi.domain.representations import RepresentationDisplaySettings
 from konokashi.domain.tracks import PlayerSelectionConfig
@@ -27,7 +35,16 @@ class SettingType(Enum):
 
     BOOLEAN = "boolean"
     INTEGER = "integer"
+    STRING = "string"
     STRING_LIST = "string-list"
+
+
+class SettingStringFormat(Enum):
+    """Optional semantic validation/editor hint for string settings."""
+
+    PLAIN = "plain"
+    COLOR = "color"
+    FONT_FAMILY = "font-family"
 
 
 class SettingScope(Enum):
@@ -44,6 +61,12 @@ class SettingCategory(Enum):
     LYRICS = "Lyrics"
     DESKTOP = "Desktop"
     LIBRARY = "Library"
+    APPEARANCE = "Appearance"
+    TYPOGRAPHY = "Typography"
+    COLORS = "Colors"
+    LAYOUT = "Layout"
+    VISIBILITY = "Visibility"
+    MOTION = "Motion"
 
 
 class ReloadBehavior(Enum):
@@ -62,7 +85,7 @@ class SettingOrigin(Enum):
     LEGACY_MIGRATION = "legacy-sqlite-migration"
 
 
-SettingValue: TypeAlias = bool | int | tuple[str, ...]
+SettingValue: TypeAlias = bool | int | str | tuple[str, ...]
 
 
 @dataclass(frozen=True, slots=True)
@@ -79,6 +102,43 @@ class SettingDefinition:
     description: str
     minimum: int | None = None
     maximum: int | None = None
+    choices: tuple[str, ...] = ()
+    string_format: SettingStringFormat = SettingStringFormat.PLAIN
+
+
+def _appearance_definition(
+    key: str,
+    title: str,
+    category: SettingCategory,
+    description: str,
+    *,
+    minimum: int | None = None,
+    maximum: int | None = None,
+    choices: tuple[str, ...] = (),
+    string_format: SettingStringFormat = SettingStringFormat.PLAIN,
+) -> SettingDefinition:
+    default = DEFAULT_APPEARANCE_VALUES[key]
+    value_type = (
+        SettingType.BOOLEAN
+        if type(default) is bool
+        else SettingType.INTEGER
+        if type(default) is int
+        else SettingType.STRING
+    )
+    return SettingDefinition(
+        key,
+        value_type,
+        default,
+        SettingScope.GLOBAL,
+        ReloadBehavior.LIVE,
+        title,
+        category,
+        description,
+        minimum,
+        maximum,
+        choices,
+        string_format,
+    )
 
 
 SETTINGS_SCHEMA_VERSION = 1
@@ -176,6 +236,406 @@ SETTINGS_SCHEMA: tuple[SettingDefinition, ...] = (
         minimum=1,
         maximum=8,
     ),
+    _appearance_definition(
+        "appearance.preset",
+        "Appearance preset",
+        SettingCategory.APPEARANCE,
+        "Choose a declarative starting profile; explicit custom values override it.",
+        choices=tuple(item.value for item in AppearancePreset),
+    ),
+    *(
+        _appearance_definition(
+            f"appearance.typography.{layer}.family",
+            f"{title} font family",
+            SettingCategory.TYPOGRAPHY,
+            "Installed font family; leave empty to use the system fallback chain.",
+            string_format=SettingStringFormat.FONT_FAMILY,
+        )
+        for layer, title in (
+            ("original", "Original lyric"),
+            ("romanization", "Romanization"),
+            ("translation", "Translation"),
+            ("metadata", "Metadata"),
+            ("status", "Status and progress"),
+        )
+    ),
+    *(
+        _appearance_definition(
+            f"appearance.typography.{layer}.size",
+            f"{title} font size",
+            SettingCategory.TYPOGRAPHY,
+            "Base point size before bounded active/inactive emphasis.",
+            minimum=6,
+            maximum=96,
+        )
+        for layer, title in (
+            ("original", "Original lyric"),
+            ("romanization", "Romanization"),
+            ("translation", "Translation"),
+            ("metadata", "Metadata"),
+            ("status", "Status and progress"),
+        )
+    ),
+    *(
+        _appearance_definition(
+            f"appearance.typography.{layer}.weight",
+            f"{title} font weight",
+            SettingCategory.TYPOGRAPHY,
+            "Portable CSS-style font weight from 100 through 900.",
+            minimum=100,
+            maximum=900,
+        )
+        for layer, title in (
+            ("original", "Original lyric"),
+            ("romanization", "Romanization"),
+            ("translation", "Translation"),
+            ("metadata", "Metadata"),
+            ("status", "Status and progress"),
+        )
+    ),
+    *(
+        _appearance_definition(
+            f"appearance.typography.{layer}.italic",
+            f"Italic {title.lower()}",
+            SettingCategory.TYPOGRAPHY,
+            f"Render {title.lower()} in italic when the selected font supports it.",
+        )
+        for layer, title in (
+            ("original", "Original lyrics"),
+            ("romanization", "Romanization"),
+            ("translation", "Translation"),
+        )
+    ),
+    _appearance_definition(
+        "appearance.typography.active_size_percent",
+        "Active-line size emphasis",
+        SettingCategory.TYPOGRAPHY,
+        "Scale the current line relative to each representation's base size.",
+        minimum=80,
+        maximum=160,
+    ),
+    _appearance_definition(
+        "appearance.typography.inactive_size_percent",
+        "Inactive-line size",
+        SettingCategory.TYPOGRAPHY,
+        "Scale context lines without changing size on playback clock ticks.",
+        minimum=60,
+        maximum=120,
+    ),
+    *(
+        _appearance_definition(
+            key,
+            title,
+            SettingCategory.COLORS,
+            description,
+            string_format=SettingStringFormat.COLOR,
+        )
+        for key, title, description in (
+            (
+                "appearance.colors.active_lyric",
+                "Active lyric color",
+                "Color emphasis applied to the current lyric line.",
+            ),
+            (
+                "appearance.colors.inactive_lyric",
+                "Inactive lyric color",
+                "Color emphasis applied to surrounding lyric lines.",
+            ),
+            (
+                "appearance.colors.original_lyric",
+                "Original lyric color",
+                "Base color of the original lyric representation.",
+            ),
+            (
+                "appearance.colors.romanization",
+                "Romanization color",
+                "Color of romanized or transliterated lyrics.",
+            ),
+            (
+                "appearance.colors.translation",
+                "Translation color",
+                "Color of translated lyrics.",
+            ),
+            (
+                "appearance.colors.metadata_primary",
+                "Primary metadata color",
+                "Color of the track title and primary metadata.",
+            ),
+            (
+                "appearance.colors.metadata_secondary",
+                "Secondary metadata color",
+                "Color of artist, album, and secondary metadata.",
+            ),
+            (
+                "appearance.colors.background",
+                "Background color",
+                "Content background color; alpha is combined with background opacity.",
+            ),
+            (
+                "appearance.colors.foreground",
+                "Foreground color",
+                "General foreground color for product-controlled surfaces.",
+            ),
+            (
+                "appearance.colors.accent",
+                "Accent color",
+                "KonoKashi accent for controls and product-controlled focus.",
+            ),
+            (
+                "appearance.colors.progress",
+                "Progress color",
+                "Playback progress indicator color.",
+            ),
+            (
+                "appearance.colors.status",
+                "Status color",
+                "Playback and auxiliary status text color.",
+            ),
+            (
+                "appearance.colors.muted",
+                "Muted color",
+                "Muted and disabled presentation text color.",
+            ),
+            (
+                "appearance.colors.selection",
+                "Selection color",
+                "Product-controlled lyric text selection color.",
+            ),
+        )
+    ),
+    *(
+        _appearance_definition(
+            key,
+            title,
+            SettingCategory.COLORS,
+            description,
+            minimum=0,
+            maximum=100,
+        )
+        for key, title, description in (
+            (
+                "appearance.opacity.content",
+                "Content opacity",
+                "Opacity percentage applied to the ordinary content surface.",
+            ),
+            (
+                "appearance.opacity.background",
+                "Background opacity",
+                "Opacity percentage combined with background color alpha.",
+            ),
+            (
+                "appearance.opacity.inactive_line",
+                "Inactive-line opacity",
+                "Opacity percentage applied to context lyrics.",
+            ),
+            (
+                "appearance.opacity.metadata",
+                "Metadata opacity",
+                "Opacity percentage applied to track metadata.",
+            ),
+            (
+                "appearance.opacity.secondary_representation",
+                "Secondary representation opacity",
+                "Opacity percentage applied to romanization and translation.",
+            ),
+        )
+    ),
+    *(
+        _appearance_definition(
+            key,
+            title,
+            SettingCategory.LAYOUT,
+            description,
+            minimum=minimum,
+            maximum=maximum,
+        )
+        for key, title, description, minimum, maximum in (
+            (
+                "appearance.spacing.outer_margin",
+                "Outer margin",
+                "Space around the main content in logical pixels.",
+                0,
+                120,
+            ),
+            (
+                "appearance.spacing.lyric_padding",
+                "Lyric block padding",
+                "Space inside the lyric presentation region.",
+                0,
+                80,
+            ),
+            (
+                "appearance.spacing.line",
+                "Lyric line spacing",
+                "Space between aligned lyric groups.",
+                0,
+                48,
+            ),
+            (
+                "appearance.spacing.representation",
+                "Representation spacing",
+                "Space between original, romanized, and translated text.",
+                0,
+                32,
+            ),
+            (
+                "appearance.spacing.metadata",
+                "Metadata spacing",
+                "Space between metadata elements.",
+                0,
+                48,
+            ),
+            (
+                "appearance.spacing.progress",
+                "Progress spacing",
+                "Space around progress and playback status.",
+                0,
+                48,
+            ),
+            (
+                "appearance.spacing.context",
+                "Context spacing",
+                "Space separating current lyrics from context lyrics.",
+                0,
+                80,
+            ),
+            (
+                "appearance.spacing.maximum_lyric_width",
+                "Maximum lyric width",
+                "Readable maximum width of the lyric block in logical pixels.",
+                240,
+                2400,
+            ),
+            (
+                "appearance.context.previous",
+                "Previous context lines",
+                "Number of lyric lines shown before the current line.",
+                0,
+                8,
+            ),
+            (
+                "appearance.context.following",
+                "Following context lines",
+                "Number of lyric lines shown after the current line.",
+                0,
+                8,
+            ),
+        )
+    ),
+    *(
+        _appearance_definition(
+            key,
+            title,
+            SettingCategory.LAYOUT,
+            description,
+            choices=tuple(item.value for item in TextAlignment),
+        )
+        for key, title, description in (
+            (
+                "appearance.alignment.lyrics",
+                "Lyric alignment",
+                "Horizontal alignment of all lyric representations.",
+            ),
+            (
+                "appearance.alignment.metadata",
+                "Metadata alignment",
+                "Horizontal alignment of track metadata independently of lyrics.",
+            ),
+        )
+    ),
+    *(
+        _appearance_definition(key, title, SettingCategory.VISIBILITY, description)
+        for key, title, description in (
+            (
+                "appearance.visibility.title",
+                "Show title",
+                "Show the current track title.",
+            ),
+            (
+                "appearance.visibility.artist",
+                "Show artist",
+                "Show the current track artist.",
+            ),
+            (
+                "appearance.visibility.album",
+                "Show album",
+                "Show album metadata when the frontend supplies it.",
+            ),
+            (
+                "appearance.visibility.source",
+                "Show lyrics source",
+                "Show provider, confidence, and synchronization source details.",
+            ),
+            (
+                "appearance.visibility.playback_status",
+                "Show playback status",
+                "Show playing, paused, or stopped status.",
+            ),
+            (
+                "appearance.visibility.progress",
+                "Show progress bar",
+                "Show graphical playback progress.",
+            ),
+            (
+                "appearance.visibility.timestamps",
+                "Show timestamps",
+                "Show playback position and duration text.",
+            ),
+            (
+                "appearance.visibility.inactive_context",
+                "Show inactive lyrics",
+                "Show previous and following context lyrics.",
+            ),
+            (
+                "appearance.visibility.auxiliary_status",
+                "Show auxiliary status",
+                "Show non-lyric empty, loading, and untimed state labels.",
+            ),
+            (
+                "appearance.visibility.chrome",
+                "Show application chrome",
+                "Show ordinary Settings, Review, Details, and library actions.",
+            ),
+        )
+    ),
+    *(
+        _appearance_definition(
+            key,
+            title,
+            SettingCategory.MOTION,
+            description,
+            minimum=minimum,
+            maximum=maximum,
+        )
+        for key, title, description, minimum, maximum in (
+            (
+                "appearance.motion.transition_ms",
+                "Lyric transition duration",
+                "Bounded lyric movement transition duration in milliseconds.",
+                0,
+                1000,
+            ),
+            (
+                "appearance.motion.emphasis_transition_ms",
+                "Emphasis transition duration",
+                "Bounded active-line emphasis transition duration in milliseconds.",
+                0,
+                1000,
+            ),
+        )
+    ),
+    _appearance_definition(
+        "appearance.motion.smooth_scrolling",
+        "Smooth lyric scrolling",
+        SettingCategory.MOTION,
+        "Allow bounded smooth movement when the active lyric changes.",
+    ),
+    _appearance_definition(
+        "appearance.motion.reduced",
+        "Reduce motion",
+        SettingCategory.MOTION,
+        "Disable nonessential movement regardless of other motion preferences.",
+    ),
 )
 
 SETTINGS_BY_KEY = MappingProxyType(
@@ -230,6 +690,15 @@ class SettingsSnapshot:
         return DesktopInteractionSettings(
             cast(bool, self.get("desktop.lyrics.selectable"))
         )
+
+    @property
+    def appearance(self) -> AppearanceProfile:
+        explicit = frozenset(
+            item.definition.key
+            for item in self.values
+            if item.origin is not SettingOrigin.DEFAULT
+        )
+        return resolve_appearance(self.plain_values(), explicit_keys=explicit)
 
     @property
     def library(self) -> LibrarySettings:
@@ -327,6 +796,15 @@ def validate_settings_values(
     try:
         _ = snapshot.player_selection
         _ = snapshot.library
+        _ = snapshot.appearance
+        display = snapshot.representation_display
+        if not (
+            display.show_original or display.show_romanized or display.show_translated
+        ):
+            raise ValueError(
+                "At least one lyric representation must remain visible so the "
+                "application is recoverable."
+            )
     except ValueError as error:
         raise SettingsValidationError(
             (SettingsDiagnostic(str(error), path=path),)
@@ -337,7 +815,12 @@ def validate_settings_values(
 def _canonical_value(definition: SettingDefinition, value: object) -> SettingValue:
     if definition.value_type is SettingType.STRING_LIST:
         return tuple(cast(list[str] | tuple[str, ...], value))
-    return cast(bool | int, value)
+    if (
+        definition.value_type is SettingType.STRING
+        and definition.string_format is SettingStringFormat.COLOR
+    ):
+        return normalize_color(cast(str, value))
+    return cast(bool | int | str, value)
 
 
 def _validate_value(definition: SettingDefinition, value: object) -> str | None:
@@ -350,6 +833,10 @@ def _validate_value(definition: SettingDefinition, value: object) -> str | None:
         return (
             f"Expected integer, got {type(value).__name__} {_render_bad_value(value)}."
         )
+    if expected is SettingType.STRING and type(value) is not str:
+        return (
+            f"Expected string, got {type(value).__name__} {_render_bad_value(value)}."
+        )
     if expected is SettingType.STRING_LIST and (
         not isinstance(value, (list, tuple))
         or any(type(item) is not str for item in value)
@@ -360,6 +847,19 @@ def _validate_value(definition: SettingDefinition, value: object) -> str | None:
             return f"Expected an integer of at least {definition.minimum}, got {value}."
         if definition.maximum is not None and value > definition.maximum:
             return f"Expected an integer of at most {definition.maximum}, got {value}."
+    if type(value) is str:
+        if "\x00" in value:
+            return "Strings cannot contain NUL characters."
+        if len(value) > 256:
+            return "Expected a string no longer than 256 characters."
+        if definition.choices and value not in definition.choices:
+            choices = ", ".join(repr(item) for item in definition.choices)
+            return f"Expected one of {choices}, got {value!r}."
+        if definition.string_format is SettingStringFormat.COLOR:
+            try:
+                normalize_color(value)
+            except ValueError as error:
+                return str(error)
     return None
 
 
