@@ -22,7 +22,7 @@ from konokashi.application.storage_diagnostics import (
 def test_export_drops_paths_free_form_errors_and_private_content() -> None:
     private = "/home/person/Music/secret-track.flac"
     report = build_release_diagnostic_export(
-        konokashi_version="1.0.0",
+        konokashi_version="0.1.0b1",
         checks=(
             DiagnosticCheck(
                 "data-dir", DiagnosticStatus.FAILURE, f"not writable ({private})"

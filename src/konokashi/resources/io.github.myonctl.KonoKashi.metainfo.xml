@@ -26,9 +26,9 @@
   <url type="bugtracker">https://github.com/myonctl/KonoKashi/issues</url>
   <content_rating type="oars-1.1" />
   <releases>
-    <release version="1.0.0" date="2026-08-23" type="development">
+    <release version="0.1.0-beta.1" date="2026-09-09" type="development">
       <description>
-        <p>Internal development milestone; no public release was created.</p>
+        <p>Local public-beta candidate metadata; no public release was created.</p>
       </description>
     </release>
   </releases>

@@ -1,6 +1,7 @@
 # Flatpak candidate
 
-This directory contains a local-build candidate, not a Flathub submission.
+This directory contains the local `0.1.0-beta.1` build candidate, not a Flathub
+submission.
 `io.github.myonctl.KonoKashi` matches the current GitHub repository identity and
 the existing desktop application ID.
 

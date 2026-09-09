@@ -1,8 +1,9 @@
 # Local readiness candidate. See README.md before building or submitting.
 # Maintainer: myonctl
 pkgname=konokashi
-pkgver=1.0.0
+pkgver=0.1.0beta1
 pkgrel=1
+_sdistver=0.1.0b1
 pkgdesc='Local-first synchronized multilingual lyrics for Linux MPRIS players'
 arch=('any')
 url='https://github.com/myonctl/KonoKashi'
@@ -26,23 +27,23 @@ checkdepends=('python-pytest')
 optdepends=('playerctl: optional MPRIS debugging' 'pipewire: optional audio timing diagnostics')
 # No public release exists. Supply the reviewed local sdist alongside PKGBUILD.
 # Replace this with the final immutable HTTPS release-asset URL before submission.
-source=("$pkgname-$pkgver.tar.gz")
-sha256sums=('0a4fbad74232442ff760d87b4a08da33ee78d06a75a0011eccd0b272dcf8b2d9')
+source=("$pkgname-$_sdistver.tar.gz")
+sha256sums=('c8aec0bd327af6e09eb369764968697ff74353543b81a155e8fc28d6597c058f')
 
 build() {
-  cd "$pkgname-$pkgver"
+  cd "$pkgname-$_sdistver"
   python -m build --wheel --no-isolation
 }
 
 check() {
-  cd "$pkgname-$pkgver"
+  cd "$pkgname-$_sdistver"
   # Package smoke/regressions independent of Git-only repository documentation.
   PYTHONPATH=src QT_QPA_PLATFORM=offscreen python -m pytest \
     tests/test_package.py tests/test_lrc_parser.py tests/test_romanization_adapters.py
 }
 
 package() {
-  cd "$pkgname-$pkgver"
+  cd "$pkgname-$_sdistver"
   python -m installer --destdir="$pkgdir" --prefix=/usr dist/*.whl
   sed -i '1c#!/usr/bin/python' "$pkgdir/usr/bin/konokashi"
   install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"

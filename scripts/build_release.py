@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build, compare, inspect, and publish local KonoKashi release artifacts."""
+"""Build, compare, inspect, and place local KonoKashi release artifacts."""
 
 from __future__ import annotations
 
@@ -30,6 +30,7 @@ REQUIRED_SDIST_SUFFIXES = (
     "LICENSE",
     "README.md",
     "pyproject.toml",
+    "docs/images/konokashi-beta-lyrics.png",
     f"src/konokashi/resources/{APP_ID}.desktop.in",
     f"src/konokashi/resources/{APP_ID}.metainfo.xml",
     f"src/konokashi/resources/{APP_ID}.svg",

@@ -85,6 +85,17 @@ def test_public_docs_do_not_embed_maintainer_home_path() -> None:
     assert offending == []
 
 
+def test_documented_screenshot_is_bounded_and_sanitized() -> None:
+    screenshot = REPOSITORY_ROOT / "docs/images/konokashi-beta-lyrics.png"
+    content = screenshot.read_bytes()
+
+    assert content.startswith(b"\x89PNG\r\n\x1a\n")
+    assert len(content) < 500_000
+    assert b"/home/" not in content
+    assert b"myon" not in content.lower()
+    assert b"windowTitle" not in content
+
+
 def test_sanitized_mpris_evidence_fixtures_are_preserved() -> None:
     paths = (
         "tests/fixtures/mpris/firefox_native.json",
@@ -112,6 +123,10 @@ def test_github_actions_runs_the_required_quality_gate() -> None:
         "python -m mypy src",
         "python scripts/build_release.py",
         "desktop-file-validate",
+        "appstreamcli validate --pedantic --no-net",
+        "/tmp/gitleaks dir",
+        "GITLEAKS_SHA256",
+        "QT_QPA_PLATFORM: offscreen",
     )
 
     assert all(command in content for command in required_commands)
@@ -153,6 +168,25 @@ def test_appstream_metadata_matches_the_desktop_identity() -> None:
     ) in metadata
     assert "<metadata_license>CC0-1.0</metadata_license>" in metadata
     assert "<project_license>PolyForm-Noncommercial-1.0.0</project_license>" in metadata
+    assert '<release version="0.1.0-beta.1"' in metadata
+    assert "no public release was created" in metadata
+
+
+def test_beta_version_is_consistent_across_release_candidates() -> None:
+    pyproject = (REPOSITORY_ROOT / "pyproject.toml").read_text(encoding="utf-8")
+    package = (REPOSITORY_ROOT / "src/konokashi/__init__.py").read_text(
+        encoding="utf-8"
+    )
+    aur = (REPOSITORY_ROOT / "packaging/aur/PKGBUILD").read_text(encoding="utf-8")
+    srcinfo = (REPOSITORY_ROOT / "packaging/aur/.SRCINFO").read_text(encoding="utf-8")
+
+    assert 'version = "0.1.0b1"' in pyproject
+    assert '__version__ = "0.1.0b1"' in package
+    assert 'DISPLAY_VERSION = "0.1.0-beta.1"' in package
+    assert "pkgver=0.1.0beta1" in aur
+    assert "_sdistver=0.1.0b1" in aur
+    assert "pkgver = 0.1.0beta1" in srcinfo
+    assert "source = konokashi-0.1.0b1.tar.gz" in srcinfo
 
 
 def test_release_copy_excludes_maintainer_and_flatpak_worktrees() -> None:

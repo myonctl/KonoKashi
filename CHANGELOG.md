@@ -5,6 +5,9 @@ release yet.
 
 ## Unreleased
 
+The current local candidate identifies itself as `0.1.0-beta.1`
+(`0.1.0b1` in Python package metadata). It has not been published or tagged.
+
 ### Added
 
 - Product-first public documentation and lightweight contribution, security,
@@ -26,8 +29,14 @@ release yet.
 - Wrapped timed-lyric layers now use measured height-for-width geometry and a
   scrollable active region, while adjacent transitions follow stable line
   positions and Instant/Reduce motion remain fully still.
+- Desktop MPRIS requests are asynchronous and coalesced; library scans report
+  truthful partial/failure states; Settings font and folder selection require
+  deliberate commits.
+- Recording candidate review, optional bounded YouTube metadata enrichment,
+  multilingual representation state, and local translation editing now retain
+  provenance and expose their failure/availability state.
 
-## Internal 1.0.0 build — 2026-08-23
+## Pre-beta internal build — 2026-08-23
 
 This was an internal package milestone, not a public stable release.
 

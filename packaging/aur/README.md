@@ -3,15 +3,16 @@
 `konokashi` is the sole proposed package. This is a **local candidate, not ready
 for AUR submission**. The project is source-available under
 `PolyForm-Noncommercial-1.0.0`, but no public source release exists.
-The recipe currently consumes the exact reviewed local `konokashi-1.0.0.tar.gz`
-source archive with a real SHA-256 checksum. It does not invent a public tag or
+The recipe identifies the local candidate as `0.1.0-beta.1` and consumes the
+exact reviewed PEP 440 source archive `konokashi-0.1.0b1.tar.gz` with a real
+SHA-256 checksum. It does not invent a public tag or
 download URL. Do not upload the source archive to an AUR Git repository.
 
 Before submission, select the public version, publish the separately authorized
 immutable source release, replace `source` with its HTTPS asset URL, update its
 checksum, and regenerate `.SRCINFO` using `makepkg --printsrcinfo`.
 Keep `pkgrel=1` for a new upstream version and increment it for packaging-only
-updates. The existing internal `1.0.0` is not a stable release announcement.
+updates. This beta candidate is not a public release announcement.
 
 The package uses PEP 517 wheel construction and installs into makepkg's staging
 directory with Python installer. Neither build nor package functions download

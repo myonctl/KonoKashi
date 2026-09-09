@@ -1,6 +1,6 @@
 pkgbase = konokashi
 	pkgdesc = Local-first synchronized multilingual lyrics for Linux MPRIS players
-	pkgver = 1.0.0
+	pkgver = 0.1.0beta1
 	pkgrel = 1
 	url = https://github.com/myonctl/KonoKashi
 	arch = any
@@ -24,7 +24,7 @@ pkgbase = konokashi
 	depends = python-unidic-lite>=1.0.8
 	optdepends = playerctl: optional MPRIS debugging
 	optdepends = pipewire: optional audio timing diagnostics
-	source = konokashi-1.0.0.tar.gz
-	sha256sums = 0a4fbad74232442ff760d87b4a08da33ee78d06a75a0011eccd0b272dcf8b2d9
+	source = konokashi-0.1.0b1.tar.gz
+	sha256sums = c8aec0bd327af6e09eb369764968697ff74353543b81a155e8fc28d6597c058f
 
 pkgname = konokashi

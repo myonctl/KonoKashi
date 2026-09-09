@@ -11,6 +11,14 @@ not have a suitable result.
 
 KonoKashi is usable and under active development.
 
+The current local first-public-beta candidate is **0.1.0-beta.1**. No public
+release or tag has been created.
+
+![KonoKashi native Wayland lyric view using a controlled multilingual fixture](docs/images/konokashi-beta-lyrics.png)
+
+_Native Wayland renderer at a normal window size; all displayed metadata and
+lyrics are synthetic test fixtures._
+
 The project is source-available under the PolyForm Noncommercial License 1.0.0.
 It is free to use, study, modify, and redistribute for permitted noncommercial
 purposes under that license.
@@ -94,6 +102,11 @@ konokashi diagnostics export
 `diagnostics export` is intentionally privacy-bounded: it omits media paths,
 track metadata, lyric text, usernames, hostnames, and free-form errors. Review any
 diagnostic output before sharing it.
+
+Online provider results expire after seven days and no-result cache entries after
+one day. **Possible lyrics matches…** can explicitly refresh online evidence.
+Offline mode may label an expired positive result as stale fallback, but an
+expired negative never suppresses a later online search.
 
 ## Configuration and data
 

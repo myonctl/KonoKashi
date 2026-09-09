@@ -17,22 +17,22 @@ from scripts.build_release import (
 
 
 def _write_artifacts(tmp_path: Path, *, unexpected: bool) -> dict[str, Path]:
-    wheel = tmp_path / "konokashi-1.0.0-py3-none-any.whl"
+    wheel = tmp_path / "konokashi-0.1.0b1-py3-none-any.whl"
     with zipfile.ZipFile(wheel, "w") as archive:
         for name in REQUIRED_WHEEL_SUFFIXES:
             archive.writestr(name, b"current")
         if unexpected:
             archive.writestr("obsolete_package/__init__.py", b"unexpected")
 
-    source = tmp_path / "konokashi-1.0.0.tar.gz"
+    source = tmp_path / "konokashi-0.1.0b1.tar.gz"
     with tarfile.open(source, "w:gz") as archive:
         for suffix in REQUIRED_SDIST_SUFFIXES:
-            name = f"konokashi-1.0.0/{suffix}"
+            name = f"konokashi-0.1.0b1/{suffix}"
             info = tarfile.TarInfo(name)
             info.size = len(b"current")
             archive.addfile(info, BytesIO(b"current"))
         if unexpected:
-            info = tarfile.TarInfo("konokashi-1.0.0/src/obsolete_package/__init__.py")
+            info = tarfile.TarInfo("konokashi-0.1.0b1/src/obsolete_package/__init__.py")
             info.size = len(b"unexpected")
             archive.addfile(info, BytesIO(b"unexpected"))
     return {wheel.name: wheel, source.name: source}

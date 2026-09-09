@@ -1512,12 +1512,12 @@ class MainWindow(DesktopWindowSurface):
         self.settings_requested.emit()
 
     def _about(self) -> None:
-        from konokashi import __version__
+        from konokashi import DISPLAY_VERSION
 
         QMessageBox.about(
             self,
             "About KonoKashi",
-            f"KonoKashi {__version__}\nLocal-first synchronized lyrics for Linux.",
+            f"KonoKashi {DISPLAY_VERSION}\nLocal-first synchronized lyrics for Linux.",
         )
 
     def _open_details(self) -> None:

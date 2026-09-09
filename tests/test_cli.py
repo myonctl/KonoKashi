@@ -15,7 +15,7 @@ def test_version_output(capsys: pytest.CaptureFixture[str]) -> None:
         cli.main(["--version"])
 
     assert exit_info.value.code == 0
-    assert capsys.readouterr().out == "konokashi 1.0.0\n"
+    assert capsys.readouterr().out == "konokashi 0.1.0b1\n"
 
 
 def test_desktop_command_dispatches_to_the_qt_entry_point(
