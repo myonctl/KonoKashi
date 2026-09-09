@@ -35,6 +35,12 @@ from konokashi.application.settings import (
     default_settings_snapshot,
 )
 from konokashi.domain.identity import YouTubeIdentity
+from konokashi.domain.library import (
+    LibraryReviewItem,
+    LibraryScanIssue,
+    LibraryScanIssueCategory,
+    LibraryScanSummary,
+)
 from konokashi.domain.lyrics import (
     ApprovalState,
     ContentProvenance,
@@ -51,6 +57,7 @@ from konokashi.domain.representations import (
 )
 from konokashi.domain.synchronization import ClockHealth, PlaybackState
 from konokashi.presentation.desktop.app import run_desktop
+from konokashi.presentation.desktop.library_review_dialog import LibraryReviewDialog
 from konokashi.presentation.desktop.main_window import (
     DiagnosticsDialog,
     MainWindow,
@@ -593,6 +600,61 @@ def test_library_scan_button_emits_typed_start_and_cancel_intents(
     assert cancels == ["cancel"]
     assert window.library_button.text() == "Cancel scan"
     assert window.library_button.accessibleDescription() == "Scanning in background"
+    window.close()
+
+
+def test_library_results_are_local_actionable_and_include_every_counter(
+    qt_app: QApplication,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    private_path = "/music/秘密/Artist - Song.flac"
+    summary = LibraryScanSummary(
+        7,
+        discovered=9,
+        processed=8,
+        unchanged=7,
+        moved=6,
+        missing=5,
+        review=4,
+        downloaded=3,
+        download_misses=2,
+        errors=1,
+        issues=(
+            LibraryScanIssue(
+                LibraryScanIssueCategory.METADATA_READ,
+                private_path,
+                "Audio tags could not be read.",
+            ),
+        ),
+    )
+    review = (LibraryReviewItem(private_path, "Song", ("Artist",), "review required"),)
+    window = MainWindow()
+    assert window.library_results_button.isHidden()
+    window.set_library_scan_result(summary, review)
+    assert not window.library_results_button.isHidden()
+
+    dialog = LibraryReviewDialog(summary, review, window)
+    counter_text = " ".join(label.text() for label in dialog.findChildren(QLabel))
+    for value in range(1, 10):
+        assert str(value) in counter_text
+    assert dialog.items.topLevelItemCount() == 2
+    assert "not included in diagnostic exports" in counter_text
+
+    opened: list[str] = []
+    monkeypatch.setattr(
+        "konokashi.presentation.desktop.library_review_dialog.QDesktopServices.openUrl",
+        lambda url: opened.append(url.toLocalFile()) or True,
+    )
+    dialog.items.setCurrentItem(dialog.items.topLevelItem(0))
+    QTest.mouseClick(dialog.copy_path_button, Qt.MouseButton.LeftButton)
+    assert qt_app.clipboard().text() == private_path
+    QTest.mouseClick(dialog.open_folder_button, Qt.MouseButton.LeftButton)
+    assert opened == ["/music/秘密"]
+
+    rescans: list[bool] = []
+    dialog.scan_again_requested.connect(lambda: rescans.append(True))
+    QTest.mouseClick(dialog.scan_again_button, Qt.MouseButton.LeftButton)
+    assert rescans == [True]
     window.close()
 
 

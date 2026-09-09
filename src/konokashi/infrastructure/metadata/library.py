@@ -14,6 +14,9 @@ from konokashi.domain.library import (
     LibraryFile,
     LibraryMetadata,
     LibraryMetadataSource,
+    LibraryScanFailure,
+    LibraryScanIssue,
+    LibraryScanIssueCategory,
 )
 from konokashi.domain.tracks import Confidence, TrackCandidate
 
@@ -44,7 +47,14 @@ def _file_key(stat: os.stat_result) -> str:
 def _raise_walk_error(error: OSError) -> None:
     """Abort reconciliation when any subtree could not be enumerated safely."""
 
-    raise error
+    path = None if error.filename is None else str(error.filename)
+    raise LibraryScanFailure(
+        LibraryScanIssue(
+            LibraryScanIssueCategory.DIRECTORY_READ,
+            path,
+            f"Directory could not be read ({type(error).__name__}).",
+        )
+    ) from error
 
 
 class MusicDirectoryFilesystem:
@@ -54,7 +64,13 @@ class MusicDirectoryFilesystem:
         for root_text in roots:
             root = Path(root_text)
             if not root.is_dir():
-                raise OSError(f"configured library root is unavailable: {root}")
+                raise LibraryScanFailure(
+                    LibraryScanIssue(
+                        LibraryScanIssueCategory.ROOT_UNAVAILABLE,
+                        str(root),
+                        "Configured library root is unavailable or inaccessible.",
+                    )
+                )
             for directory, names, filenames in os.walk(
                 root, followlinks=False, onerror=_raise_walk_error
             ):
@@ -67,8 +83,13 @@ class MusicDirectoryFilesystem:
                     try:
                         stat = path.stat(follow_symlinks=False)
                     except OSError as error:
-                        raise OSError(
-                            f"library file could not be inspected: {path}"
+                        raise LibraryScanFailure(
+                            LibraryScanIssue(
+                                LibraryScanIssueCategory.FILE_INSPECTION,
+                                str(path),
+                                f"Library file could not be inspected "
+                                f"({type(error).__name__}).",
+                            )
                         ) from error
                     if not stat_module.S_ISREG(stat.st_mode):
                         continue
@@ -118,7 +139,12 @@ class MutagenLibraryMetadataReader:
                 ),
                 Confidence.MEDIUM if fallback_artists else Confidence.LOW,
                 LibraryMetadataSource.FILENAME,
-                f"tags could not be read: {error}",
+                "Audio tags could not be read; filename metadata was used.",
+                LibraryScanIssue(
+                    LibraryScanIssueCategory.METADATA_READ,
+                    file.path,
+                    f"Audio tags could not be read ({type(error).__name__}).",
+                ),
             )
         tags = None if audio is None else audio.tags
         title = _first(tags, "title")

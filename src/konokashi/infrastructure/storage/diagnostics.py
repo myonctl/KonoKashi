@@ -5,7 +5,11 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-from konokashi.application.storage_diagnostics import StorageCounts, StorageStatus
+from konokashi.application.storage_diagnostics import (
+    LibraryScanDiagnostics,
+    StorageCounts,
+    StorageStatus,
+)
 from konokashi.infrastructure.storage.errors import StorageError
 from konokashi.infrastructure.storage.migrations import (
     CURRENT_SCHEMA_VERSION,
@@ -58,6 +62,7 @@ def inspect_storage(path: Path) -> StorageStatus:
                 else str(integrity_row[0]).strip().lower()
             )
             counts = None
+            latest_library_scan = None
             if schema_version == CURRENT_SCHEMA_VERSION and not incompatible:
                 counts = StorageCounts(
                     source_identities=int(
@@ -136,6 +141,38 @@ def inspect_storage(path: Path) -> StorageStatus:
                         ).fetchone()[0]
                     ),
                 )
+                scan = connection.execute(
+                    """
+                    SELECT scan_id, status, discovered, processed, unchanged, moved,
+                           missing, review, downloaded, download_misses, errors
+                    FROM library_scan_runs ORDER BY scan_id DESC LIMIT 1
+                    """
+                ).fetchone()
+                if scan is not None:
+                    categories = {
+                        str(row[0]): int(row[1])
+                        for row in connection.execute(
+                            """
+                            SELECT category, error_count
+                            FROM library_scan_error_counts
+                            WHERE scan_id = ? ORDER BY category
+                            """,
+                            (int(scan[0]),),
+                        )
+                    }
+                    latest_library_scan = LibraryScanDiagnostics(
+                        status=str(scan[1]),
+                        discovered=int(scan[2]),
+                        processed=int(scan[3]),
+                        unchanged=int(scan[4]),
+                        moved=int(scan[5]),
+                        missing=int(scan[6]),
+                        review=int(scan[7]),
+                        downloaded=int(scan[8]),
+                        download_misses=int(scan[9]),
+                        errors=int(scan[10]),
+                        error_categories=categories,
+                    )
         if incompatible:
             return StorageStatus(
                 path=str(path),
@@ -177,6 +214,7 @@ def inspect_storage(path: Path) -> StorageStatus:
             writable=writable,
             integrity_status=integrity,
             counts=counts,
+            latest_library_scan=latest_library_scan,
         )
     except (OSError, StorageError) as error:
         return StorageStatus(

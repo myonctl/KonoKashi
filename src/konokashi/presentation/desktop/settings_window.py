@@ -2,12 +2,24 @@
 
 from __future__ import annotations
 
+import os
 from collections.abc import Iterable
 from itertools import pairwise
 from pathlib import Path
 from typing import cast
 
-from PySide6.QtCore import QEvent, QObject, QSignalBlocker, Qt, QUrl, Signal
+from PySide6.QtCore import (
+    QEvent,
+    QModelIndex,
+    QObject,
+    QPersistentModelIndex,
+    QSignalBlocker,
+    QSortFilterProxyModel,
+    QStringListModel,
+    Qt,
+    QUrl,
+    Signal,
+)
 from PySide6.QtGui import (
     QColor,
     QDesktopServices,
@@ -25,6 +37,7 @@ from PySide6.QtWidgets import (
     QComboBox,
     QDialog,
     QDialogButtonBox,
+    QFileDialog,
     QFrame,
     QGridLayout,
     QHBoxLayout,
@@ -172,13 +185,22 @@ class OrderedStringListEditor(QWidget):
         *,
         ordered: bool,
         player_identities: bool,
+        library_paths: bool,
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
         self._ordered = ordered
+        self._library_paths = library_paths
         self._editing_row: int | None = None
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
+
+        self.folder_button = QPushButton("Add folder…")
+        self.folder_button.setAccessibleName("Choose a music library folder")
+        self.folder_button.clicked.connect(self._choose_folder)
+        self.folder_button.setVisible(library_paths)
+        layout.addWidget(self.folder_button)
+
         self.items = QListWidget()
         self.items.setAccessibleName(accessible_name)
         self.items.setSelectionMode(QListWidget.SelectionMode.SingleSelection)
@@ -198,7 +220,20 @@ class OrderedStringListEditor(QWidget):
         self.suggestions.setVisible(player_identities)
         layout.addWidget(self.suggestions)
 
-        input_row = QHBoxLayout()
+        self.manual_toggle = QToolButton()
+        self.manual_toggle.setText("Advanced manual path")
+        self.manual_toggle.setCheckable(True)
+        self.manual_toggle.setArrowType(Qt.ArrowType.RightArrow)
+        self.manual_toggle.setToolButtonStyle(
+            Qt.ToolButtonStyle.ToolButtonTextBesideIcon
+        )
+        self.manual_toggle.setAccessibleName("Show manual library path entry")
+        self.manual_toggle.setVisible(library_paths)
+        layout.addWidget(self.manual_toggle)
+
+        self.input_widget = QWidget()
+        input_row = QHBoxLayout(self.input_widget)
+        input_row.setContentsMargins(0, 0, 0, 0)
         self.input = QLineEdit()
         self.input.setAccessibleName(f"New item for {accessible_name}")
         self.input.setPlaceholderText(
@@ -206,14 +241,16 @@ class OrderedStringListEditor(QWidget):
             if player_identities
             else "Enter an absolute folder path"
         )
-        self.add_button = QPushButton("Add")
+        self.add_button = QPushButton("Add manually" if library_paths else "Add")
         self.add_button.setAccessibleName(f"Add item to {accessible_name}")
         self.cancel_button = QPushButton("Cancel entry")
         self.cancel_button.clicked.connect(self._cancel_entry)
         input_row.addWidget(self.input, 1)
         input_row.addWidget(self.add_button)
         input_row.addWidget(self.cancel_button)
-        layout.addLayout(input_row)
+        self.input_widget.setVisible(not library_paths)
+        layout.addWidget(self.input_widget)
+        self.manual_toggle.toggled.connect(self._set_manual_entry_visible)
 
         actions = QHBoxLayout()
         self.remove_button = QPushButton("Remove")
@@ -266,7 +303,7 @@ class OrderedStringListEditor(QWidget):
             self.items.setCurrentItem(matching[0] if matching else self.items.item(0))
         self.input.clear()
         self._editing_row = None
-        self.add_button.setText("Add")
+        self.add_button.setText("Add manually" if self._library_paths else "Add")
         self._update_actions()
 
     def set_editing_enabled(self, enabled: bool) -> None:
@@ -275,6 +312,8 @@ class OrderedStringListEditor(QWidget):
         self.add_button.setEnabled(enabled)
         self.cancel_button.setEnabled(enabled)
         self.suggestions.setEnabled(enabled)
+        self.folder_button.setEnabled(enabled)
+        self.manual_toggle.setEnabled(enabled)
         self._update_actions(enabled)
 
     def _add(self) -> None:
@@ -282,15 +321,22 @@ class OrderedStringListEditor(QWidget):
         if not value:
             self.validation_label.setText("Enter a value before adding it.")
             return
-        duplicate_rows = {
-            index
-            for index, existing in enumerate(self.value())
-            if existing.casefold() == value.casefold()
-        }
-        if duplicate_rows - (
-            {self._editing_row} if self._editing_row is not None else set()
-        ):
-            self.validation_label.setText("This entry is already in the list.")
+        self._commit_value(value)
+
+    def _commit_value(self, value: str) -> None:
+        value = value.strip()
+        self.validation_label.clear()
+        if self._library_paths:
+            path = Path(value)
+            if not path.is_absolute():
+                self.validation_label.setText(
+                    "Enter an absolute folder path, such as /home/name/Music."
+                )
+                return
+            value = str(Path(os.path.normpath(value)))
+        error = self._candidate_error(value)
+        if error is not None:
+            self.validation_label.setText(error)
             return
         if self._editing_row is None:
             self.items.addItem(value)
@@ -302,11 +348,60 @@ class OrderedStringListEditor(QWidget):
         self._cancel_entry()
         self.value_changed.emit(self.value())
 
+    def _candidate_error(self, value: str) -> str | None:
+        excluded = {self._editing_row} if self._editing_row is not None else set()
+        if not self._library_paths:
+            if any(
+                index not in excluded and existing.casefold() == value.casefold()
+                for index, existing in enumerate(self.value())
+            ):
+                return "This entry is already in the list."
+            return None
+        candidate = Path(value)
+        for index, existing_text in enumerate(self.value()):
+            if index in excluded:
+                continue
+            existing = Path(os.path.normpath(existing_text))
+            if candidate == existing:
+                return "This folder is already in the library."
+            if candidate in existing.parents:
+                return (
+                    f"{existing_text} is already inside this folder. Remove the "
+                    "nested root before adding its parent."
+                )
+            if existing in candidate.parents:
+                return (
+                    f"This folder is already covered by {existing_text}. Choose "
+                    "a separate folder."
+                )
+        return None
+
+    def _choose_folder(self) -> None:
+        selected = QFileDialog.getExistingDirectory(
+            self,
+            "Add music library folder",
+            "",
+            QFileDialog.Option.ShowDirsOnly,
+        )
+        if selected:
+            self._editing_row = None
+            self._commit_value(selected)
+
+    def _set_manual_entry_visible(self, visible: bool) -> None:
+        self.manual_toggle.setArrowType(
+            Qt.ArrowType.DownArrow if visible else Qt.ArrowType.RightArrow
+        )
+        self.input_widget.setVisible(visible)
+        if visible:
+            self.input.setFocus()
+
     def _edit(self) -> None:
         row = self.items.currentRow()
         if row < 0:
             return
         self._editing_row = row
+        if self._library_paths:
+            self.manual_toggle.setChecked(True)
         self.input.setText(self.items.item(row).text())
         self.input.selectAll()
         self.input.setFocus()
@@ -315,7 +410,7 @@ class OrderedStringListEditor(QWidget):
     def _cancel_entry(self) -> None:
         self.input.clear()
         self._editing_row = None
-        self.add_button.setText("Add")
+        self.add_button.setText("Add manually" if self._library_paths else "Add")
 
     def _suggestion_selected(self, index: int) -> None:
         value = self.suggestions.itemText(index)
@@ -498,6 +593,33 @@ class AnimationSpeedEditor(QWidget):
             self.value_changed.emit(self.value())
 
 
+class _UnicodeSubstringProxy(QSortFilterProxyModel):
+    """Filter font names with Python's Unicode case-folding semantics."""
+
+    def __init__(self, parent: QObject | None = None) -> None:
+        super().__init__(parent)
+        self._query = ""
+
+    def set_query(self, query: str) -> None:
+        folded = query.casefold()
+        if folded == self._query:
+            return
+        self.beginFilterChange()
+        self._query = folded
+        self.endFilterChange(QSortFilterProxyModel.Direction.Rows)
+
+    def filterAcceptsRow(
+        self,
+        source_row: int,
+        source_parent: QModelIndex | QPersistentModelIndex,
+    ) -> bool:
+        model = self.sourceModel()
+        if model is None:
+            return False
+        value = model.data(model.index(source_row, 0, source_parent))
+        return self._query in str(value).casefold()
+
+
 class SemanticStringEditor(QWidget):
     """Choice, font-family, and validated text editor over one string value."""
 
@@ -514,6 +636,8 @@ class SemanticStringEditor(QWidget):
         self.combo: QComboBox | None = None
         self.input: QLineEdit | None = None
         self.color_button: QPushButton | None = None
+        self._font_source: QStringListModel | None = None
+        self._font_proxy: _UnicodeSubstringProxy | None = None
         if (
             definition.choices
             or definition.string_format is SettingStringFormat.FONT_FAMILY
@@ -525,20 +649,28 @@ class SemanticStringEditor(QWidget):
                 for value in definition.choices:
                     combo.addItem(value.replace("-", " ").title(), value)
             else:
-                combo.addItems(tuple(QFontDatabase.families()))
+                source = QStringListModel(tuple(QFontDatabase.families()), self)
+                proxy = _UnicodeSubstringProxy(self)
+                proxy.setSourceModel(source)
+                combo.setModel(proxy)
+                self._font_source = source
+                self._font_proxy = proxy
             combo.setEditable(not definition.choices)
             line_edit = combo.lineEdit()
-            if line_edit is not None:
+            if definition.string_format is SettingStringFormat.FONT_FAMILY:
+                assert line_edit is not None
                 line_edit.setPlaceholderText("System default")
-                line_edit.editingFinished.connect(self._emit_combo)
-            else:
-                combo.currentIndexChanged.connect(
-                    lambda: self.value_changed.emit(self.value())
+                line_edit.returnPressed.connect(self._emit_combo)
+                line_edit.textEdited.connect(self._font_query_changed)
+                combo.highlighted.connect(
+                    lambda index: self.preview_changed.emit(combo.itemText(index))
                 )
+                combo.activated.connect(self._font_activated)
+            else:
+                combo.activated.connect(lambda: self.value_changed.emit(self.value()))
             self.combo = combo
             if definition.string_format is SettingStringFormat.FONT_FAMILY:
                 combo.currentTextChanged.connect(self.preview_changed)
-                combo.activated.connect(self._emit_combo)
             layout.addWidget(combo, 1)
         else:
             line = QLineEdit()
@@ -564,6 +696,8 @@ class SemanticStringEditor(QWidget):
 
     def set_value(self, value: str) -> None:
         if self.combo is not None:
+            if self._font_proxy is not None:
+                self._font_proxy.set_query("")
             with QSignalBlocker(self.combo):
                 index = (
                     self.combo.findData(value)
@@ -598,7 +732,28 @@ class SemanticStringEditor(QWidget):
         return tuple(widgets)
 
     def _emit_combo(self) -> None:
+        if self._font_proxy is not None:
+            self._font_proxy.set_query("")
         self.value_changed.emit(self.value())
+
+    def _font_query_changed(self, value: str) -> None:
+        assert self.combo is not None and self._font_proxy is not None
+        self._font_proxy.set_query(value)
+        self.preview_changed.emit(value)
+        if self.combo.isVisible() and self.combo.hasFocus():
+            self.combo.showPopup()
+
+    def _font_activated(self, index: int) -> None:
+        assert self.combo is not None and self._font_proxy is not None
+        value = self.combo.itemText(index)
+        self._font_proxy.set_query("")
+        self.combo.setEditText(value)
+        self.value_changed.emit(value)
+
+    def filtered_values(self) -> tuple[str, ...]:
+        if self.combo is None or self._font_proxy is None:
+            return ()
+        return tuple(self.combo.itemText(index) for index in range(self.combo.count()))
 
     def _choose_color(self) -> None:
         assert self.input is not None
@@ -724,6 +879,7 @@ class SettingRow(QFrame):
                 definition.title,
                 ordered=definition.key == "players.preferred",
                 player_identities=definition.key.startswith("players."),
+                library_paths=definition.key == "library.roots",
             )
             list_editor.setAccessibleDescription(definition.description)
             list_editor.value_changed.connect(
@@ -1142,7 +1298,7 @@ class SettingsWindow(QDialog):
             "Reset all appearance settings to defaults"
         )
         self.reset_appearance_button.setToolTip(
-            "Remove the preset and every appearance override, including lyric layers"
+            "Remove only appearance.* overrides; lyric display choices are unchanged"
         )
         self.reset_appearance_button.clicked.connect(self._confirm_reset_appearance)
         appearance_item = self._category_items.get(SettingCategory.APPEARANCE)
@@ -1181,8 +1337,10 @@ class SettingsWindow(QDialog):
             if isinstance(row.editor, OrderedStringListEditor):
                 focus_order.extend(
                     (
+                        row.editor.folder_button,
                         row.editor.items,
                         row.editor.suggestions,
+                        row.editor.manual_toggle,
                         row.editor.input,
                         row.editor.add_button,
                         row.editor.cancel_button,
@@ -1516,8 +1674,9 @@ class SettingsWindow(QDialog):
         dialog.setWindowTitle("Reset appearance?")
         dialog.setText("Reset appearance?")
         dialog.setInformativeText(
-            "This restores KonoKashi's appearance settings to their defaults.\n"
-            "Lyrics, library data and unrelated functionality settings are unaffected."
+            "This removes only appearance.* overrides and restores their defaults.\n"
+            "lyrics.display.* choices, lyric data, library data and unrelated "
+            "functionality settings are unchanged."
         )
         cancel = dialog.addButton(QMessageBox.StandardButton.Cancel)
         reset = dialog.addButton(

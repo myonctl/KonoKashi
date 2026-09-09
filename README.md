@@ -154,8 +154,10 @@ by default; individual resets remain immediate.
 together from 50% to 200% (100% by default). It multiplies configured lyric sizes
 while preserving their relationships and leaves menus and metadata unchanged.
 Typography offers installed or manual font families, a multilingual live preview,
-and named weights from Thin through Black while preserving exact configured
-values. Motion offers Instant or Smooth lyric transitions plus Slow, Normal, Fast,
+Unicode-aware substring filtering (for example, `noto sa`), and named weights
+from Thin through Black while preserving exact configured values. Browsing and
+typing do not save a font until a choice is committed. Motion offers Instant or
+Smooth lyric transitions plus Slow, Normal, Fast,
 and exact custom speed choices. Wrapped original, romanized/transliterated, and
 translated layers are measured at the available width; unusually tall active
 lyrics use the lyric area's scrollbar instead of overlapping. Smooth mode follows
@@ -167,6 +169,15 @@ Preferred and ignored MPRIS players use collection editors with discovered stabl
 service-family suggestions and manual entry. Preferred order breaks ties between
 equally active players; ignored entries always take precedence. Transient D-Bus
 instance suffixes are not suggested.
+
+Music Library uses **Add folder…** as its primary action and opens Qt's native
+directory chooser; cancellation changes nothing. Multiple Unicode paths are
+supported, while duplicate or nested roots are rejected with local feedback.
+Manual absolute-path entry remains under Advanced. A completed scan reports every
+counter and distinguishes success, partial errors, failure, and cancellation.
+**Library results…** keeps bounded paths and error details local while providing
+copy-path, open-containing-folder, and rescan actions; exported diagnostics contain
+only error categories and counts.
 
 The **Progress** category contains the bar visibility, thickness, fill and track
 colors, opacity, corner radius, spacing, and timestamp visibility. Set the corner
@@ -194,7 +205,7 @@ directories.
 
 The synchronized lyric pipeline, local/provider lookup, offline cache,
 multilingual representation layers, review workflow, incremental music-library
-scanner, customizable desktop appearance/layout, GUI settings, terminal settings
+scanner, customizable desktop appearance and spacing, GUI settings, terminal settings
 interface, CLI, migrations, backup, and privacy-bounded diagnostics are
 functional.
 

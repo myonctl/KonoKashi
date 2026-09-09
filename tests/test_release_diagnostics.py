@@ -13,7 +13,10 @@ from konokashi.application.ports import DiagnosticCheck, DiagnosticStatus
 from konokashi.application.release_diagnostics import (
     build_release_diagnostic_export,
 )
-from konokashi.application.storage_diagnostics import StorageStatus
+from konokashi.application.storage_diagnostics import (
+    LibraryScanDiagnostics,
+    StorageStatus,
+)
 
 
 def test_export_drops_paths_free_form_errors_and_private_content() -> None:
@@ -34,6 +37,19 @@ def test_export_drops_paths_free_form_errors_and_private_content() -> None:
             readable=False,
             writable=False,
             integrity_status="not checked",
+            latest_library_scan=LibraryScanDiagnostics(
+                status="completed-with-errors",
+                discovered=10,
+                processed=9,
+                unchanged=0,
+                moved=0,
+                missing=0,
+                review=1,
+                downloaded=0,
+                download_misses=1,
+                errors=2,
+                error_categories={"metadata-read": 1, "download": 1},
+            ),
             error=f"failed near {private}",
         ),
         desktop_integration_installed=False,
@@ -48,6 +64,19 @@ def test_export_drops_paths_free_form_errors_and_private_content() -> None:
     decoded = json.loads(payload)
     assert decoded["format_version"] == 1
     assert decoded["storage"]["error"] is True
+    assert decoded["storage"]["latest_library_scan"] == {
+        "discovered": 10,
+        "download_misses": 1,
+        "downloaded": 0,
+        "error_categories": {"download": 1, "metadata-read": 1},
+        "errors": 2,
+        "missing": 0,
+        "moved": 0,
+        "processed": 9,
+        "review": 1,
+        "status": "completed-with-errors",
+        "unchanged": 0,
+    }
     assert decoded["checks"] == [
         {"name": "data-dir", "required": True, "status": "FAIL"}
     ]

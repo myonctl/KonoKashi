@@ -178,13 +178,6 @@ class SQLiteLibraryRepository:
         return len(missing)
 
     def finish_scan(self, scan_id: int, summary: LibraryScanSummary) -> None:
-        status = (
-            "cancelled"
-            if summary.cancelled
-            else (
-                "failed" if summary.errors and summary.processed == 0 else "completed"
-            )
-        )
         with self._database.transaction() as connection:
             connection.execute(
                 """
@@ -195,7 +188,7 @@ class SQLiteLibraryRepository:
                 WHERE scan_id = ?
                 """,
                 (
-                    status,
+                    summary.status.value,
                     utc_now_text(),
                     summary.discovered,
                     summary.processed,
@@ -207,6 +200,20 @@ class SQLiteLibraryRepository:
                     summary.download_misses,
                     summary.errors,
                     scan_id,
+                ),
+            )
+            connection.execute(
+                "DELETE FROM library_scan_error_counts WHERE scan_id = ?",
+                (scan_id,),
+            )
+            connection.executemany(
+                """
+                INSERT INTO library_scan_error_counts(scan_id, category, error_count)
+                VALUES (?, ?, ?)
+                """,
+                (
+                    (scan_id, category.value, count)
+                    for category, count in summary.error_categories
                 ),
             )
 

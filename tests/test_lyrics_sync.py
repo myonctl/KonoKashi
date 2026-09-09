@@ -85,7 +85,12 @@ def test_active_lookup_handles_leading_gap_and_simultaneous_lines() -> None:
     simultaneous = active_lyrics_at(document(), 2_000_000)
 
     assert before.active == ()
-    assert tuple(line.line_id for line in before.next) == ("one",)
+    assert tuple(line.line_id for line in before.next) == (
+        "one",
+        "two-a",
+        "two-b",
+        "three",
+    )
     assert tuple(line.line_id for line in simultaneous.active) == ("two-a", "two-b")
     assert tuple(line.line_id for line in simultaneous.previous) == ("one",)
     assert tuple(line.line_id for line in simultaneous.next) == ("three",)
@@ -100,11 +105,35 @@ def test_one_bad_line_can_shift_without_moving_the_document_or_its_peer() -> Non
     at_two_point_one = active_lyrics_at(document(), 2_100_000, calibration)
 
     assert tuple(line.line_id for line in at_two_seconds.active) == ("two-b",)
-    assert tuple(line.line_id for line in at_two_seconds.next) == ("two-a",)
+    assert tuple(line.line_id for line in at_two_seconds.next) == ("two-a", "three")
     assert at_two_seconds.next_start_us == 2_100_000
-    assert at_two_seconds.next_line_shifts_us == (("two-a", 100_000),)
+    assert at_two_seconds.next_line_shifts_us == (
+        ("two-a", 100_000),
+        ("three", 0),
+    )
     assert tuple(line.line_id for line in at_two_point_one.active) == ("two-a",)
-    assert tuple(line.line_id for line in at_two_point_one.previous) == ("two-b",)
+    assert tuple(line.line_id for line in at_two_point_one.previous) == (
+        "one",
+        "two-b",
+    )
+
+
+def test_context_is_bounded_to_eight_whole_timestamp_groups() -> None:
+    lines = tuple(
+        LyricLine(f"line-{index}", f"line {index}", index * 1_000)
+        for index in range(12)
+    )
+    base = document()
+    original = replace(base.representations[0], lines=lines)
+    expanded = replace(base, representations=(original,))
+
+    context = active_lyrics_at(expanded, 9_000_000)
+
+    assert tuple(line.line_id for line in context.active) == ("line-9",)
+    assert tuple(line.line_id for line in context.previous) == tuple(
+        f"line-{index}" for index in range(1, 9)
+    )
+    assert tuple(line.line_id for line in context.next) == ("line-10", "line-11")
 
 
 def test_audio_lyric_and_presentation_terms_have_distinct_signs_and_deadline() -> None:

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from html import escape
+from types import MappingProxyType
 
 from PySide6.QtCore import (
     Property,
@@ -58,9 +59,11 @@ from konokashi.application.desktop_state import (
 )
 from konokashi.application.review_corrections import ReviewCorrectionSnapshot
 from konokashi.application.settings import DesktopInteractionSettings
+from konokashi.domain.library import LibraryReviewItem, LibraryScanSummary
 from konokashi.domain.representations import RepresentationDisplaySettings
 from konokashi.domain.synchronization import ClockHealth, PlaybackState
 from konokashi.presentation.desktop.application_menu import ApplicationMenu
+from konokashi.presentation.desktop.library_review_dialog import LibraryReviewDialog
 from konokashi.presentation.desktop.progress import PlaybackProgress
 from konokashi.presentation.desktop.review_dialog import (
     CorrectionActionRequest,
@@ -68,6 +71,102 @@ from konokashi.presentation.desktop.review_dialog import (
 )
 from konokashi.presentation.desktop.window_surface import DesktopWindowSurface
 from konokashi.presentation.desktop.workspace import DesktopWorkspace, PanelId
+
+# Contract inventory: every public appearance key must terminate in a concrete
+# desktop widget/property or in profile resolution. Tests compare this exact map
+# with SETTINGS_SCHEMA so a newly exposed but unprojected control fails loudly.
+DESKTOP_APPEARANCE_TARGETS = MappingProxyType(
+    {
+        "appearance.preset": "resolved AppearanceProfile",
+        **{
+            f"appearance.typography.{layer}.{attribute}": target
+            for layer, target in (
+                ("original", "original/static lyric labels"),
+                ("romanization", "romanization lyric labels"),
+                ("translation", "translation lyric labels"),
+                ("metadata", "title, artist, and album labels"),
+                ("status", "status, time, source, and action labels"),
+            )
+            for attribute in ("family", "size", "weight")
+        },
+        **{
+            f"appearance.typography.{layer}.italic": f"{layer} lyric labels"
+            for layer in ("original", "romanization", "translation")
+        },
+        "appearance.typography.active_size_percent": "active lyric labels",
+        "appearance.typography.inactive_size_percent": "context lyric labels",
+        "appearance.typography.lyric_scale_percent": "all lyric labels",
+        **{
+            f"appearance.colors.{name}": target
+            for name, target in (
+                ("active_lyric", "active lyric labels"),
+                ("inactive_lyric", "context lyric labels"),
+                ("original_lyric", "untimed original lyric document"),
+                ("romanization", "romanization lyric labels"),
+                ("translation", "translation lyric labels"),
+                ("metadata_primary", "title label"),
+                ("metadata_secondary", "artist and album labels"),
+                ("background", "window surface"),
+                ("foreground", "window foreground palette"),
+                ("accent", "application menu and link palette"),
+                ("progress", "progress fill"),
+                ("status", "status and playback labels"),
+                ("muted", "time and source labels"),
+                ("selection", "lyric selection palette"),
+            )
+        },
+        **{
+            f"appearance.opacity.{name}": target
+            for name, target in (
+                ("content", "all content palettes"),
+                ("background", "window surface alpha"),
+                ("inactive_line", "context lyric labels"),
+                ("metadata", "title, artist, and album labels"),
+                ("secondary_representation", "romanization and translation labels"),
+            )
+        },
+        **{
+            f"appearance.spacing.{name}": target
+            for name, target in (
+                ("outer_margin", "workspace margins"),
+                ("lyric_padding", "lyric band padding"),
+                ("line", "lyric group spacing"),
+                ("representation", "aligned representation spacing"),
+                ("metadata", "metadata column spacing"),
+                ("progress", "progress row and panel spacing"),
+                ("context", "timestamp-context spacing"),
+                ("maximum_lyric_width", "lyric viewport maximum width"),
+            )
+        },
+        "appearance.context.previous": "previous timestamp-group slice",
+        "appearance.context.following": "following timestamp-group slice",
+        "appearance.alignment.lyrics": "timed and untimed lyric alignment",
+        "appearance.alignment.metadata": "title, artist, and album alignment",
+        **{
+            f"appearance.visibility.{name}": target
+            for name, target in (
+                ("title", "title label"),
+                ("artist", "artist label"),
+                ("album", "album label"),
+                ("source", "source label"),
+                ("playback_status", "playback label"),
+                ("progress", "progress bar"),
+                ("timestamps", "time label"),
+                ("inactive_context", "previous and following lyric bands"),
+                ("auxiliary_status", "state and untimed status labels"),
+                ("chrome", "header action widget"),
+            )
+        },
+        "appearance.motion.transition_ms": "measured lyric movement",
+        "appearance.motion.emphasis_transition_ms": "active lyric emphasis",
+        "appearance.motion.smooth_scrolling": "lyric transition mode",
+        "appearance.motion.reduced": "all lyric animation durations",
+        "appearance.progress.thickness": "progress bar height",
+        "appearance.progress.track_color": "unfilled progress track",
+        "appearance.progress.opacity": "progress fill and track alpha",
+        "appearance.progress.corner_radius": "progress fill and track corners",
+    }
+)
 
 
 def _plain_label(text: str = "") -> QLabel:
@@ -172,6 +271,27 @@ def _group_text(groups: tuple[DesktopLyricGroup, ...]) -> str:
         if layers:
             rendered.append("\n".join(layers))
     return "\n\n".join(rendered)
+
+
+def _timestamp_context(
+    groups: tuple[DesktopLyricGroup, ...], count: int, *, preceding: bool
+) -> tuple[DesktopLyricGroup, ...]:
+    """Select whole timestamp groups; timestamp-less fixtures count individually."""
+
+    if count <= 0:
+        return ()
+    grouped: list[list[DesktopLyricGroup]] = []
+    for group in groups:
+        if (
+            grouped
+            and group.transition_us is not None
+            and grouped[-1][0].transition_us == group.transition_us
+        ):
+            grouped[-1].append(group)
+        else:
+            grouped.append([group])
+    selected = grouped[-count:] if preceding else grouped[:count]
+    return tuple(group for timestamp in selected for group in timestamp)
 
 
 class _WrappedLyricLabel(QLabel):
@@ -750,6 +870,9 @@ class MainWindow(DesktopWindowSurface):
         )
         self._appearance = appearance or default_appearance_profile()
         self._state = DesktopViewState(DesktopLyricsState.WAITING, "Waiting for media…")
+        self._library_result: (
+            tuple[LibraryScanSummary, tuple[LibraryReviewItem, ...]] | None
+        ) = None
         system_point_size = self.font().pointSizeF()
         self._base_point_size = system_point_size if system_point_size > 0 else 10.0
         self._pending_typography_size = QSize(760, 720)
@@ -781,8 +904,11 @@ class MainWindow(DesktopWindowSurface):
         self.title_label.setAccessibleName("Track title")
         self.artist_label = ElidingLabel("")
         self.artist_label.setAccessibleName("Track artist")
+        self.album_label = ElidingLabel("")
+        self.album_label.setAccessibleName("Track album")
         metadata.addWidget(self.title_label)
         metadata.addWidget(self.artist_label)
+        metadata.addWidget(self.album_label)
         header.addWidget(metadata_widget, 1)
         actions_widget = QWidget()
         self._actions_widget = actions_widget
@@ -805,12 +931,21 @@ class MainWindow(DesktopWindowSurface):
         self.library_button.setAccessibleName("Scan configured music library")
         self.library_button.setToolTip("Scan the configured music folders")
         self.library_button.clicked.connect(self._toggle_library_scan)
+        self.library_results_button = QPushButton("Library results…")
+        self.library_results_button.setAccessibleName("Review library scan results")
+        self.library_results_button.setToolTip(
+            "Review local scan errors and recordings that need attention"
+        )
+        self.library_results_button.setFlat(True)
+        self.library_results_button.setVisible(False)
+        self.library_results_button.clicked.connect(self._open_library_results)
         for button in (self.review_button, self.details_button, self.library_button):
             button.setFlat(True)
         actions.addWidget(self.settings_button)
         actions.addWidget(self.review_button)
         actions.addWidget(self.details_button)
         actions.addWidget(self.library_button)
+        actions.addWidget(self.library_results_button)
         header.addWidget(actions_widget)
         root.add_panel(PanelId.METADATA, metadata_panel)
 
@@ -976,6 +1111,9 @@ class MainWindow(DesktopWindowSurface):
         self.artist_label.setFont(
             _styled_font(self.artist_label, appearance.metadata, scale)
         )
+        self.album_label.setFont(
+            _styled_font(self.album_label, appearance.metadata, scale * 0.9)
+        )
         for label in (
             self.status_label,
             self.static_status_label,
@@ -990,6 +1128,7 @@ class MainWindow(DesktopWindowSurface):
             self.review_button,
             self.details_button,
             self.library_button,
+            self.library_results_button,
         ):
             font = button.font()
             font.setPointSizeF(max(8.0, appearance.status.size * scale))
@@ -1106,6 +1245,13 @@ class MainWindow(DesktopWindowSurface):
                 round(appearance.opacity.metadata * appearance.opacity.content / 100),
             ),
         )
+        _apply_text_palette(
+            self.album_label,
+            _semantic_color(
+                appearance.colors.metadata_secondary,
+                round(appearance.opacity.metadata * appearance.opacity.content / 100),
+            ),
+        )
         for label in (self.status_label, self.static_status_label, self.playback_label):
             _apply_text_palette(
                 label,
@@ -1137,6 +1283,7 @@ class MainWindow(DesktopWindowSurface):
         metadata_alignment = _qt_alignment(appearance.metadata_alignment)
         self.title_label.setAlignment(metadata_alignment)
         self.artist_label.setAlignment(metadata_alignment)
+        self.album_label.setAlignment(metadata_alignment)
         self.render_state(self._state)
 
     def _apply_interaction_settings(self) -> None:
@@ -1168,17 +1315,23 @@ class MainWindow(DesktopWindowSurface):
         self.title_label.setText(state.title or "KonoKashi")
         self.artist_label.setText(" · ".join(state.artists))
         self.artist_label.setVisible(bool(state.artists))
+        self.album_label.setText(state.album or "")
+        self.album_label.setVisible(bool(state.album))
         self.status_label.setText(state.status_message)
         self.static_status_label.setText(state.status_message)
         appearance = self._appearance
         previous = (
-            state.previous[-appearance.context.previous :]
+            _timestamp_context(
+                state.previous, appearance.context.previous, preceding=True
+            )
             if appearance.visibility.inactive_context
             and appearance.context.previous > 0
             else ()
         )
         following = (
-            state.next[: appearance.context.following]
+            _timestamp_context(
+                state.next, appearance.context.following, preceding=False
+            )
             if appearance.visibility.inactive_context
             and appearance.context.following > 0
             else ()
@@ -1318,12 +1471,18 @@ class MainWindow(DesktopWindowSurface):
         state = self._state
         self.title_label.setVisible(visibility.title)
         self.artist_label.setVisible(visibility.artist and bool(state.artists))
+        self.album_label.setVisible(visibility.album and bool(state.album))
         self._actions_widget.setVisible(visibility.chrome)
         self._header_rule.setVisible(
-            visibility.chrome or visibility.title or visibility.artist
+            visibility.chrome
+            or visibility.title
+            or visibility.artist
+            or visibility.album
         )
         self._metadata_widget.setVisible(
-            visibility.title or (visibility.artist and bool(state.artists))
+            visibility.title
+            or (visibility.artist and bool(state.artists))
+            or (visibility.album and bool(state.album))
         )
         self.status_label.setVisible(visibility.auxiliary_status)
         self.static_status_label.setVisible(visibility.auxiliary_status)
@@ -1378,6 +1537,26 @@ class MainWindow(DesktopWindowSurface):
         self.scan_action.setText("Cancel &scan" if running else "Scan &library")
         self.library_button.setToolTip(escape(message))
         self.library_button.setAccessibleDescription(message)
+
+    def set_library_scan_result(
+        self,
+        summary: LibraryScanSummary,
+        review_items: tuple[LibraryReviewItem, ...],
+    ) -> None:
+        """Retain one bounded local review model until the next scan completes."""
+
+        self._library_result = (summary, review_items)
+        self.library_results_button.setVisible(
+            bool(summary.errors or summary.review or review_items)
+        )
+
+    def _open_library_results(self) -> None:
+        if self._library_result is None:
+            return
+        summary, review_items = self._library_result
+        dialog = LibraryReviewDialog(summary, review_items, self)
+        dialog.scan_again_requested.connect(self.library_scan_requested.emit)
+        dialog.exec()
 
     def show_review(self, snapshot: ReviewCorrectionSnapshot) -> None:
         """Render one source-bound review model and emit at most one action."""

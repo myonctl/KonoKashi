@@ -17,6 +17,7 @@ from PySide6.QtWidgets import (
     QComboBox,
     QDial,
     QDoubleSpinBox,
+    QFileDialog,
     QMessageBox,
     QScrollArea,
     QSlider,
@@ -625,11 +626,12 @@ def test_collection_add_cancel_duplicate_and_remove(
     editor.input.setText("   ")
     editor.add_button.click()
     assert not changes
-    editor.input.setText("音楽")
+    value = "/音楽" if key == "library.roots" else "音楽"
+    editor.input.setText(value)
     editor.add_button.click()
-    assert editor.value() == ("音楽",)
+    assert editor.value() == (value,)
     assert len(changes) == 1
-    editor.input.setText("音楽")
+    editor.input.setText(value)
     editor.add_button.click()
     assert len(changes) == 1
     assert "already" in editor.validation_label.text()
@@ -822,12 +824,100 @@ def test_font_preview_and_human_weight_update_before_commit(
     # Font browsing and numeric drafts preview without saving; the checkbox is
     # a deliberate immediate toggle and continues to use canonical writes.
     assert changes == [("appearance.typography.original.italic", True)]
-    family.combo.lineEdit().editingFinished.emit()
+    line_edit = family.combo.lineEdit()
+    assert line_edit is not None
+    line_edit.editingFinished.emit()
+    assert changes == [("appearance.typography.original.italic", True)]
+    line_edit.returnPressed.emit()
     weight.combo.activated.emit(weight.combo.currentIndex())
     assert changes[-2:] == [
         ("appearance.typography.original.family", "Missing Test Font Ω"),
         ("appearance.typography.original.weight", 700),
     ]
+    window.close()
+
+
+def test_font_family_filters_by_unicode_casefold_without_writing_until_commit(
+    qt_app: QApplication, tmp_path: Path
+) -> None:
+    window = _window(qt_app, tmp_path / "config.toml")
+    family = window.rows["appearance.typography.original.family"].editor
+    assert isinstance(family, SemanticStringEditor)
+    assert family.combo is not None
+    assert family._font_source is not None
+    family._font_source.setStringList(
+        ["Noto Sans", "Noto Serif", "Fira Sans", "Straße Ω"]
+    )
+    changes: list[tuple[str, object]] = []
+    window.change_requested.connect(lambda key, value: changes.append((key, value)))
+    line_edit = family.combo.lineEdit()
+    assert line_edit is not None
+
+    line_edit.setFocus()
+    line_edit.setText("noto sa")
+    line_edit.textEdited.emit("noto sa")
+    assert family.filtered_values() == ("Noto Sans",)
+    assert not changes
+    line_edit.editingFinished.emit()
+    assert not changes
+
+    family._font_query_changed("STRASSE")
+    assert family.filtered_values() == ("Straße Ω",)
+    assert not changes
+    family.combo.activated.emit(0)
+    assert changes == [("appearance.typography.original.family", "Straße Ω")]
+    window.close()
+
+
+def test_library_folder_chooser_cancel_unicode_duplicate_and_overlap_feedback(
+    qt_app: QApplication,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    window = _window(qt_app, tmp_path / "config.toml")
+    editor = window.rows["library.roots"].editor
+    assert isinstance(editor, OrderedStringListEditor)
+    changes: list[tuple[str, object]] = []
+    window.change_requested.connect(lambda key, value: changes.append((key, value)))
+    selections = iter(
+        (
+            "",
+            "/home/test/音楽",
+            "/home/test/音楽",
+            "/home/test/音楽/Live",
+            "/home/test",
+            "/mnt/Музыка",
+        )
+    )
+    monkeypatch.setattr(
+        QFileDialog,
+        "getExistingDirectory",
+        lambda *_args, **_kwargs: next(selections),
+    )
+
+    assert editor.folder_button.text() == "Add folder…"
+    assert not editor.folder_button.isHidden()
+    assert editor.input_widget.isHidden()
+    editor.folder_button.click()
+    assert not changes
+    editor.folder_button.click()
+    assert editor.value() == ("/home/test/音楽",)
+    editor.folder_button.click()
+    assert "already in the library" in editor.validation_label.text()
+    editor.folder_button.click()
+    assert "already covered" in editor.validation_label.text()
+    editor.folder_button.click()
+    assert "already inside" in editor.validation_label.text()
+    editor.folder_button.click()
+    assert editor.value() == ("/home/test/音楽", "/mnt/Музыка")
+    assert len(changes) == 2
+
+    editor.manual_toggle.setChecked(True)
+    assert not editor.input_widget.isHidden()
+    editor.input.setText("relative/path")
+    editor.add_button.click()
+    assert "absolute folder path" in editor.validation_label.text()
+    assert len(changes) == 2
     window.close()
 
 

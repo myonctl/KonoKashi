@@ -35,6 +35,7 @@ class ExportedStorage:
     integrity_status: str
     error: bool
     counts: Mapping[str, int] | None
+    latest_library_scan: Mapping[str, object] | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -73,6 +74,11 @@ def build_release_diagnostic_export(
     """Build an export while deliberately dropping free-form/path-bearing fields."""
 
     counts = None if storage.counts is None else asdict(storage.counts)
+    latest_library_scan = (
+        None
+        if storage.latest_library_scan is None
+        else asdict(storage.latest_library_scan)
+    )
     timestamp = generated_at or datetime.now(UTC)
     return ReleaseDiagnosticExport(
         format_version=1,
@@ -95,6 +101,7 @@ def build_release_diagnostic_export(
             integrity_status=storage.integrity_status,
             error=storage.error is not None,
             counts=counts,
+            latest_library_scan=latest_library_scan,
         ),
         desktop_integration_installed=desktop_integration_installed,
         dependencies=dict(sorted(dependencies.items())),

@@ -51,7 +51,7 @@ from konokashi.application.sync_state import (
     SynchronizationSnapshot,
     build_sync_snapshot,
 )
-from konokashi.domain.library import LibraryScanSummary
+from konokashi.domain.library import LibraryReviewItem, LibraryScanSummary
 from konokashi.domain.lyrics import LyricDocumentKind, LyricsResolutionStatus
 from konokashi.domain.models import (
     PlayerEvent,
@@ -86,6 +86,12 @@ from konokashi.presentation.desktop.settings_window import SettingsWindow
 
 class _JobSignals(QObject):
     completed = Signal(int, object, object)
+
+
+@dataclass(frozen=True, slots=True)
+class _LibraryScanResult:
+    summary: LibraryScanSummary
+    review_items: tuple[LibraryReviewItem, ...]
 
 
 class _FunctionJob:
@@ -1136,7 +1142,7 @@ class DesktopCoordinator(QObject):
             True, "Scanning configured roots in background; activate to cancel."
         )
 
-        def scan() -> LibraryScanSummary:
+        def scan() -> _LibraryScanResult:
             storage = open_storage(self._database_path)
             canonical = self._settings_service or open_settings(
                 storage, config_path=self._config_path
@@ -1147,7 +1153,7 @@ class DesktopCoordinator(QObject):
                 if settings.automatic_downloads
                 else None
             )
-            return LibraryScanService(
+            summary = LibraryScanService(
                 MusicDirectoryFilesystem(),
                 MutagenLibraryMetadataReader(),
                 storage.library,
@@ -1155,22 +1161,29 @@ class DesktopCoordinator(QObject):
                 overrides=storage.track_overrides,
                 settings=settings,
             ).scan(cancellation=cancellation)
+            return _LibraryScanResult(summary, storage.library.review_items(limit=100))
 
         def scanned(result: object | None, error: BaseException | None) -> None:
             if self._closed or cancellation is not self._library_cancellation:
                 return
             self._library_cancellation = None
-            if error is not None or not isinstance(result, LibraryScanSummary):
+            if error is not None or not isinstance(result, _LibraryScanResult):
                 diagnostic = "unknown scan failure" if error is None else str(error)
                 self._window.set_library_scan_state(
                     False, f"Library scan could not start: {diagnostic}"
                 )
                 return
-            state = "cancelled" if result.cancelled else "complete"
+            summary = result.summary
+            self._window.set_library_scan_result(summary, result.review_items)
             self._window.set_library_scan_state(
                 False,
-                f"Library scan {state}: {result.processed} processed, "
-                f"{result.unchanged} unchanged, {result.review} for review.",
+                f"Library scan {summary.status.value}: "
+                f"{summary.discovered} discovered, {summary.processed} processed, "
+                f"{summary.unchanged} unchanged, {summary.moved} moved, "
+                f"{summary.missing} missing, {summary.review} for review, "
+                f"{summary.downloaded} downloaded, "
+                f"{summary.download_misses} download misses, "
+                f"{summary.errors} errors.",
             )
 
         self._start_job(scan, scanned)

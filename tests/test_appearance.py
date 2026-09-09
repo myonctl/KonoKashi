@@ -33,7 +33,10 @@ from konokashi.application.settings import (
 from konokashi.application.settings_service import CanonicalSettingsService
 from konokashi.domain.synchronization import PlaybackState
 from konokashi.infrastructure.configuration.toml_file import TomlSettingsFile
-from konokashi.presentation.desktop.main_window import MainWindow
+from konokashi.presentation.desktop.main_window import (
+    DESKTOP_APPEARANCE_TARGETS,
+    MainWindow,
+)
 
 
 @pytest.fixture(scope="module")
@@ -223,7 +226,7 @@ def test_toml_round_trip_preserves_comments_and_normalizes_colors(
     assert reloaded.current.appearance.spacing.outer_margin == 7
 
 
-def test_reset_many_restores_the_complete_appearance_profile_atomically(
+def test_reset_many_restores_only_appearance_and_survives_restart(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     config = TomlSettingsFile(tmp_path / "config.toml")
@@ -237,11 +240,7 @@ def test_reset_many_restores_the_complete_appearance_profile_atomically(
             "lyrics.display.translated": True,
         }
     )
-    keys = tuple(
-        key
-        for key in SETTINGS_BY_KEY
-        if key.startswith("appearance.") or key.startswith("lyrics.display.")
-    )
+    keys = tuple(key for key in SETTINGS_BY_KEY if key.startswith("appearance."))
     writes = 0
     original_write = config._write
 
@@ -254,8 +253,33 @@ def test_reset_many_restores_the_complete_appearance_profile_atomically(
 
     service.reset_many(keys)
 
+    expected = _snapshot(
+        **{
+            "lyrics.display.original": False,
+            "lyrics.display.translated": True,
+        }
+    ).appearance
     assert writes == 1
-    assert service.current.appearance == default_settings_snapshot().appearance
+    assert service.current.appearance == expected
+    assert not service.current.representation_display.show_original
+    assert service.current.representation_display.show_translated
+    restarted = CanonicalSettingsService(config)
+    assert restarted.initialize().applied
+    assert restarted.current.appearance == expected
+    assert not restarted.current.representation_display.show_original
+    assert restarted.current.representation_display.show_translated
+
+
+def test_every_exposed_appearance_setting_has_a_desktop_target() -> None:
+    exposed = {key for key in SETTINGS_BY_KEY if key.startswith("appearance.")}
+
+    assert set(DESKTOP_APPEARANCE_TARGETS) == exposed
+    assert all(DESKTOP_APPEARANCE_TARGETS.values())
+    assert DESKTOP_APPEARANCE_TARGETS["appearance.visibility.album"] == "album label"
+    assert "untimed" in DESKTOP_APPEARANCE_TARGETS["appearance.colors.original_lyric"]
+    assert (
+        "timestamp-group" in DESKTOP_APPEARANCE_TARGETS["appearance.context.previous"]
+    )
 
 
 def test_external_appearance_reload_is_atomic_and_last_known_good(
@@ -338,6 +362,59 @@ def test_current_line_preset_hides_context_without_losing_stable_identity(
     assert window.next_band._groups == ()
     assert window.active_band._groups[0].line_id == state.active[0].line_id
     assert window.active_band.isVisible()
+    window.close()
+
+
+def test_album_visibility_and_context_counts_target_whole_timestamp_groups(
+    qt_app: QApplication,
+) -> None:
+    previous = (
+        DesktopLyricGroup("p1-a", "p1-a", transition_us=1_000_000),
+        DesktopLyricGroup("p1-b", "p1-b", transition_us=1_000_000),
+        DesktopLyricGroup("p2", "p2", transition_us=2_000_000),
+        DesktopLyricGroup("p3-a", "p3-a", transition_us=3_000_000),
+        DesktopLyricGroup("p3-b", "p3-b", transition_us=3_000_000),
+    )
+    following = (
+        DesktopLyricGroup("n1-a", "n1-a", transition_us=5_000_000),
+        DesktopLyricGroup("n1-b", "n1-b", transition_us=5_000_000),
+        DesktopLyricGroup("n2", "n2", transition_us=6_000_000),
+        DesktopLyricGroup("n3", "n3", transition_us=7_000_000),
+    )
+    state = replace(
+        _state(), album="Unicode Album Ω", previous=previous, next=following
+    )
+    window = MainWindow(
+        appearance=_snapshot(
+            **{
+                "appearance.context.previous": 2,
+                "appearance.context.following": 2,
+                "appearance.visibility.album": True,
+            }
+        ).appearance
+    )
+    window.render_state(state)
+    window.show()
+    qt_app.processEvents()
+
+    assert window.album_label.text() == "Unicode Album Ω"
+    assert window.album_label.isVisible()
+    assert tuple(group.line_id for group in window.previous_band._groups) == (
+        "p2",
+        "p3-a",
+        "p3-b",
+    )
+    assert tuple(group.line_id for group in window.next_band._groups) == (
+        "n1-a",
+        "n1-b",
+        "n2",
+    )
+
+    window.set_appearance_profile(
+        _snapshot(**{"appearance.visibility.album": False}).appearance
+    )
+    assert window.album_label.text() == "Unicode Album Ω"
+    assert not window.album_label.isVisible()
     window.close()
 
 

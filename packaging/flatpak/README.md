@@ -42,10 +42,15 @@ invokes it with user configuration ignored, without cookies, authentication,
 playlist traversal, or media download. If that module is removed or unavailable,
 ordinary MPRIS and LRCLIB resolution remains usable.
 
-Arbitrary configured library roots outside the Music directory are unavailable
-unless the user grants a path override. KonoKashi does not yet provide a file
-chooser/portal workflow that can persist arbitrary root grants, so this is a
-documented functionality difference rather than a reason to expose all of home.
+The desktop's **Add folder…** action uses Qt's native directory-only dialog. In a
+Flatpak session Qt routes the native chooser through the desktop portal, so a user
+can deliberately grant a selected directory without granting all of home or host.
+The returned portal/document path is stored as the configured root. Access outside
+the standard Music directory depends on that explicit portal grant and the host
+portal implementation; manual paths alone cannot bypass the sandbox. Verify add,
+restart, rescan, cancellation, Unicode paths, and grant persistence in the locally
+built candidate. Do not add `--filesystem=home` or `--filesystem=host` to compensate
+for a portal problem.
 
 Flatpak supplies private XDG paths below
 `~/.var/app/io.github.myonctl.KonoKashi/`. Flatpak and native installations

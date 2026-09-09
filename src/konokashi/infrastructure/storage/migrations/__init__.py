@@ -639,6 +639,61 @@ MIGRATIONS: tuple[Migration, ...] = (
             "DROP TABLE lyric_representation_candidates_v10",
         ),
     ),
+    Migration(
+        12,
+        "truthful library scan outcomes and privacy-safe error counts",
+        (
+            "ALTER TABLE library_scan_runs RENAME TO library_scan_runs_v11",
+            """
+            CREATE TABLE library_scan_runs (
+                scan_id INTEGER PRIMARY KEY,
+                status TEXT NOT NULL CHECK (
+                    status IN (
+                        'running', 'completed', 'completed-with-errors',
+                        'cancelled', 'failed'
+                    )
+                ),
+                started_at TEXT NOT NULL,
+                finished_at TEXT,
+                discovered INTEGER NOT NULL DEFAULT 0,
+                processed INTEGER NOT NULL DEFAULT 0,
+                unchanged INTEGER NOT NULL DEFAULT 0,
+                moved INTEGER NOT NULL DEFAULT 0,
+                missing INTEGER NOT NULL DEFAULT 0,
+                review INTEGER NOT NULL DEFAULT 0,
+                downloaded INTEGER NOT NULL DEFAULT 0,
+                download_misses INTEGER NOT NULL DEFAULT 0,
+                errors INTEGER NOT NULL DEFAULT 0
+            )
+            """,
+            """
+            INSERT INTO library_scan_runs(
+                scan_id, status, started_at, finished_at, discovered, processed,
+                unchanged, moved, missing, review, downloaded, download_misses,
+                errors
+            )
+            SELECT scan_id, status, started_at, finished_at, discovered, processed,
+                   unchanged, moved, missing, review, downloaded, download_misses,
+                   errors
+            FROM library_scan_runs_v11
+            """,
+            "DROP TABLE library_scan_runs_v11",
+            """
+            CREATE TABLE library_scan_error_counts (
+                scan_id INTEGER NOT NULL
+                    REFERENCES library_scan_runs(scan_id) ON DELETE CASCADE,
+                category TEXT NOT NULL CHECK (
+                    category IN (
+                        'root-unavailable', 'directory-read', 'file-inspection',
+                        'metadata-read', 'download', 'storage', 'unknown'
+                    )
+                ),
+                error_count INTEGER NOT NULL CHECK (error_count > 0),
+                PRIMARY KEY (scan_id, category)
+            )
+            """,
+        ),
+    ),
 )
 
 CURRENT_SCHEMA_VERSION = MIGRATIONS[-1].version

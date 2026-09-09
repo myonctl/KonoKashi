@@ -367,8 +367,9 @@ SETTINGS_SCHEMA: tuple[SettingDefinition, ...] = (
             ),
             (
                 "appearance.colors.original_lyric",
-                "Original lyric color",
-                "Base color of the original lyric representation.",
+                "Untimed lyric color",
+                "Color of original lyrics in the untimed document view; timed "
+                "lyrics use active and inactive semantic colors.",
             ),
             (
                 "appearance.colors.romanization",
@@ -534,15 +535,15 @@ SETTINGS_SCHEMA: tuple[SettingDefinition, ...] = (
             ),
             (
                 "appearance.context.previous",
-                "Previous context lines",
-                "Number of lyric lines shown before the current line.",
+                "Previous timestamp groups",
+                "Number of whole timestamp groups shown before the current group.",
                 0,
                 8,
             ),
             (
                 "appearance.context.following",
-                "Following context lines",
-                "Number of lyric lines shown after the current line.",
+                "Following timestamp groups",
+                "Number of whole timestamp groups shown after the current group.",
                 0,
                 8,
             ),

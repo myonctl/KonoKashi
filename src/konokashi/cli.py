@@ -1067,6 +1067,7 @@ def _run_library(
         )
         summary = service.scan(offline=arguments.offline)
         print(f"KonoKashi library scan {summary.scan_id}")
+        print(f"status: {summary.status.value}")
         print(f"discovered: {summary.discovered}")
         print(f"processed: {summary.processed}")
         print(f"unchanged: {summary.unchanged}")
@@ -1076,6 +1077,8 @@ def _run_library(
         print(f"lyrics downloaded: {summary.downloaded}")
         print(f"download misses: {summary.download_misses}")
         print(f"errors: {summary.errors}")
+        for category, count in summary.error_categories:
+            print(f"  {category.value}: {count}")
         print(f"cancelled: {'yes' if summary.cancelled else 'no'}")
         return 130 if summary.cancelled else int(summary.errors > 0)
     except (ImportError, RuntimeError, StorageError, ValueError) as error:

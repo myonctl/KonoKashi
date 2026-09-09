@@ -79,6 +79,8 @@ class _TimedGroup:
 class LyricTimeline:
     """Immutable, binary-searchable original-line timeline for all frontends."""
 
+    _CONTEXT_GROUP_LIMIT = 8
+
     def __init__(
         self,
         document: LyricDocument,
@@ -96,8 +98,9 @@ class LyricTimeline:
         groups = self.groups
         active_index = bisect_right(self.starts_us, timeline_position_us) - 1
         if active_index < 0:
-            next_group = groups[0] if groups else None
-            next_lines = () if next_group is None else next_group.lines
+            next_groups = groups[: self._CONTEXT_GROUP_LIMIT]
+            next_group = next_groups[0] if next_groups else None
+            next_lines = tuple(line for group in next_groups for line in group.lines)
             return ActiveLyricState(
                 timeline_position_us,
                 (),
@@ -111,11 +114,15 @@ class LyricTimeline:
                 None if next_group is None else next_group.start_us,
             )
         active = groups[active_index].lines
-        previous = groups[active_index - 1].lines if active_index > 0 else ()
-        next_group = (
-            groups[active_index + 1] if active_index + 1 < len(groups) else None
-        )
-        next_lines = () if next_group is None else next_group.lines
+        previous_groups = groups[
+            max(0, active_index - self._CONTEXT_GROUP_LIMIT) : active_index
+        ]
+        previous = tuple(line for group in previous_groups for line in group.lines)
+        next_groups = groups[
+            active_index + 1 : active_index + 1 + self._CONTEXT_GROUP_LIMIT
+        ]
+        next_group = next_groups[0] if next_groups else None
+        next_lines = tuple(line for group in next_groups for line in group.lines)
         return ActiveLyricState(
             timeline_position_us,
             active,

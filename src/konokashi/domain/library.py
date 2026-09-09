@@ -26,6 +26,44 @@ class LibraryTrackState(Enum):
     MISSING = "missing"
 
 
+class LibraryScanStatus(Enum):
+    """Truthful terminal state for one scan attempt."""
+
+    COMPLETED = "completed"
+    COMPLETED_WITH_ERRORS = "completed-with-errors"
+    FAILED = "failed"
+    CANCELLED = "cancelled"
+
+
+class LibraryScanIssueCategory(Enum):
+    """Privacy-safe failure categories shared by local UI and diagnostics."""
+
+    ROOT_UNAVAILABLE = "root-unavailable"
+    DIRECTORY_READ = "directory-read"
+    FILE_INSPECTION = "file-inspection"
+    METADATA_READ = "metadata-read"
+    DOWNLOAD = "download"
+    STORAGE = "storage"
+    UNKNOWN = "unknown"
+
+
+@dataclass(frozen=True, slots=True)
+class LibraryScanIssue:
+    """Bounded local-only failure detail; paths never enter support exports."""
+
+    category: LibraryScanIssueCategory
+    path: str | None
+    detail: str
+
+
+class LibraryScanFailure(RuntimeError):
+    """Typed adapter failure that prevents complete filesystem discovery."""
+
+    def __init__(self, issue: LibraryScanIssue) -> None:
+        super().__init__(issue.detail)
+        self.issue = issue
+
+
 @dataclass(frozen=True, slots=True)
 class LibrarySettings:
     """Canonical global Stage 9 scanner settings shared by every frontend."""
@@ -72,6 +110,7 @@ class LibraryMetadata:
     confidence: Confidence
     source: LibraryMetadataSource
     diagnostic: str | None = None
+    issue: LibraryScanIssue | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -110,3 +149,17 @@ class LibraryScanSummary:
     download_misses: int
     errors: int
     cancelled: bool = False
+    issues: tuple[LibraryScanIssue, ...] = field(default_factory=tuple)
+    error_categories: tuple[tuple[LibraryScanIssueCategory, int], ...] = field(
+        default_factory=tuple
+    )
+
+    @property
+    def status(self) -> LibraryScanStatus:
+        if self.cancelled:
+            return LibraryScanStatus.CANCELLED
+        if not self.errors:
+            return LibraryScanStatus.COMPLETED
+        if self.processed or self.unchanged:
+            return LibraryScanStatus.COMPLETED_WITH_ERRORS
+        return LibraryScanStatus.FAILED

@@ -44,6 +44,7 @@ class SynchronizationSnapshot:
     player_identity: str | None
     track_title: str | None
     artists: tuple[str, ...]
+    album: str | None
     playback_status: PlaybackState
     reported_mpris_position_us: int | None
     disciplined_player_position_us: int
@@ -217,6 +218,7 @@ def build_sync_snapshot(
         player_identity=snapshot.identity,
         track_title=track.candidate.title,
         artists=track.candidate.artists,
+        album=track.candidate.album,
         playback_status=estimate.state,
         reported_mpris_position_us=(
             estimate.latest_authoritative_position_us
@@ -325,6 +327,7 @@ class SynchronizationPublisher:
             snapshot.player_identity,
             snapshot.track_title,
             snapshot.artists,
+            snapshot.album,
             snapshot.playback_status,
             snapshot.duration_us,
             snapshot.rate,

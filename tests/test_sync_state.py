@@ -42,7 +42,7 @@ def test_snapshot_exposes_all_frontend_timing_and_aligned_text_layers() -> None:
     track = ResolvedTrack(
         raw,
         YouTubeIdentity("xa4WrgqI7q0"),
-        TrackCandidate("Track", ("Artist",), None, 5_000_000),
+        TrackCandidate("Track", ("Artist",), "Album", 5_000_000),
         Confidence.HIGH,
     )
     calibration = SynchronizationCalibration(
@@ -65,6 +65,7 @@ def test_snapshot_exposes_all_frontend_timing_and_aligned_text_layers() -> None:
 
     assert snapshot.generation == 7
     assert snapshot.source_identity == track.source_identity
+    assert snapshot.album == "Album"
     assert snapshot.player_service == raw.service_name
     assert snapshot.reported_mpris_position_us == raw.position_us
     assert snapshot.disciplined_player_position_us == 2_150_000

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections import Counter
 from collections.abc import Callable, Iterable
 from concurrent.futures import Future, ThreadPoolExecutor
 from threading import Event
@@ -12,6 +13,9 @@ from konokashi.domain.library import (
     LibraryFile,
     LibraryMetadata,
     LibraryReviewItem,
+    LibraryScanFailure,
+    LibraryScanIssue,
+    LibraryScanIssueCategory,
     LibraryScanSummary,
     LibrarySettings,
     LibraryTrackState,
@@ -119,12 +123,59 @@ class LibraryScanService:
         seen: set[str] = set()
         completed_walk = False
         pending: dict[Future[LibraryMetadata], tuple[LibraryFile, bool]] = {}
+        issues: list[LibraryScanIssue] = []
+        issue_counts: Counter[LibraryScanIssueCategory] = Counter()
+
+        def record_issue(issue: LibraryScanIssue) -> None:
+            counters["errors"] += 1
+            issue_counts[issue.category] += 1
+            if len(issues) >= 100:
+                return
+            detail = " ".join(issue.detail.split()) or "Operation failed."
+            if len(detail) > 240:
+                detail = f"{detail[:239]}…"
+            path = issue.path
+            if path is not None and len(path) > 2_048:
+                path = f"…{path[-2_047:]}"
+            issues.append(LibraryScanIssue(issue.category, path, detail))
+
+        def caught_issue(
+            category: LibraryScanIssueCategory,
+            file: LibraryFile | None,
+            error: BaseException,
+        ) -> LibraryScanIssue:
+            return LibraryScanIssue(
+                category,
+                None if file is None else file.path,
+                f"{type(error).__name__}: {error}",
+            )
 
         def consume(
             future: Future[LibraryMetadata], file: LibraryFile, moved: bool
         ) -> None:
             try:
                 metadata = future.result()
+            except Exception as error:
+                record_issue(
+                    caught_issue(LibraryScanIssueCategory.METADATA_READ, file, error)
+                )
+                if progress is not None:
+                    progress(counters["discovered"], file.path)
+                return
+            if not isinstance(metadata, LibraryMetadata):
+                record_issue(
+                    LibraryScanIssue(
+                        LibraryScanIssueCategory.METADATA_READ,
+                        file.path,
+                        "Metadata reader returned an invalid result.",
+                    )
+                )
+                if progress is not None:
+                    progress(counters["discovered"], file.path)
+                return
+            if metadata.issue is not None:
+                record_issue(metadata.issue)
+            try:
                 approved = (
                     None
                     if self._overrides is None
@@ -158,20 +209,31 @@ class LibraryScanService:
                     and settings.automatic_downloads
                     and self._downloader is not None
                 ):
-                    lyrics_status = self._downloader(file, metadata, offline)
-                    if lyrics_status == "downloaded":
-                        counters["downloaded"] += 1
-                    elif lyrics_status not in {"cached", "local"}:
-                        counters["download_misses"] += 1
+                    try:
+                        lyrics_status = self._downloader(file, metadata, offline)
+                    except Exception as error:
+                        lyrics_status = "error"
                         state = LibraryTrackState.REVIEW
-                        reason = f"lyrics: {lyrics_status}"
+                        reason = "Lyrics download failed; review and retry this item."
+                        record_issue(
+                            caught_issue(LibraryScanIssueCategory.DOWNLOAD, file, error)
+                        )
+                    else:
+                        if lyrics_status == "downloaded":
+                            counters["downloaded"] += 1
+                        elif lyrics_status not in {"cached", "local"}:
+                            counters["download_misses"] += 1
+                            state = LibraryTrackState.REVIEW
+                            reason = f"lyrics: {lyrics_status}"
                 track = StoredLibraryTrack(file, metadata, state, lyrics_status, reason)
                 self._repository.put_track(track)
                 counters["processed"] += 1
                 counters["review"] += int(state is LibraryTrackState.REVIEW)
                 counters["moved"] += int(moved)
-            except Exception:
-                counters["errors"] += 1
+            except Exception as error:
+                record_issue(
+                    caught_issue(LibraryScanIssueCategory.STORAGE, file, error)
+                )
             if progress is not None:
                 progress(counters["discovered"], file.path)
 
@@ -185,7 +247,13 @@ class LibraryScanService:
                         break
                     counters["discovered"] += 1
                     seen.add(file.file_key)
-                    previous = self._repository.matching_file(file)
+                    try:
+                        previous = self._repository.matching_file(file)
+                    except Exception as error:
+                        record_issue(
+                            caught_issue(LibraryScanIssueCategory.STORAGE, file, error)
+                        )
+                        break
                     newly_enabled_download = bool(
                         previous is not None
                         and settings.automatic_downloads
@@ -216,17 +284,28 @@ class LibraryScanService:
                         continue
                     consume(future, file, moved)
             if completed_walk and not stop.is_set():
-                counters["missing"] = self._repository.reconcile_missing(
-                    settings.roots, seen
-                )
+                try:
+                    counters["missing"] = self._repository.reconcile_missing(
+                        settings.roots, seen
+                    )
+                except Exception as error:
+                    record_issue(
+                        caught_issue(LibraryScanIssueCategory.STORAGE, None, error)
+                    )
         except KeyboardInterrupt:
             stop.set()
-        except Exception:
-            counters["errors"] += 1
+        except LibraryScanFailure as error:
+            record_issue(error.issue)
+        except Exception as error:
+            record_issue(caught_issue(LibraryScanIssueCategory.UNKNOWN, None, error))
         summary = LibraryScanSummary(
             scan_id=scan_id,
             **counters,
             cancelled=stop.is_set(),
+            issues=tuple(issues),
+            error_categories=tuple(
+                sorted(issue_counts.items(), key=lambda item: item[0].value)
+            ),
         )
         self._repository.finish_scan(scan_id, summary)
         return summary

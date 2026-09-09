@@ -178,6 +178,12 @@ def test_flatpak_manifest_uses_narrow_runtime_permissions() -> None:
     assert "--filesystem=home" not in manifest
     assert "--filesystem=host" not in manifest
     assert "--socket=session-bus" not in manifest
+    candidate_notes = (REPOSITORY_ROOT / "packaging/flatpak/README.md").read_text(
+        encoding="utf-8"
+    )
+    assert "native directory-only dialog" in candidate_notes
+    assert "desktop portal" in candidate_notes
+    assert "Do not add `--filesystem=home`" in candidate_notes
 
 
 def test_personal_audio_device_name_is_not_a_regression_fixture() -> None:

@@ -2,7 +2,25 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
+
+
+@dataclass(frozen=True, slots=True)
+class LibraryScanDiagnostics:
+    """Latest scan aggregates safe for CLI output and support exports."""
+
+    status: str
+    discovered: int
+    processed: int
+    unchanged: int
+    moved: int
+    missing: int
+    review: int
+    downloaded: int
+    download_misses: int
+    errors: int
+    error_categories: Mapping[str, int]
 
 
 @dataclass(frozen=True, slots=True)
@@ -39,6 +57,7 @@ class StorageStatus:
     writable: bool
     integrity_status: str
     counts: StorageCounts | None = None
+    latest_library_scan: LibraryScanDiagnostics | None = None
     error: str | None = None
 
     @property
@@ -86,6 +105,26 @@ def render_storage_status(status: StorageStatus) -> str:
                 f"library review items: {status.counts.library_review_items}",
                 f"library scan runs: {status.counts.library_scan_runs}",
             )
+        )
+    if status.latest_library_scan is not None:
+        scan = status.latest_library_scan
+        lines.extend(
+            (
+                f"latest library scan status: {scan.status}",
+                f"latest library scan discovered: {scan.discovered}",
+                f"latest library scan processed: {scan.processed}",
+                f"latest library scan unchanged: {scan.unchanged}",
+                f"latest library scan moved: {scan.moved}",
+                f"latest library scan missing: {scan.missing}",
+                f"latest library scan review: {scan.review}",
+                f"latest library scan downloaded: {scan.downloaded}",
+                f"latest library scan download misses: {scan.download_misses}",
+                f"latest library scan errors: {scan.errors}",
+            )
+        )
+        lines.extend(
+            f"latest library scan {category} errors: {count}"
+            for category, count in sorted(scan.error_categories.items())
         )
     if status.error is not None:
         lines.append(f"error: {status.error}")

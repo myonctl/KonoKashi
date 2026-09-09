@@ -52,6 +52,7 @@ class DesktopLyricGroup:
     romanized_or_transliterated: str | None = None
     translation: str | None = None
     provenance: tuple[str, ...] = field(default_factory=tuple)
+    transition_us: int | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -63,6 +64,7 @@ class DesktopViewState:
     generation: int = 0
     title: str | None = None
     artists: tuple[str, ...] = field(default_factory=tuple)
+    album: str | None = None
     player: str | None = None
     playback_state: PlaybackState = PlaybackState.UNKNOWN
     progress_fraction: float | None = None
@@ -164,6 +166,7 @@ class DesktopStateController:
             generation=token.generation,
             title=track.candidate.title,
             artists=track.candidate.artists,
+            album=track.candidate.album,
             player=track.raw_snapshot.identity or track.raw_snapshot.service_name,
             playback_state=PlaybackState.from_mpris(track.raw_snapshot.playback_status),
             position_us=track.raw_snapshot.position_us,
@@ -275,6 +278,7 @@ class DesktopStateController:
             generation=token.generation,
             title=snapshot.track_title,
             artists=snapshot.artists,
+            album=snapshot.album,
             player=snapshot.player_identity or snapshot.player_service,
             playback_state=snapshot.playback_status,
             progress_fraction=snapshot.progress_fraction,
@@ -350,6 +354,7 @@ class DesktopStateController:
             generation=current.generation,
             title=current.title,
             artists=current.artists,
+            album=current.album,
             player=current.player,
             playback_state=current.playback_state,
             position_us=current.position_us,
@@ -374,6 +379,7 @@ class DesktopStateController:
                 ),
                 line.translation if self._settings.show_translated else None,
                 line.representation_provenance,
+                line.effective_transition_us,
             )
             for line in lines
         )
