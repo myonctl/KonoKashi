@@ -6,6 +6,10 @@ from collections.abc import Callable
 from dataclasses import dataclass, replace
 from typing import Protocol
 
+from konokashi.application.frontend_lines import (
+    FrontendLineCache,
+    build_frontend_line_cache,
+)
 from konokashi.application.ports import (
     SettingsRepositoryPort,
     TimingCalibrationRepositoryPort,
@@ -50,6 +54,7 @@ class FrontendLyricsBundle:
     generation_report: RepresentationGenerationReport | None = None
     routing: LanguageRoutingEvidence | None = None
     layer_statuses: tuple[RepresentationLayerStatus, ...] = ()
+    line_cache: FrontendLineCache | None = None
 
 
 class FrontendSessionPort(Protocol):
@@ -226,6 +231,7 @@ class FrontendSessionService:
             report,
             self._representations.routing_language(document),
             statuses,
+            build_frontend_line_cache(document, effective),
         )
 
     def put_display_settings(self, settings: RepresentationDisplaySettings) -> None:

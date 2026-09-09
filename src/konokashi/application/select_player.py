@@ -18,6 +18,7 @@ from konokashi.domain.tracks import (
     PlayerSelectionConfig,
     PlayerSelectionResult,
     SuppressedPlayer,
+    semantic_duration_us,
 )
 
 _PLAYBACK_RANK = {"Playing": 3, "Paused": 2, "Stopped": 1}
@@ -38,8 +39,11 @@ def _quality(snapshot: PlayerSnapshot) -> tuple[int, tuple[str, ...]]:
             any(artist.strip() for artist in metadata.artists or ()),
             "usable artist",
         ),
-        (metadata.duration_us is not None, "usable duration"),
-        (snapshot.position_us is not None, "usable position"),
+        (semantic_duration_us(metadata.duration_us) is not None, "usable duration"),
+        (
+            snapshot.position_us is not None and snapshot.position_us >= 0,
+            "usable position",
+        ),
         (metadata.url is not None and bool(metadata.url.strip()), "media URL"),
     )
     reasons = tuple(f"+ {label}" for available, label in evidence if available)

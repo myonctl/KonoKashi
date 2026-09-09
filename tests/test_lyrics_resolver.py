@@ -492,6 +492,19 @@ def test_provider_no_result_raw_cache_prevents_repeat_requests(tmp_path: Path) -
     assert entry.expires_at == NOW + timedelta(hours=12)
 
 
+def test_nonpositive_and_unbounded_duration_never_enter_provider_queries(
+    tmp_path: Path,
+) -> None:
+    for index, duration_us in enumerate((-1, 0, 8 * 24 * 60 * 60 * 1_000_000)):
+        provider = _FakeProvider()
+        _resolver(tmp_path / f"duration-{index}.sqlite3", provider).resolve(
+            _track(duration_us=duration_us)
+        )
+        assert provider.exact_queries == []
+        assert provider.search_queries
+        assert all(query.duration_ms is None for query in provider.search_queries)
+
+
 def test_positive_provider_cache_has_longer_explicit_ttl(tmp_path: Path) -> None:
     path = tmp_path / "positive-ttl.sqlite3"
     track = _track()

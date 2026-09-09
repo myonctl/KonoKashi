@@ -8,6 +8,7 @@ from dataclasses import dataclass, field
 from konokashi.application.representations import original_lines
 from konokashi.domain.lyrics import LyricDocument, LyricLine
 from konokashi.domain.synchronization import (
+    LineTimingCalibration,
     LyricTimingCalibration,
     PlaybackPositionEstimate,
     PlaybackState,
@@ -139,6 +140,40 @@ class LyricTimeline:
         )
 
 
+class LyricTimelineCache:
+    """Retain one active immutable document/calibration timeline generation."""
+
+    def __init__(self) -> None:
+        self._document: LyricDocument | None = None
+        self._line_adjustments: tuple[LineTimingCalibration, ...] | None = None
+        self._timeline: LyricTimeline | None = None
+        self._generation = 0
+
+    @property
+    def generation(self) -> int:
+        """Identify the current document or lyric-calibration generation."""
+
+        return self._generation
+
+    def get(
+        self,
+        document: LyricDocument,
+        calibration: LyricTimingCalibration,
+    ) -> LyricTimeline:
+        """Return the cached timeline, rebuilding only for relevant changes."""
+
+        if (
+            document is not self._document
+            or calibration.line_adjustments != self._line_adjustments
+        ):
+            self._document = document
+            self._line_adjustments = calibration.line_adjustments
+            self._timeline = LyricTimeline(document, calibration)
+            self._generation += 1
+        assert self._timeline is not None
+        return self._timeline
+
+
 def _timed_groups(
     document: LyricDocument,
     calibration: LyricTimingCalibration,
@@ -231,6 +266,8 @@ def synchronize(
     document: LyricDocument,
     estimate: PlaybackPositionEstimate,
     calibration: SynchronizationCalibration,
+    *,
+    timeline: LyricTimeline | None = None,
 ) -> SynchronizationFrame:
     """Map media time to audible lyric time and the next display deadline."""
 
@@ -244,7 +281,14 @@ def synchronize(
         estimate.position_us if audible_position_us is None else audible_position_us
     )
     timeline_position_us = lookup_position_us - calibration.lyrics.shift_us
-    lyrics = active_lyrics_at(document, timeline_position_us, calibration.lyrics)
+    if timeline is None:
+        timeline = LyricTimeline(document, calibration.lyrics)
+    elif (
+        timeline.document is not document
+        or timeline.calibration.line_adjustments != calibration.lyrics.line_adjustments
+    ):
+        raise ValueError("lyric timeline does not match document calibration")
+    lyrics = timeline.active_at(timeline_position_us)
     next_line_shift_us = (
         0 if not lyrics.next_line_shifts_us else lyrics.next_line_shifts_us[0][1]
     )

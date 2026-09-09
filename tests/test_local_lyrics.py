@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 from datetime import UTC, datetime
+from io import BufferedReader
 from pathlib import Path
 
 import pytest
@@ -128,6 +129,22 @@ def test_invalid_encoding_and_malformed_sidecar_are_controlled(
     assert any("malformed timestamp" in item for item in malformed.diagnostics)
 
 
+@pytest.mark.parametrize("duration_us", (-1, 0, 8 * 24 * 60 * 60 * 1_000_000))
+def test_invalid_semantic_duration_is_unknown_to_local_parser(
+    tmp_path: Path, duration_us: int
+) -> None:
+    media = tmp_path / "song.flac"
+    media.with_suffix(".lrc").write_text("[99:00.00]late", encoding="utf-8")
+
+    result = LocalSidecarLyricsProvider(lambda: NOW).load(
+        _track(media, duration_us=duration_us)
+    )
+
+    assert result.status is LocalLyricsStatus.FOUND
+    assert result.document is not None
+    assert result.document.duration_ms is None
+
+
 class _FakeAudio:
     def __init__(self, tags: object) -> None:
         self.tags = tags
@@ -149,11 +166,12 @@ def test_supported_vorbis_fields_are_read_only_and_original(
     tmp_path: Path, field: str, text: str, kind: LyricDocumentKind
 ) -> None:
     media = tmp_path / "song.flac"
+    media.write_bytes(b"audio-placeholder")
     audio = _FakeAudio({field: [text]})
-    seen: list[Path] = []
+    seen: list[bytes] = []
 
-    def loader(path: Path) -> object:
-        seen.append(path)
+    def loader(stream: BufferedReader) -> object:
+        seen.append(stream.read())
         return audio
 
     result = EmbeddedLyricsProvider(loader, lambda: NOW).load(_track(media))
@@ -163,17 +181,18 @@ def test_supported_vorbis_fields_are_read_only_and_original(
     assert result.document.kind is kind
     assert result.document.original_text == text
     assert result.document.representations[0].lines[0].text in text
-    assert seen == [media]
+    assert seen == [b"audio-placeholder"]
     assert audio.saved is False
 
 
 def test_actual_mutagen_flac_vorbis_tag_container_is_supported(tmp_path: Path) -> None:
     media = tmp_path / "actual-tags.flac"
+    media.write_bytes(b"audio-placeholder")
     tags = VCFLACDict()
     tags["LYRICS"] = ["君の声\nSecond"]
     audio = _FakeAudio(tags)
 
-    result = EmbeddedLyricsProvider(lambda _path: audio, lambda: NOW).load(
+    result = EmbeddedLyricsProvider(lambda _stream: audio, lambda: NOW).load(
         _track(media)
     )
 
@@ -186,25 +205,27 @@ def test_actual_mutagen_flac_vorbis_tag_container_is_supported(tmp_path: Path) -
 def test_missing_malformed_and_loader_failure_embedded_values_are_controlled(
     tmp_path: Path,
 ) -> None:
-    track = _track(tmp_path / "song.flac")
+    media = tmp_path / "song.flac"
+    media.write_bytes(b"audio-placeholder")
+    track = _track(media)
 
     assert (
-        EmbeddedLyricsProvider(lambda _path: _FakeAudio({})).load(track).status
+        EmbeddedLyricsProvider(lambda _stream: _FakeAudio({})).load(track).status
         is LocalLyricsStatus.MISS
     )
-    malformed = EmbeddedLyricsProvider(lambda _path: _FakeAudio({"lyrics": 123})).load(
-        track
-    )
+    malformed = EmbeddedLyricsProvider(
+        lambda _stream: _FakeAudio({"lyrics": 123})
+    ).load(track)
     assert malformed.status is LocalLyricsStatus.INVALID
 
-    def broken(_path: Path) -> object:
+    def broken(_stream: BufferedReader) -> object:
         raise OSError("unreadable")
 
     failed = EmbeddedLyricsProvider(broken).load(track)
     assert failed.status is LocalLyricsStatus.MISS
     assert any("could not be read" in item for item in failed.diagnostics)
 
-    def corrupt_audio(_path: Path) -> object:
+    def corrupt_audio(_stream: BufferedReader) -> object:
         raise MutagenError("bad audio")
 
     mutagen_failure = EmbeddedLyricsProvider(corrupt_audio).load(track)
@@ -220,6 +241,56 @@ def test_non_local_track_is_normal_miss(tmp_path: Path) -> None:
         track.candidate,
         track.confidence,
     )
-    assert EmbeddedLyricsProvider(lambda _path: None).load(generic).status is (
+    assert EmbeddedLyricsProvider(lambda _stream: None).load(generic).status is (
         LocalLyricsStatus.MISS
     )
+
+
+@pytest.mark.parametrize("kind", ("fifo", "directory", "symlink"))
+def test_embedded_loader_rejects_non_regular_paths_without_calling_mutagen(
+    tmp_path: Path, kind: str
+) -> None:
+    media = tmp_path / "song.flac"
+    if kind == "fifo":
+        os.mkfifo(media)
+    elif kind == "directory":
+        media.mkdir()
+    else:
+        target = tmp_path / "target.flac"
+        target.write_bytes(b"audio-placeholder")
+        media.symlink_to(target)
+    called = False
+
+    def loader(_stream: BufferedReader) -> object:
+        nonlocal called
+        called = True
+        return _FakeAudio({"lyrics": "should not load"})
+
+    result = EmbeddedLyricsProvider(loader).load(_track(media))
+
+    assert result.status is LocalLyricsStatus.INVALID
+    assert called is False
+    assert any(
+        marker in " ".join(result.diagnostics)
+        for marker in ("regular file", "symbolic link")
+    )
+
+
+def test_embedded_loader_reads_the_opened_regular_file_across_path_replacement(
+    tmp_path: Path,
+) -> None:
+    media = tmp_path / "song.flac"
+    replacement = tmp_path / "replacement"
+    media.write_bytes(b"opened-original")
+    seen: list[bytes] = []
+
+    def loader(stream: BufferedReader) -> object:
+        media.rename(replacement)
+        os.mkfifo(media)
+        seen.append(stream.read())
+        return _FakeAudio({"lyrics": "safe"})
+
+    result = EmbeddedLyricsProvider(loader, lambda: NOW).load(_track(media))
+
+    assert result.status is LocalLyricsStatus.FOUND
+    assert seen == [b"opened-original"]

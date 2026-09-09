@@ -215,7 +215,11 @@ class TomlSettingsFile:
         target = self._read_target() or self._path
         try:
             target.parent.mkdir(parents=True, exist_ok=True)
-            mode = stat.S_IMODE(target.stat().st_mode) if target.exists() else 0o600
+            mode = (
+                stat.S_IMODE(target.stat().st_mode) & 0o600
+                if target.exists()
+                else 0o600
+            )
             descriptor, temporary_name = tempfile.mkstemp(
                 prefix=f".{target.name}.", dir=target.parent
             )

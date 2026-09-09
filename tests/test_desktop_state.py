@@ -96,6 +96,17 @@ def test_no_player_appears_later_and_disappears_without_restart() -> None:
     assert controller.state.title is None
 
 
+def test_negative_raw_position_remains_audit_only_not_desktop_semantics() -> None:
+    track = _track("xa4WrgqI7q0", "A")
+    track = replace(track, raw_snapshot=replace(track.raw_snapshot, position_us=-5))
+    controller = DesktopStateController()
+
+    controller.begin_resolution(track)
+
+    assert track.raw_snapshot.position_us == -5
+    assert controller.state.position_us is None
+
+
 def test_track_change_invalidates_old_lyrics_and_rejects_stale_completion() -> None:
     controller = DesktopStateController()
     track_a = _track("xa4WrgqI7q0", "Track A")

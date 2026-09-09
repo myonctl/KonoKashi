@@ -892,7 +892,17 @@ def validate_settings_values(
 
 def _canonical_value(definition: SettingDefinition, value: object) -> SettingValue:
     if definition.value_type is SettingType.STRING_LIST:
-        return tuple(cast(list[str] | tuple[str, ...], value))
+        items = tuple(cast(list[str] | tuple[str, ...], value))
+        if definition.key == "library.roots":
+            # Resolve existing prefixes and symbolic links before the domain
+            # checks aliases and nesting. Nonexistent absolute paths still get
+            # stable lexical normalization without being required to exist yet.
+            return tuple(
+                str(path.resolve(strict=False)) if path.is_absolute() else item
+                for item in items
+                for path in (Path(item),)
+            )
+        return items
     if (
         definition.value_type is SettingType.STRING
         and definition.string_format is SettingStringFormat.COLOR

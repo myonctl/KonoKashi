@@ -185,7 +185,7 @@ def test_reload_is_atomic_and_notifies_once(tmp_path: Path) -> None:
     assert len(changes) == 2
 
 
-def test_edits_preserve_comments_permissions_and_avoid_noop_rewrite(
+def test_edits_preserve_comments_clamp_permissions_and_avoid_noop_rewrite(
     tmp_path: Path,
 ) -> None:
     path = tmp_path / "config.toml"
@@ -200,7 +200,7 @@ def test_edits_preserve_comments_permissions_and_avoid_noop_rewrite(
     content = path.read_text(encoding="utf-8")
     assert "# my rice" in content
     assert "translated = true # keep" in content
-    assert path.stat().st_mode & 0o777 == 0o640
+    assert path.stat().st_mode & 0o777 == 0o600
     modified = path.stat().st_mtime_ns
     service.set("lyrics.display.translated", True)
     assert path.stat().st_mtime_ns == modified
@@ -231,6 +231,7 @@ def test_symlink_edit_replaces_target_without_replacing_link(tmp_path: Path) -> 
     target = tmp_path / "dotfiles" / "konokashi.toml"
     target.parent.mkdir()
     target.write_text("schema_version = 1\n", encoding="utf-8")
+    target.chmod(0o664)
     link = tmp_path / "config.toml"
     link.symlink_to(target)
 
@@ -238,6 +239,40 @@ def test_symlink_edit_replaces_target_without_replacing_link(tmp_path: Path) -> 
 
     assert link.is_symlink()
     assert "selectable = true" in target.read_text(encoding="utf-8")
+    assert stat_mode(target) == 0o600
+
+
+def test_config_write_never_broadens_an_existing_restrictive_mode(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "config.toml"
+    path.write_text("schema_version = 1\n", encoding="utf-8")
+    path.chmod(0o400)
+
+    _service(path).set("desktop.lyrics.selectable", True)
+
+    assert stat_mode(path) == 0o400
+
+
+def test_existing_library_root_aliases_and_canonical_nesting_are_rejected(
+    tmp_path: Path,
+) -> None:
+    music = tmp_path / "music"
+    album = music / "album"
+    album.mkdir(parents=True)
+    alias = tmp_path / "music-alias"
+    album_alias = tmp_path / "album-alias"
+    alias.symlink_to(music, target_is_directory=True)
+    album_alias.symlink_to(album, target_is_directory=True)
+    service = _service(tmp_path / "config.toml")
+
+    with pytest.raises(SettingsValidationError, match="duplicates"):
+        service.set("library.roots", (str(music), str(alias)))
+    with pytest.raises(SettingsValidationError, match="overlap"):
+        service.set("library.roots", (str(alias), str(album_alias)))
+
+    service.set("library.roots", (str(alias),))
+    assert service.get_library().roots == (str(music.resolve()),)
 
 
 def test_interrupted_atomic_replace_retains_original(

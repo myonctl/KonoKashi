@@ -1767,7 +1767,7 @@ def _run_sync(
         AdaptiveResampler,
         SuspendResumeDetector,
     )
-    from konokashi.application.lyrics_sync import synchronize
+    from konokashi.application.lyrics_sync import LyricTimelineCache, synchronize
     from konokashi.application.playback_clock import PlaybackClock
     from konokashi.application.representations import RepresentationService
     from konokashi.application.sync_diagnostics import (
@@ -1903,6 +1903,7 @@ def _run_sync(
     clock = PlaybackClock(runtime.clock.monotonic_ns)
     session = PlaybackSyncSession(clock, track.raw_snapshot, _sync_session_id(track))
     scheduler = AdaptiveResampler()
+    timeline_cache = LyricTimelineCache()
     detector = SuspendResumeDetector(runtime.clock)
     detector.observe()
     last_audio_probe_ns = runtime.clock.monotonic_ns()
@@ -2018,7 +2019,12 @@ def _run_sync(
                     estimate.monotonic_ns,
                     estimate.diagnostics.health,
                 )
-            frame = synchronize(document, estimate, calibration)
+            frame = synchronize(
+                document,
+                estimate,
+                calibration,
+                timeline=timeline_cache.get(document, calibration.lyrics),
+            )
             update_text = (
                 "interpolated locally"
                 if not sampled or last_update is None

@@ -8,6 +8,19 @@ from enum import Enum
 from konokashi.domain.identity import SourceIdentity
 from konokashi.domain.models import PlayerSnapshot
 
+MAX_SEMANTIC_TRACK_DURATION_US = 7 * 24 * 60 * 60 * 1_000_000
+
+
+def semantic_duration_us(value: int | None) -> int | None:
+    """Return a bounded positive duration suitable for application behavior.
+
+    Raw MPRIS metadata remains untouched on ``PlayerSnapshot`` for audit output.
+    """
+
+    if value is None or value <= 0 or value > MAX_SEMANTIC_TRACK_DURATION_US:
+        return None
+    return value
+
 
 class Confidence(Enum):
     """Product-level confidence classes for track interpretation."""
@@ -48,6 +61,9 @@ class TrackCandidate:
     strategy: str = "reported-mpris"
     artist_credit: ArtistCredit | None = None
     field_provenance: tuple[tuple[str, str], ...] = field(default_factory=tuple)
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "duration_us", semantic_duration_us(self.duration_us))
 
 
 @dataclass(frozen=True, slots=True)

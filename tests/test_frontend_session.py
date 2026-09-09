@@ -176,6 +176,12 @@ def test_frontend_session_combines_existing_services_without_adapter_values() ->
     )
     assert len(bundle.representations) == 3
     assert bundle.representations[0].text == "romaji"
+    assert bundle.line_cache is not None
+    assert bundle.line_cache.original_indexes["one"] == 0
+    assert (
+        bundle.line_cache.representations[("one", RepresentationKind.ROMANIZED)].text
+        == "romaji"
+    )
     assert representations.generated == [bundle.resolution.document.document_id]  # type: ignore[union-attr]
 
     changed = RepresentationDisplaySettings(False, True, True)

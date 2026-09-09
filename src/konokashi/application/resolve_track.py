@@ -13,7 +13,12 @@ from konokashi.domain.normalization import (
     parse_artist_credits,
     parse_youtube_title_candidates,
 )
-from konokashi.domain.tracks import Confidence, ResolvedTrack, TrackCandidate
+from konokashi.domain.tracks import (
+    Confidence,
+    ResolvedTrack,
+    TrackCandidate,
+    semantic_duration_us,
+)
 
 
 class TrackResolver:
@@ -53,7 +58,7 @@ class TrackResolver:
                     if approved.album is not None
                     else snapshot.metadata.album
                 ),
-                duration_us=snapshot.metadata.duration_us,
+                duration_us=semantic_duration_us(snapshot.metadata.duration_us),
                 evidence=("user-approved correction for stable source identity",),
                 strategy="user-correction",
                 artist_credit=parse_artist_credits(approved.artists),
@@ -90,6 +95,7 @@ class TrackResolver:
         self, snapshot: PlayerSnapshot, *, is_local: bool = False
     ) -> TrackCandidate:
         metadata = snapshot.metadata
+        duration_us = semantic_duration_us(metadata.duration_us)
         transformations: list[str] = []
         title: str | None = None
         if metadata.title and metadata.title.strip():
@@ -109,7 +115,7 @@ class TrackResolver:
             title=title,
             artists=tuple(artists),
             album=metadata.album,
-            duration_us=metadata.duration_us,
+            duration_us=duration_us,
             evidence=tuple(evidence),
             transformations=tuple(dict.fromkeys(transformations)),
             strategy="reported-mpris",
@@ -120,7 +126,7 @@ class TrackResolver:
                     (("title", "mpris-title"), title is not None),
                     (("artists", "mpris-artists"), bool(artists)),
                     (("album", "mpris-album"), metadata.album is not None),
-                    (("duration", "mpris-duration"), metadata.duration_us is not None),
+                    (("duration", "mpris-duration"), duration_us is not None),
                 )
                 if present
             ),
@@ -130,6 +136,7 @@ class TrackResolver:
         self, snapshot: PlayerSnapshot
     ) -> tuple[TrackCandidate, ...]:
         metadata = snapshot.metadata
+        duration_us = semantic_duration_us(metadata.duration_us)
         parsed_candidates = (
             parse_youtube_title_candidates(metadata.title, metadata.artists)
             if metadata.title
@@ -176,7 +183,7 @@ class TrackResolver:
                 title=parsed.title,
                 artists=parsed.artists,
                 album=metadata.album,
-                duration_us=metadata.duration_us,
+                duration_us=duration_us,
                 evidence=parsed.evidence + uploader_evidence,
                 transformations=parsed.transformations,
                 strategy=parsed.strategy,
@@ -186,7 +193,7 @@ class TrackResolver:
                     *((("album", "mpris-album"),) if metadata.album else ()),
                     *(
                         (("duration", "mpris-duration"),)
-                        if metadata.duration_us
+                        if duration_us is not None
                         else ()
                     ),
                     *((("uploader", "mpris-artists"),) if metadata.artists else ()),
@@ -223,6 +230,6 @@ class TrackResolver:
             if comparison_key(possible_artist) not in reported_artist_keys:
                 warnings.append("title-contained artist conflicts with reported artist")
                 return Confidence.LOW, tuple(warnings)
-        if snapshot.metadata.duration_us is None:
+        if candidate.duration_us is None:
             warnings.append("duration is missing")
         return Confidence.MEDIUM, tuple(warnings)

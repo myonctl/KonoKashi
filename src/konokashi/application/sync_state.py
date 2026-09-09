@@ -5,8 +5,11 @@ from __future__ import annotations
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 
+from konokashi.application.frontend_lines import (
+    FrontendLineCache,
+    build_frontend_line_cache,
+)
 from konokashi.application.lyrics_sync import SynchronizationFrame
-from konokashi.application.representations import original_lines
 from konokashi.domain.identity import SourceIdentity
 from konokashi.domain.lyrics import LyricDocument, LyricLine, RepresentationKind
 from konokashi.domain.representations import EffectiveRepresentationLine
@@ -169,16 +172,16 @@ def build_sync_snapshot(
     frame: SynchronizationFrame,
     calibration: SynchronizationCalibration,
     representations: tuple[EffectiveRepresentationLine, ...] = (),
+    line_cache: FrontendLineCache | None = None,
     lyrics_match_confidence: str | None = None,
 ) -> SynchronizationSnapshot:
     """Build a framework/storage/provider-neutral frontend state value."""
 
-    by_line_kind = {
-        (item.original_line.line_id, item.kind): item for item in representations
-    }
-    original_indexes = {
-        line.line_id: index for index, line in enumerate(original_lines(document))
-    }
+    cache = line_cache or build_frontend_line_cache(document, representations)
+    if cache.document is not document:
+        raise ValueError("frontend line cache does not match lyric document")
+    by_line_kind = cache.representations
+    original_indexes = cache.original_indexes
     shifts = dict(
         (*frame.lyrics.active_line_shifts_us, *frame.lyrics.next_line_shifts_us)
     )

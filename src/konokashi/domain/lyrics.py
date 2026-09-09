@@ -8,6 +8,8 @@ from enum import Enum
 
 from konokashi.domain.identity import SourceIdentity
 
+MAX_SEMANTIC_LYRICS_DURATION_MS = 7 * 24 * 60 * 60 * 1000
+
 
 class ApprovalState(Enum):
     """Whether persisted content has been reviewed by the user."""
@@ -163,6 +165,12 @@ class LyricsQuery:
     contributors: tuple[str, ...] = field(default_factory=tuple)
     strategy: str = "resolved-track"
     provenance: tuple[tuple[str, str], ...] = field(default_factory=tuple)
+
+    def __post_init__(self) -> None:
+        if self.duration_ms is not None and not (
+            0 < self.duration_ms <= MAX_SEMANTIC_LYRICS_DURATION_MS
+        ):
+            object.__setattr__(self, "duration_ms", None)
 
     @property
     def artist_name(self) -> str:

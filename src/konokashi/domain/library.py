@@ -76,13 +76,15 @@ class LibrarySettings:
         if not 1 <= self.worker_count <= 8:
             raise ValueError("library worker count must be between 1 and 8")
         paths = tuple(Path(root) for root in self.roots)
-        if len(set(paths)) != len(paths):
-            raise ValueError("library roots must not contain duplicates")
         if any(
             not root or not path.is_absolute()
             for root, path in zip(self.roots, paths, strict=True)
         ):
             raise ValueError("library roots must be non-empty absolute paths")
+        paths = tuple(path.resolve(strict=False) for path in paths)
+        object.__setattr__(self, "roots", tuple(str(path) for path in paths))
+        if len(set(paths)) != len(paths):
+            raise ValueError("library roots must not contain duplicates")
         if any(
             first in second.parents or second in first.parents
             for index, first in enumerate(paths)

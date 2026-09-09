@@ -210,6 +210,21 @@ def test_missing_artist_and_ambiguous_youtube_title_are_low_confidence() -> None
     assert any("uploader evidence" in item for item in resolved.evidence)
 
 
+@pytest.mark.parametrize("raw_duration", (-1, 0, 8 * 24 * 60 * 60 * 1_000_000))
+def test_raw_invalid_duration_is_retained_only_in_snapshot_audit(
+    raw_duration: int,
+) -> None:
+    track_resolver, _repository = resolver()
+    raw = snapshot("generic", duration_us=raw_duration)
+
+    resolved = track_resolver.resolve(raw)
+
+    assert resolved.raw_snapshot.metadata.duration_us == raw_duration
+    assert resolved.candidate.duration_us is None
+    assert "duration is missing" in resolved.warnings
+    assert ("duration", "mpris-duration") not in resolved.candidate.field_provenance
+
+
 def test_conflicting_generic_title_and_artist_is_low_confidence() -> None:
     track_resolver, _repository = resolver()
 

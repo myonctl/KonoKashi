@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from dataclasses import replace
 from pathlib import Path
 from threading import Event, Lock
@@ -67,6 +68,25 @@ def test_library_settings_are_typed_validated_and_dormant_by_default() -> None:
         LibrarySettings(("/music", "/music/album"))
     with pytest.raises(ValueError, match="between 1 and 8"):
         LibrarySettings(("/music",), worker_count=9)
+
+
+def test_library_settings_canonicalize_existing_aliases_before_validation(
+    tmp_path: Path,
+) -> None:
+    music = tmp_path / "music"
+    album = music / "album"
+    album.mkdir(parents=True)
+    alias = tmp_path / "alias"
+    nested_alias = tmp_path / "nested-alias"
+    alias.symlink_to(music, target_is_directory=True)
+    nested_alias.symlink_to(album, target_is_directory=True)
+
+    with pytest.raises(ValueError, match="duplicates"):
+        LibrarySettings((str(music), str(alias)))
+    with pytest.raises(ValueError, match="overlap"):
+        LibrarySettings((str(alias), str(nested_alias)))
+
+    assert LibrarySettings((str(alias),)).roots == (str(music.resolve()),)
 
 
 def test_incremental_scan_skips_unchanged_and_handles_move_and_delete(
@@ -188,6 +208,24 @@ def test_inaccessible_subtree_is_typed_and_does_not_reconcile_missing(
     assert storage.library.counts() == (1, 1, 0)
 
 
+def test_library_walk_does_not_follow_file_or_directory_symlinks(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "music"
+    root.mkdir()
+    real = root / "real.flac"
+    real.write_bytes(b"audio")
+    (root / "linked.flac").symlink_to(real)
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (outside / "outside.flac").write_bytes(b"audio")
+    (root / "linked-directory").symlink_to(outside, target_is_directory=True)
+
+    files = tuple(MusicDirectoryFilesystem().files((str(root),)))
+
+    assert tuple(Path(item.path).name for item in files) == ("real.flac",)
+
+
 def test_automatic_downloads_only_run_for_high_confidence_metadata(
     tmp_path: Path,
 ) -> None:
@@ -253,32 +291,38 @@ def test_user_approved_stage_eight_correction_allows_uncertain_item_download(
 
 
 def test_mutagen_reader_uses_conservative_filename_fallback_without_writes(
+    tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    calls: list[tuple[str, bool]] = []
+    media = tmp_path / "07 - Artist - Song Title.mp3"
+    media.write_bytes(b"audio-placeholder")
+    calls: list[tuple[bytes, bool]] = []
 
-    def read(path: str, *, easy: bool):
-        calls.append((path, easy))
+    def read(*, fileobj, filename: str, easy: bool):  # type: ignore[no-untyped-def]
+        assert filename == str(media)
+        stream = fileobj
+        calls.append((stream.read(), easy))
         return None
 
     monkeypatch.setattr("konokashi.infrastructure.metadata.library.mutagen.File", read)
-    result = MutagenLibraryMetadataReader().read(
-        _file("key", "/music/07 - Artist - Song Title.mp3")
-    )
+    result = MutagenLibraryMetadataReader().read(_file("key", str(media)))
 
     assert result.candidate.title == "Song Title"
     assert result.candidate.artists == ("Artist",)
     assert result.confidence is Confidence.MEDIUM
-    assert calls == [("/music/07 - Artist - Song Title.mp3", True)]
+    assert calls == [(b"audio-placeholder", True)]
 
 
 def test_mutagen_failure_is_typed_and_keeps_usable_filename_metadata(
+    tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    private_path = "/music/private/Artist - Song.mp3"
+    private_path = str(tmp_path / "private" / "Artist - Song.mp3")
+    Path(private_path).parent.mkdir()
+    Path(private_path).write_bytes(b"audio-placeholder")
 
-    def fail(path: str, *, easy: bool):
-        del path, easy
+    def fail(*, fileobj, filename: str, easy: bool):  # type: ignore[no-untyped-def]
+        del fileobj, filename, easy
         raise OSError("private low-level detail")
 
     monkeypatch.setattr("konokashi.infrastructure.metadata.library.mutagen.File", fail)
@@ -289,6 +333,38 @@ def test_mutagen_failure_is_typed_and_keeps_usable_filename_metadata(
     assert result.issue.category is LibraryScanIssueCategory.METADATA_READ
     assert result.issue.path == private_path
     assert "private low-level detail" not in result.issue.detail
+
+
+@pytest.mark.parametrize("kind", ("fifo", "directory", "symlink"))
+def test_mutagen_library_reader_rejects_non_regular_paths_without_parsing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, kind: str
+) -> None:
+    media = tmp_path / "Artist - Song.mp3"
+    if kind == "fifo":
+        os.mkfifo(media)
+    elif kind == "directory":
+        media.mkdir()
+    else:
+        target = tmp_path / "target.mp3"
+        target.write_bytes(b"audio")
+        media.symlink_to(target)
+    called = False
+
+    def parser(*, fileobj, filename: str, easy: bool):  # type: ignore[no-untyped-def]
+        nonlocal called
+        del fileobj, filename, easy
+        called = True
+        return None
+
+    monkeypatch.setattr(
+        "konokashi.infrastructure.metadata.library.mutagen.File", parser
+    )
+    result = MutagenLibraryMetadataReader().read(_file("key", str(media)))
+
+    assert called is False
+    assert result.source is LibraryMetadataSource.FILENAME
+    assert result.issue is not None
+    assert result.issue.category is LibraryScanIssueCategory.METADATA_READ
 
 
 def test_scan_reports_partial_and_total_failures_truthfully(tmp_path: Path) -> None:

@@ -11,6 +11,7 @@ import httpx
 
 from konokashi import __version__
 from konokashi.domain.lyrics import (
+    MAX_SEMANTIC_LYRICS_DURATION_MS,
     LyricsProviderCandidate,
     LyricsProviderResult,
     LyricsProviderStatus,
@@ -21,7 +22,7 @@ DEFAULT_BASE_URL = "https://lrclib.net"
 DEFAULT_USER_AGENT = f"KonoKashi/{__version__} (https://github.com/myonctl/KonoKashi)"
 MAX_PROVIDER_RESPONSE_BYTES = 2_000_000
 MAX_PROVIDER_RECORDS = 100
-MAX_PROVIDER_DURATION_MS = 7 * 24 * 60 * 60 * 1000
+MAX_PROVIDER_DURATION_MS = MAX_SEMANTIC_LYRICS_DURATION_MS
 MAX_RETRY_AFTER_SECONDS = 3_600
 
 
@@ -341,7 +342,7 @@ def _duration_ms(value: object) -> int | None:
         result = int(milliseconds.quantize(Decimal("1"), rounding=ROUND_HALF_UP))
     except (DecimalException, OverflowError, ValueError) as error:
         raise ValueError("duration is invalid") from error
-    if not duration.is_finite() or duration < 0:
+    if not duration.is_finite() or duration <= 0:
         raise ValueError("duration is invalid")
     if result > MAX_PROVIDER_DURATION_MS:
         raise ValueError("duration is invalid")

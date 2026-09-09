@@ -18,7 +18,7 @@ from konokashi.domain.library import (
     LibraryScanIssue,
     LibraryScanIssueCategory,
 )
-from konokashi.domain.tracks import Confidence, TrackCandidate
+from konokashi.domain.tracks import Confidence, TrackCandidate, semantic_duration_us
 
 _AUDIO_SUFFIXES = frozenset(
     {
@@ -126,9 +126,29 @@ class MutagenLibraryMetadataReader:
 
     def read(self, file: LibraryFile) -> LibraryMetadata:
         fallback_title, fallback_artists = _filename_candidate(file.path)
+        descriptor: int | None = None
         try:
-            audio = mutagen.File(file.path, easy=True)
+            descriptor = os.open(
+                file.path,
+                os.O_RDONLY
+                | getattr(os, "O_CLOEXEC", 0)
+                | getattr(os, "O_NONBLOCK", 0)
+                | getattr(os, "O_NOFOLLOW", 0),
+            )
+            metadata = os.fstat(descriptor)
+            if not stat_module.S_ISREG(metadata.st_mode):
+                raise OSError("library metadata path is not a regular file")
+            stream = os.fdopen(descriptor, "rb")
+            descriptor = None
+            with stream:
+                audio = mutagen.File(
+                    fileobj=stream,
+                    filename=file.path,
+                    easy=True,
+                )
         except (OSError, mutagen.MutagenError) as error:
+            if descriptor is not None:
+                os.close(descriptor)
             return LibraryMetadata(
                 TrackCandidate(
                     fallback_title,
@@ -159,7 +179,7 @@ class MutagenLibraryMetadataReader:
         info = None if audio is None else getattr(audio, "info", None)
         length = None if info is None else getattr(info, "length", None)
         if isinstance(length, (int, float)) and length > 0:
-            duration_us = round(length * 1_000_000)
+            duration_us = semantic_duration_us(round(length * 1_000_000))
         used_fallback = False
         if title is None:
             title = fallback_title

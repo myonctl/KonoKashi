@@ -606,7 +606,7 @@ def test_signature_detects_atomic_replace_symlink_target_and_removal(
     assert config_signature(link).link == ("missing",)
 
 
-def test_tui_write_preserves_comments_mode_and_symlink(tmp_path: Path) -> None:
+def test_tui_write_preserves_comments_symlink_and_clamps_mode(tmp_path: Path) -> None:
     target = tmp_path / "managed.toml"
     target.write_text(
         "# keep this rice comment\n"
@@ -625,7 +625,7 @@ def test_tui_write_preserves_comments_mode_and_symlink(tmp_path: Path) -> None:
         await pilot.press("2", "down", "down", "enter", "space")
         await _wait_until(lambda: service.get("lyrics.display.translated") is True)
         assert link.is_symlink()
-        assert target.stat().st_mode & 0o777 == 0o640
+        assert target.stat().st_mode & 0o777 == 0o600
         content = target.read_text(encoding="utf-8")
         assert "# keep this rice comment" in content
         assert "translated = true # inline" in content

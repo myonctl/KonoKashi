@@ -38,7 +38,7 @@ from konokashi.domain.lyrics import (
 )
 from konokashi.domain.lyrics_matching import CandidateMatchAssessment, assess_candidate
 from konokashi.domain.normalization import parse_artist_credits, parse_title_version
-from konokashi.domain.tracks import ResolvedTrack, TrackCandidate
+from konokashi.domain.tracks import ResolvedTrack, TrackCandidate, semantic_duration_us
 
 _CONFIDENCE_RANK = {
     LyricsMatchConfidence.HIGH: 0,
@@ -711,7 +711,7 @@ def _candidate_query(
     artists = tuple(artist for artist in candidate.artists if artist.strip())
     if title is None or not title.strip() or not artists:
         return None
-    duration = candidate.duration_us
+    duration = semantic_duration_us(candidate.duration_us)
     credit = candidate.artist_credit
     return LyricsQuery(
         title,
@@ -763,7 +763,7 @@ def _manual_queries(
     cleaned_artists = tuple(item.strip() for item in artists if item.strip())
     if not cleaned_title or not cleaned_artists:
         return ()
-    duration = track.candidate.duration_us
+    duration = semantic_duration_us(track.candidate.duration_us)
     credit = parse_artist_credits(cleaned_artists)
     return (
         LyricsQuery(

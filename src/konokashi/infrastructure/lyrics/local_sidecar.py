@@ -15,7 +15,7 @@ from konokashi.domain.lyrics import (
     LocalLyricsStatus,
     LyricsTextParseStatus,
 )
-from konokashi.domain.tracks import ResolvedTrack
+from konokashi.domain.tracks import ResolvedTrack, semantic_duration_us
 from konokashi.infrastructure.lyrics.documents import build_lyric_document
 from konokashi.infrastructure.lyrics.lrc import MAX_LYRICS_TEXT_CHARS, parse_lyrics_text
 
@@ -101,6 +101,7 @@ class LocalSidecarLyricsProvider:
 
 
 def _duration_ms(duration_us: int | None) -> int | None:
+    duration_us = semantic_duration_us(duration_us)
     if duration_us is None:
         return None
     return (duration_us + 500) // 1000

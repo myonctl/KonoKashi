@@ -2,8 +2,13 @@
 
 from dataclasses import replace
 from datetime import UTC, datetime
+from time import perf_counter
 
-from konokashi.application.lyrics_sync import active_lyrics_at, synchronize
+from konokashi.application.lyrics_sync import (
+    LyricTimelineCache,
+    active_lyrics_at,
+    synchronize,
+)
 from konokashi.domain.lyrics import (
     ApprovalState,
     ContentProvenance,
@@ -134,6 +139,66 @@ def test_context_is_bounded_to_eight_whole_timestamp_groups() -> None:
         f"line-{index}" for index in range(1, 9)
     )
     assert tuple(line.line_id for line in context.next) == ("line-10", "line-11")
+
+
+def test_timeline_cache_invalidates_only_for_document_or_lyric_calibration() -> None:
+    cache = LyricTimelineCache()
+    lyric_document = document()
+    lyrics = LyricTimingCalibration(25_000)
+
+    first = cache.get(lyric_document, lyrics)
+    assert cache.get(lyric_document, lyrics) is first
+    assert cache.generation == 1
+
+    changed_presentation = SynchronizationCalibration(
+        lyrics=lyrics,
+        presentation=PresentationLatency(20_000, 5_000, "changed frontend"),
+    )
+    assert cache.get(lyric_document, changed_presentation.lyrics) is first
+    assert cache.generation == 1
+
+    assert cache.get(lyric_document, replace(lyrics, shift_us=30_000)) is first
+    assert (
+        cache.get(
+            lyric_document,
+            replace(lyrics, provider_uncertainty_us=50_000, source="changed evidence"),
+        )
+        is first
+    )
+    assert cache.generation == 1
+
+    adjusted = replace(
+        lyrics,
+        line_adjustments=(LineTimingCalibration("two-a", 10_000),),
+    )
+    second = cache.get(lyric_document, adjusted)
+    assert second is not first
+    assert cache.generation == 2
+    assert cache.get(replace(lyric_document), lyrics) is not second
+    assert cache.generation == 3
+
+
+def test_cached_large_timeline_lookup_has_a_generous_interactive_ceiling() -> None:
+    base = document()
+    lines = tuple(
+        LyricLine(f"line-{index}", f"line {index}", index * 20)
+        for index in range(20_000)
+    )
+    expanded = replace(
+        base,
+        document_id="large-document",
+        representations=(replace(base.representations[0], lines=lines),),
+    )
+    cache = LyricTimelineCache()
+    started = perf_counter()
+    timeline = cache.get(expanded, LyricTimingCalibration())
+    for index in range(5_000):
+        state = timeline.active_at((index * 79 % 20_000) * 20_000)
+        assert state.active
+    elapsed = perf_counter() - started
+
+    assert cache.generation == 1
+    assert elapsed < 5.0
 
 
 def test_audio_lyric_and_presentation_terms_have_distinct_signs_and_deadline() -> None:

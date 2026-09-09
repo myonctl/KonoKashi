@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field, replace
 from enum import Enum
 
+from konokashi.application.frontend_lines import FrontendLineCache
 from konokashi.application.representations import original_lines
 from konokashi.application.sync_state import (
     SourceGenerationGuard,
@@ -169,7 +170,12 @@ class DesktopStateController:
             album=track.candidate.album,
             player=track.raw_snapshot.identity or track.raw_snapshot.service_name,
             playback_state=PlaybackState.from_mpris(track.raw_snapshot.playback_status),
-            position_us=track.raw_snapshot.position_us,
+            position_us=(
+                track.raw_snapshot.position_us
+                if track.raw_snapshot.position_us is not None
+                and track.raw_snapshot.position_us >= 0
+                else None
+            ),
             duration_us=track.candidate.duration_us,
         )
         return token
@@ -199,6 +205,7 @@ class DesktopStateController:
         settings: RepresentationDisplaySettings | None = None,
         layer_statuses: tuple[RepresentationLayerStatus, ...] = (),
         routing: LanguageRoutingEvidence | None = None,
+        line_cache: FrontendLineCache | None = None,
     ) -> bool:
         """Accept only the current source result and map every normal outcome."""
 
@@ -231,7 +238,9 @@ class DesktopStateController:
             self._state = self._replace_content(
                 state=DesktopLyricsState.UNTIMED,
                 message="Untimed lyrics",
-                static_lines=self._static_groups(document, representations),
+                static_lines=self._static_groups(
+                    document, representations, line_cache=line_cache
+                ),
                 lyrics_source=result.source_label or document.source_name,
                 match_confidence=(
                     None if result.confidence is None else result.confidence.value
@@ -388,12 +397,22 @@ class DesktopStateController:
         self,
         document: LyricDocument,
         representations: tuple[EffectiveRepresentationLine, ...],
+        *,
+        line_cache: FrontendLineCache | None = None,
     ) -> tuple[DesktopLyricGroup, ...]:
-        by_line_kind = {
-            (item.original_line.line_id, item.kind): item for item in representations
-        }
+        by_line_kind = (
+            line_cache.representations
+            if line_cache is not None
+            else {
+                (item.original_line.line_id, item.kind): item
+                for item in representations
+            }
+        )
         groups = []
-        for original in original_lines(document):
+        originals = (
+            line_cache.originals if line_cache is not None else original_lines(document)
+        )
+        for original in originals:
             romanized = by_line_kind.get(
                 (original.line_id, RepresentationKind.ROMANIZED)
             )

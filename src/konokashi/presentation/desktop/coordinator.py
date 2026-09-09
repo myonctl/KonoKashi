@@ -21,7 +21,7 @@ from konokashi.application.frontend_session import (
     FrontendLyricsBundle,
     FrontendSessionPort,
 )
-from konokashi.application.lyrics_sync import synchronize
+from konokashi.application.lyrics_sync import LyricTimelineCache, synchronize
 from konokashi.application.playback_clock import PlaybackClock
 from konokashi.application.player_selectors import stable_player_suggestions
 from konokashi.application.ports import (
@@ -251,6 +251,7 @@ class DesktopCoordinator(QObject):
         self._playback_clock: PlaybackClock | None = None
         self._scheduler: AdaptiveResampler | None = None
         self._calibration = SynchronizationCalibration()
+        self._timeline_cache = LyricTimelineCache()
         self._publisher: SynchronizationPublisher | None = None
         self._snapshot_subscription: SnapshotSubscription | None = None
         self._monitor_started = False
@@ -607,6 +608,7 @@ class DesktopCoordinator(QObject):
                 result.display_settings,
                 result.layer_statuses,
                 result.routing,
+                result.line_cache,
             ):
                 return
             self._bundle = result
@@ -755,7 +757,15 @@ class DesktopCoordinator(QObject):
             or bundle.resolution.document.kind is not LyricDocumentKind.SYNCED
         ):
             return
-        frame = synchronize(bundle.resolution.document, estimate, self._calibration)
+        timeline = self._timeline_cache.get(
+            bundle.resolution.document, self._calibration.lyrics
+        )
+        frame = synchronize(
+            bundle.resolution.document,
+            estimate,
+            self._calibration,
+            timeline=timeline,
+        )
         snapshot = build_sync_snapshot(
             generation=token.generation,
             track=track,
@@ -764,6 +774,7 @@ class DesktopCoordinator(QObject):
             frame=frame,
             calibration=self._calibration,
             representations=bundle.representations,
+            line_cache=bundle.line_cache,
             lyrics_match_confidence=(
                 None
                 if bundle.resolution.confidence is None

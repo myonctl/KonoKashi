@@ -105,6 +105,21 @@ def test_exact_is_skipped_when_album_or_duration_is_missing() -> None:
     assert "duration" in no_duration.diagnostics[0]
 
 
+@pytest.mark.parametrize("duration_ms", (-1, 0, 8 * 24 * 60 * 60 * 1000))
+def test_exact_is_skipped_for_nonpositive_or_unbounded_duration(
+    duration_ms: int,
+) -> None:
+    def unexpected(_request: httpx.Request) -> httpx.Response:
+        raise AssertionError("network request should have been skipped")
+
+    result = _provider(unexpected).exact(
+        LyricsQuery("Song", ("Artist",), "Album", duration_ms)
+    )
+
+    assert result.status is LyricsProviderStatus.NO_RESULT
+    assert "duration" in result.diagnostics[0]
+
+
 def test_search_uses_field_params_without_fabricating_album() -> None:
     requests: list[httpx.Request] = []
 

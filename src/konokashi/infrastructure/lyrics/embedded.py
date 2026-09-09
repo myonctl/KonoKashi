@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import os
+import stat
 from collections.abc import Callable, Iterable, Sequence
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Protocol, cast, runtime_checkable
+from typing import BinaryIO, Protocol, cast, runtime_checkable
 
 from mutagen import MutagenError
 
@@ -21,7 +23,7 @@ from konokashi.infrastructure.lyrics.documents import build_lyric_document
 from konokashi.infrastructure.lyrics.local_sidecar import _duration_ms
 from konokashi.infrastructure.lyrics.lrc import MAX_LYRICS_TEXT_CHARS, parse_lyrics_text
 
-EmbeddedLoader = Callable[[Path], object | None]
+EmbeddedLoader = Callable[[BinaryIO], object | None]
 _SUPPORTED_FIELDS = ("syncedlyrics", "lyrics", "unsyncedlyrics")
 
 
@@ -31,10 +33,10 @@ class _TagItems(Protocol):
         """Return tag key/value pairs without requiring a concrete mapping base."""
 
 
-def _mutagen_load(path: Path) -> object | None:
+def _mutagen_load(stream: BinaryIO) -> object | None:
     from mutagen import File
 
-    return cast(object | None, File(path, easy=False))
+    return cast(object | None, File(stream, easy=False))
 
 
 class EmbeddedLyricsProvider:
@@ -54,22 +56,53 @@ class EmbeddedLyricsProvider:
         if not isinstance(track.source_identity, LocalFileIdentity):
             return LocalLyricsResult(LocalLyricsStatus.MISS, "Embedded audio metadata")
         path = Path(track.source_identity.canonical_path)
+        descriptor: int | None = None
         try:
-            audio = self._loader(path)
+            if path.is_symlink():
+                return LocalLyricsResult(
+                    LocalLyricsStatus.INVALID,
+                    "Embedded audio metadata",
+                    diagnostics=("embedded audio path must not be a symbolic link",),
+                )
+            descriptor = os.open(
+                path,
+                os.O_RDONLY
+                | getattr(os, "O_CLOEXEC", 0)
+                | getattr(os, "O_NONBLOCK", 0)
+                | getattr(os, "O_NOFOLLOW", 0),
+            )
+            metadata = os.fstat(descriptor)
+            if not stat.S_ISREG(metadata.st_mode):
+                os.close(descriptor)
+                descriptor = None
+                return LocalLyricsResult(
+                    LocalLyricsStatus.INVALID,
+                    "Embedded audio metadata",
+                    diagnostics=("embedded audio path is not a regular file",),
+                )
+            stream = os.fdopen(descriptor, "rb")
+            descriptor = None
+            with stream:
+                audio = self._loader(stream)
+                if audio is None:
+                    return LocalLyricsResult(
+                        LocalLyricsStatus.MISS, "Embedded audio metadata"
+                    )
+                tags = getattr(audio, "tags", None)
+                if not isinstance(tags, _TagItems):
+                    return LocalLyricsResult(
+                        LocalLyricsStatus.MISS, "Embedded audio metadata"
+                    )
+                normalized = {str(key).casefold(): value for key, value in tags.items()}
         except (OSError, ValueError, MutagenError) as error:
+            if descriptor is not None:
+                os.close(descriptor)
             return LocalLyricsResult(
                 LocalLyricsStatus.MISS,
                 "Embedded audio metadata",
                 diagnostics=(f"embedded lyrics could not be read: {error}",),
             )
-        if audio is None:
-            return LocalLyricsResult(LocalLyricsStatus.MISS, "Embedded audio metadata")
-        tags = getattr(audio, "tags", None)
-        if not isinstance(tags, _TagItems):
-            return LocalLyricsResult(LocalLyricsStatus.MISS, "Embedded audio metadata")
-        try:
-            normalized = {str(key).casefold(): value for key, value in tags.items()}
-        except (OSError, TypeError, ValueError, MutagenError) as error:
+        except (TypeError, RuntimeError) as error:
             return LocalLyricsResult(
                 LocalLyricsStatus.MISS,
                 "Embedded audio metadata",
