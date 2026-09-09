@@ -11,12 +11,14 @@ from PySide6.QtWidgets import (
     QDialog,
     QDialogButtonBox,
     QFormLayout,
+    QFrame,
     QGroupBox,
     QHBoxLayout,
     QLabel,
     QLineEdit,
     QPlainTextEdit,
     QPushButton,
+    QScrollArea,
     QSpinBox,
     QVBoxLayout,
     QWidget,
@@ -88,7 +90,14 @@ class ReviewCorrectionDialog(QDialog):
         self._action: CorrectionActionRequest | None = None
         self.setWindowTitle("Possible lyrics matches")
         self.resize(760, 680)
-        root = QVBoxLayout(self)
+        outer = QVBoxLayout(self)
+        self.scroll_area = QScrollArea()
+        self.scroll_area.setWidgetResizable(True)
+        self.scroll_area.setFrameShape(QFrame.Shape.NoFrame)
+        scroll_content = QWidget()
+        root = QVBoxLayout(scroll_content)
+        self.scroll_area.setWidget(scroll_content)
+        outer.addWidget(self.scroll_area, 1)
 
         intro = _plain_label(
             "Corrections apply only to this stable source or exact lyric document. "
@@ -358,7 +367,7 @@ class ReviewCorrectionDialog(QDialog):
 
         buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
         buttons.rejected.connect(self.reject)
-        root.addWidget(buttons)
+        outer.addWidget(buttons)
 
     def action(self) -> CorrectionActionRequest | None:
         """Return the single deliberate action selected before the dialog closed."""

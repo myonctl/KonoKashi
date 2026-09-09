@@ -23,6 +23,9 @@ release yet.
   from the tracked public surface and preserved in an ignored local archive.
 - Ignore rules now cover private notes, diagnostics, profiles, draft/private
   screenshots, and playback scratch data.
+- Wrapped timed-lyric layers now use measured height-for-width geometry and a
+  scrollable active region, while adjacent transitions follow stable line
+  positions and Instant/Reduce motion remain fully still.
 
 ## Internal 1.0.0 build — 2026-08-23
 

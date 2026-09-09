@@ -113,7 +113,11 @@ class MotionPreferences:
 
     @property
     def effective_emphasis_transition_ms(self) -> int:
-        return 0 if self.reduced_motion else self.emphasis_transition_ms
+        return (
+            0
+            if self.reduced_motion or not self.smooth_scrolling
+            else self.emphasis_transition_ms
+        )
 
 
 @dataclass(frozen=True, slots=True)

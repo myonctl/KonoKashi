@@ -156,8 +156,12 @@ while preserving their relationships and leaves menus and metadata unchanged.
 Typography offers installed or manual font families, a multilingual live preview,
 and named weights from Thin through Black while preserving exact configured
 values. Motion offers Instant or Smooth lyric transitions plus Slow, Normal, Fast,
-and exact custom speed choices. Smooth mode animates only adjacent line changes;
-seeks and track changes settle immediately, and Reduce motion disables movement.
+and exact custom speed choices. Wrapped original, romanized/transliterated, and
+translated layers are measured at the available width; unusually tall active
+lyrics use the lyric area's scrollbar instead of overlapping. Smooth mode follows
+the measured old/new line positions only for adjacent changes. Seeks and track
+changes settle immediately, while Instant and Reduce motion disable both movement
+and opacity animation.
 
 Preferred and ignored MPRIS players use collection editors with discovered stable
 service-family suggestions and manual entry. Preferred order breaks ties between

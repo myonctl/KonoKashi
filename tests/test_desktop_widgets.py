@@ -8,10 +8,17 @@ from dataclasses import replace
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 import pytest
-from PySide6.QtCore import Qt, QTimer
+from PySide6.QtCore import QRect, Qt, QTimer
 from PySide6.QtGui import QColor, QFontMetrics, QPalette
 from PySide6.QtTest import QTest
-from PySide6.QtWidgets import QApplication, QBoxLayout, QLabel, QPlainTextEdit, QWidget
+from PySide6.QtWidgets import (
+    QApplication,
+    QBoxLayout,
+    QDialogButtonBox,
+    QLabel,
+    QPlainTextEdit,
+    QWidget,
+)
 
 from konokashi.application.desktop_state import (
     DesktopLyricGroup,
@@ -801,6 +808,37 @@ def test_review_dialog_exposes_routing_layers_and_aligned_translation_actions(
     )
     assert automatic.action() is not None
     assert automatic.action().kind is CorrectionActionKind.RESET_LANGUAGE  # type: ignore[union-attr]
+
+
+def test_review_dialog_keeps_actions_reachable_in_narrow_geometry(
+    qt_app: QApplication,
+) -> None:
+    dialog = ReviewCorrectionDialog(_review_snapshot())
+    dialog.resize(520, 620)
+    dialog.show()
+    qt_app.processEvents()
+
+    buttons = dialog.findChild(QDialogButtonBox)
+    assert buttons is not None
+    assert buttons.isVisible()
+    assert dialog.scroll_area.verticalScrollBar().maximum() > 0
+    dialog.scroll_area.ensureWidgetVisible(dialog.save_delay_button)
+    qt_app.processEvents()
+    assert dialog.save_delay_button.isVisible()
+    assert (
+        dialog.scroll_area.viewport()
+        .rect()
+        .intersects(
+            QRect(
+                dialog.save_delay_button.mapTo(
+                    dialog.scroll_area.viewport(),
+                    dialog.save_delay_button.rect().topLeft(),
+                ),
+                dialog.save_delay_button.size(),
+            )
+        )
+    )
+    dialog.close()
 
 
 def test_review_dialog_offers_only_match_reset_when_rejected_document_is_hidden(

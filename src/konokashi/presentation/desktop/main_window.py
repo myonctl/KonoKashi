@@ -10,6 +10,7 @@ from PySide6.QtCore import (
     QEasingCurve,
     QEvent,
     QPropertyAnimation,
+    QRect,
     QSize,
     Qt,
     QTimer,
@@ -20,6 +21,7 @@ from PySide6.QtGui import (
     QColor,
     QFont,
     QFontMetrics,
+    QHideEvent,
     QKeySequence,
     QPainter,
     QPalette,
@@ -36,6 +38,7 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QPlainTextEdit,
     QPushButton,
+    QScrollArea,
     QSizePolicy,
     QStackedWidget,
     QVBoxLayout,
@@ -171,8 +174,46 @@ def _group_text(groups: tuple[DesktopLyricGroup, ...]) -> str:
     return "\n\n".join(rendered)
 
 
-def _lyric_layer_label(accessible_name: str) -> QLabel:
-    label = _plain_label()
+class _WrappedLyricLabel(QLabel):
+    """Plain wrapped text with a width-dependent document height."""
+
+    def hasHeightForWidth(self) -> bool:
+        return True
+
+    def heightForWidth(self, width: int) -> int:
+        margins = self.contentsMargins()
+        inner_width = max(1, width - margins.left() - margins.right())
+        flags = int(
+            Qt.TextFlag.TextWordWrap
+            | Qt.TextFlag.TextExpandTabs
+            | Qt.TextFlag.TextDontClip
+        )
+        bounds = QFontMetrics(self.font()).boundingRect(
+            QRect(0, 0, inner_width, 1_000_000),
+            flags,
+            self.text(),
+        )
+        return (
+            max(
+                QFontMetrics(self.font()).lineSpacing(),
+                bounds.height(),
+            )
+            + margins.top()
+            + margins.bottom()
+        )
+
+    def sizeHint(self) -> QSize:
+        width = max(1, self.width())
+        return QSize(width, self.heightForWidth(width))
+
+    def minimumSizeHint(self) -> QSize:
+        return QSize(0, self.heightForWidth(max(1, self.width())))
+
+
+def _lyric_layer_label(accessible_name: str) -> _WrappedLyricLabel:
+    label = _WrappedLyricLabel()
+    label.setTextFormat(Qt.TextFormat.PlainText)
+    label.setTextInteractionFlags(Qt.TextInteractionFlag.NoTextInteraction)
     label.setAlignment(Qt.AlignmentFlag.AlignCenter)
     label.setWordWrap(True)
     label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
@@ -209,6 +250,32 @@ class _LyricGroupWidget(QWidget):
         ):
             label.setText(text or "")
             label.setVisible(text is not None)
+        self.updateGeometry()
+
+    def hasHeightForWidth(self) -> bool:
+        return True
+
+    def heightForWidth(self, width: int) -> int:
+        margins = self._layout.contentsMargins()
+        inner_width = max(1, width - margins.left() - margins.right())
+        labels = tuple(
+            label
+            for label in (self.original, self.romanized, self.translation)
+            if not label.isHidden()
+        )
+        return (
+            margins.top()
+            + margins.bottom()
+            + sum(label.heightForWidth(inner_width) for label in labels)
+            + max(0, len(labels) - 1) * self._layout.spacing()
+        )
+
+    def sizeHint(self) -> QSize:
+        width = max(1, self.width())
+        return QSize(width, self.heightForWidth(width))
+
+    def minimumSizeHint(self) -> QSize:
+        return QSize(0, self.heightForWidth(max(1, self.width())))
 
     def apply_appearance(self, appearance: AppearanceProfile, scale: float) -> None:
         self._appearance = appearance
@@ -259,6 +326,7 @@ class _LyricGroupWidget(QWidget):
             _apply_text_palette(label, semantic_color)
             label.setAlignment(_qt_alignment(appearance.lyric_alignment))
         self._layout.setSpacing(appearance.spacing.representation)
+        self.updateGeometry()
 
     def set_selection_enabled(self, enabled: bool) -> None:
         for label in (self.original, self.romanized, self.translation):
@@ -337,6 +405,44 @@ class LyricBand(QWidget):
         self._groups = groups
         self._render_groups()
 
+    def hasHeightForWidth(self) -> bool:
+        return True
+
+    def heightForWidth(self, width: int) -> int:
+        margins = self._layout.contentsMargins()
+        inner_width = max(1, width - margins.left() - margins.right())
+        groups = tuple(
+            widget for widget in self._group_widgets if not widget.isHidden()
+        )
+        document_height = (
+            margins.top()
+            + margins.bottom()
+            + sum(widget.heightForWidth(inner_width) for widget in groups)
+            + max(0, len(groups) - 1) * self._layout.spacing()
+        )
+        return max(self.minimumHeight(), document_height)
+
+    def sizeHint(self) -> QSize:
+        width = max(1, self.width())
+        return QSize(width, self.heightForWidth(width))
+
+    def minimumSizeHint(self) -> QSize:
+        return QSize(0, self.heightForWidth(max(1, self.width())))
+
+    def widgets_for_lines(self, line_ids: tuple[str, ...]) -> tuple[QWidget, ...]:
+        """Return currently rendered stable-ID widgets without allocating."""
+
+        wanted = set(line_ids)
+        return tuple(
+            widget
+            for group, widget in zip(
+                self._groups[: self._MAX_VISIBLE_GROUPS],
+                self._group_widgets,
+                strict=False,
+            )
+            if group.line_id in wanted and not widget.isHidden()
+        )
+
     def set_selection_enabled(self, enabled: bool) -> None:
         """Make copying lyrics an explicit opt-in interaction mechanic."""
 
@@ -383,10 +489,19 @@ class LyricBand(QWidget):
             else:
                 widget.setVisible(False)
         self.setVisible(bool(_group_text(visible_groups)))
+        self.updateGeometry()
 
 
-class LyricTransitionViewport(QWidget):
-    """Move one stable lyric stack with bounded, coalescing Qt animations."""
+class _TransitionAnchor:
+    """Measured visual position for stable incoming lyric IDs."""
+
+    def __init__(self, line_ids: tuple[str, ...], center_y: float) -> None:
+        self.line_ids = line_ids
+        self.center_y = center_y
+
+
+class LyricTransitionViewport(QScrollArea):
+    """Lay out a measured lyric document and FLIP adjacent stable line IDs."""
 
     def __init__(
         self,
@@ -399,16 +514,26 @@ class LyricTransitionViewport(QWidget):
         self.setAccessibleName("Timed lyrics")
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self.setMaximumWidth(1_040)
+        self.setFrameShape(QFrame.Shape.NoFrame)
+        self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        self.setWidgetResizable(False)
         self._offset = 0
-        self._content = QWidget(self)
+        self._previous = previous
+        self._active = active
+        self._following = following
+        self._scene = QWidget()
+        self._scene.setSizePolicy(
+            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum
+        )
+        self.setWidget(self._scene)
+        self._content = QWidget(self._scene)
         lyric_layout = QVBoxLayout(self._content)
         self.lyric_layout = lyric_layout
         lyric_layout.setContentsMargins(0, 0, 0, 0)
-        lyric_layout.addStretch(1)
         lyric_layout.addWidget(previous)
         lyric_layout.addWidget(active)
         lyric_layout.addWidget(following)
-        lyric_layout.addStretch(1)
 
         self._movement = QPropertyAnimation(self, b"lyricOffset", self)
         self._movement.setEasingCurve(QEasingCurve.Type.OutCubic)
@@ -417,6 +542,7 @@ class LyricTransitionViewport(QWidget):
         active.setGraphicsEffect(self._active_effect)
         self._emphasis = QPropertyAnimation(self._active_effect, b"opacity", self)
         self._emphasis.setEasingCurve(QEasingCurve.Type.OutCubic)
+        self._document_height = 0
 
     def lyric_offset(self) -> int:
         return self._offset
@@ -429,25 +555,74 @@ class LyricTransitionViewport(QWidget):
 
     @property
     def animation_running(self) -> bool:
-        return self._movement.state() is QAbstractAnimation.State.Running
+        return any(
+            animation.state() is QAbstractAnimation.State.Running
+            for animation in (self._movement, self._emphasis)
+        )
 
     @property
     def active_opacity(self) -> float:
         return self._active_effect.opacity()
 
-    def transition(self, direction: int, duration_ms: int, emphasis_ms: int) -> None:
-        """Start at most one transition; newer lyric state replaces stale motion."""
+    @property
+    def document_height(self) -> int:
+        return self._document_height
+
+    def _visual_center(self, line_ids: tuple[str, ...]) -> float | None:
+        widgets = tuple(
+            widget
+            for band in (self._previous, self._active, self._following)
+            for widget in band.widgets_for_lines(line_ids)
+        )
+        if not widgets:
+            return None
+        tops = [
+            widget.mapTo(self.viewport(), widget.rect().topLeft()).y()
+            for widget in widgets
+        ]
+        bottoms = [
+            widget.mapTo(self.viewport(), widget.rect().bottomLeft()).y()
+            for widget in widgets
+        ]
+        return (min(tops) + max(bottoms)) / 2
+
+    def capture_anchor(
+        self, line_ids: tuple[str, ...], *, adjacent: bool
+    ) -> _TransitionAnchor | None:
+        """Capture FIRST geometry, including any in-flight visual offset."""
+
+        if not adjacent or not line_ids:
+            return None
+        center = self._visual_center(line_ids)
+        if center is None:
+            return None
+        self._movement.stop()
+        self._emphasis.stop()
+        return _TransitionAnchor(line_ids, center)
+
+    def transition(
+        self,
+        anchor: _TransitionAnchor | None,
+        duration_ms: int,
+        emphasis_ms: int,
+    ) -> None:
+        """Invert from measured old geometry and converge to exact final layout."""
 
         self._movement.stop()
         self._emphasis.stop()
         self.set_lyric_offset(0)
         self._active_effect.setOpacity(1.0)
-        if direction == 0 or duration_ms <= 0:
+        self.relayout(center_active=True)
+        if anchor is None or duration_ms <= 0:
             return
-
-        distance = min(96, max(28, self.height() // 7))
+        final_center = self._visual_center(anchor.line_ids)
+        if final_center is None:
+            return
+        distance = round(anchor.center_y - final_center)
+        if distance == 0:
+            return
         self._movement.setDuration(duration_ms)
-        self._movement.setStartValue(direction * distance)
+        self._movement.setStartValue(distance)
         self._movement.setEndValue(0)
         self._movement.start()
         if emphasis_ms > 0:
@@ -456,10 +631,65 @@ class LyricTransitionViewport(QWidget):
             self._emphasis.setEndValue(1.0)
             self._emphasis.start()
 
-    def resizeEvent(self, event: QResizeEvent) -> None:
-        self._content.resize(event.size())
+    def settle(self) -> None:
+        """Stop every visual transition at the exact semantic layout."""
+
+        self._movement.stop()
+        self._emphasis.stop()
+        self.set_lyric_offset(0)
+        self._active_effect.setOpacity(1.0)
+        self.relayout(center_active=True)
+
+    def relayout(self, *, center_active: bool = False) -> None:
+        """Size the scroll document from real wrapped heights at viewport width."""
+
+        viewport = self.viewport()
+        width = max(1, viewport.width())
+        visible_bands = tuple(
+            band
+            for band in (self._previous, self._active, self._following)
+            if not band.isHidden()
+        )
+        spacing = self.lyric_layout.spacing()
+        document_height = (
+            sum(band.heightForWidth(width) for band in visible_bands)
+            + max(0, len(visible_bands) - 1) * spacing
+        )
+        self._document_height = max(0, document_height)
+        scene_height = max(viewport.height(), self._document_height)
+        slack = max(0, scene_height - self._document_height)
+        self.lyric_layout.setContentsMargins(0, slack // 2, 0, slack - slack // 2)
+        self._scene.resize(width, scene_height)
+        self._content.resize(width, scene_height)
+        self.lyric_layout.invalidate()
+        self.lyric_layout.activate()
         self._content.move(0, self._offset)
+        if center_active and not self._active.isHidden():
+            active_top = self._active.mapTo(
+                self._scene, self._active.rect().topLeft()
+            ).y()
+            active_height = self._active.height()
+            if active_height >= viewport.height():
+                target = active_top
+            else:
+                target = active_top + active_height // 2 - viewport.height() // 2
+            self.verticalScrollBar().setValue(target)
+
+    def resizeEvent(self, event: QResizeEvent) -> None:
+        self._movement.stop()
+        self._emphasis.stop()
+        self.set_lyric_offset(0)
+        self._active_effect.setOpacity(1.0)
         super().resizeEvent(event)
+        self.relayout(center_active=True)
+        QTimer.singleShot(0, lambda: self.relayout(center_active=True))
+
+    def hideEvent(self, event: QHideEvent) -> None:
+        # QScrollArea can receive an internal hide while its base constructor is
+        # still building the viewport, before the animations exist.
+        if hasattr(self, "_movement"):
+            self.settle()
+        super().hideEvent(event)
 
 
 class DiagnosticsDialog(QDialog):
@@ -930,6 +1160,10 @@ class MainWindow(DesktopWindowSurface):
 
         previous_state = self._state
         transition_direction = self._lyric_transition_direction(previous_state, state)
+        transition_anchor = self._lyric_column.capture_anchor(
+            tuple(group.line_id for group in state.active),
+            adjacent=transition_direction != 0,
+        )
         self._state = state
         self.title_label.setText(state.title or "KonoKashi")
         self.artist_label.setText(" · ".join(state.artists))
@@ -953,7 +1187,7 @@ class MainWindow(DesktopWindowSurface):
         self.active_band.set_groups(state.active)
         self.next_band.set_groups(following)
         self.static_lyrics.setPlainText(_group_text(state.static_lines))
-        has_lyric_bands = bool(previous or state.active or following)
+        has_lyric_bands = bool(_group_text(previous + state.active + following))
         self.previous_band.setVisible(bool(previous) and has_lyric_bands)
         self.active_band.setVisible(bool(state.active) and has_lyric_bands)
         self.next_band.setVisible(bool(following) and has_lyric_bands)
@@ -1025,7 +1259,7 @@ class MainWindow(DesktopWindowSurface):
         self.details_action.setEnabled(self.details_button.isEnabled())
         self._apply_visibility()
         self._lyric_column.transition(
-            transition_direction,
+            transition_anchor,
             appearance.motion.effective_transition_ms,
             appearance.motion.effective_emphasis_transition_ms,
         )
