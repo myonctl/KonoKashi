@@ -28,7 +28,7 @@ optdepends=('playerctl: optional MPRIS debugging' 'pipewire: optional audio timi
 # No public release exists. Supply the reviewed local sdist alongside PKGBUILD.
 # Replace this with the final immutable HTTPS release-asset URL before submission.
 source=("$pkgname-$_sdistver.tar.gz")
-sha256sums=('6d68d1602a68614dbb4264886dee60c01bdc31fa64a5b56da7b64f93f4bbcbb6')
+sha256sums=('42849c7d6781e538f7f73de9944dc3b78a2fe9438b2a2cde10c9cd229f0f09fc')
 
 build() {
   cd "$pkgname-$_sdistver"
