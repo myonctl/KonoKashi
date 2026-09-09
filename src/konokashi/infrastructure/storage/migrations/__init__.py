@@ -309,6 +309,12 @@ MIGRATIONS: tuple[Migration, ...] = (
             )
             """,
             """
+            CREATE INDEX lyric_representation_candidates_lookup
+            ON lyric_representation_candidates(
+                document_id, source_line_id, representation_kind, provenance
+            )
+            """,
+            """
             CREATE TABLE lyric_representation_candidate_diagnostics (
                 candidate_id TEXT NOT NULL
                     REFERENCES lyric_representation_candidates(candidate_id)

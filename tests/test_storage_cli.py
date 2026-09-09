@@ -2,12 +2,17 @@
 
 from __future__ import annotations
 
+import shutil
 from pathlib import Path
 
 import pytest
 
 from konokashi import cli
 from konokashi.infrastructure.storage.migrations import CURRENT_SCHEMA_VERSION
+
+HISTORICAL_SCHEMA_10_FIXTURE = (
+    Path(__file__).parent / "fixtures/storage/historical_schema_10.sqlite3"
+)
 
 
 def test_storage_status_missing_then_migrate_then_current(
@@ -32,6 +37,29 @@ def test_storage_status_missing_then_migrate_then_current(
     assert "representation decisions: 0" in current
     assert "lyric language overrides: 0" in current
     assert "lyric match rejections: 0" in current
+
+
+def test_storage_cli_migrates_historical_schema_ten_fixture(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    path = tmp_path / "historical-schema-10.sqlite3"
+    shutil.copyfile(HISTORICAL_SCHEMA_10_FIXTURE, path)
+
+    assert cli.main(["storage", "status"], database_path=path) == 0
+    pending = capsys.readouterr().out
+    assert "schema version: 10" in pending
+    assert "migration status: pending" in pending
+    assert "integrity: ok" in pending
+
+    assert cli.main(["storage", "migrate"], database_path=path) == 0
+    migrated = capsys.readouterr().out
+    assert "storage is current at schema version 12" in migrated
+
+    assert cli.main(["storage", "status"], database_path=path) == 0
+    current = capsys.readouterr().out
+    assert "schema version: 12" in current
+    assert "migration status: current" in current
+    assert "integrity: ok" in current
 
 
 def test_storage_settings_persist_across_fresh_cli_calls(
