@@ -21,6 +21,7 @@ from konokashi.application.desktop_state import (
 from konokashi.application.review_corrections import (
     ReviewCorrectionSnapshot,
     TrackAuditEvidence,
+    TranslationReviewLine,
 )
 from konokashi.application.settings import (
     DesktopInteractionSettings,
@@ -28,10 +29,18 @@ from konokashi.application.settings import (
 )
 from konokashi.domain.identity import YouTubeIdentity
 from konokashi.domain.lyrics import (
+    ApprovalState,
+    ContentProvenance,
     LyricsAlternative,
     LyricsMatchConfidence,
     LyricsMatchDecision,
     LyricsProviderCandidate,
+    RepresentationKind,
+)
+from konokashi.domain.representations import (
+    LanguageRoutingStatus,
+    RepresentationAvailability,
+    RepresentationLayerStatus,
 )
 from konokashi.domain.synchronization import ClockHealth, PlaybackState
 from konokashi.presentation.desktop.app import run_desktop
@@ -715,6 +724,83 @@ def test_review_dialog_track_and_delay_requests_are_typed(
     enrich_action = enrich_dialog.action()
     assert enrich_action is not None
     assert enrich_action.kind is CorrectionActionKind.ENRICH_YOUTUBE
+
+
+def test_review_dialog_exposes_routing_layers_and_aligned_translation_actions(
+    qt_app: QApplication,
+) -> None:
+    status = RepresentationLayerStatus(
+        RepresentationKind.TRANSLATED,
+        RepresentationAvailability.AVAILABLE_HIDDEN,
+        1,
+        1,
+        0,
+        0,
+        0,
+        0,
+        1,
+        1,
+        0,
+        ("LRCLIB",),
+        ("automatic translation backend is not implemented",),
+    )
+    snapshot = replace(
+        _review_snapshot(),
+        routing_status=LanguageRoutingStatus.AMBIGUOUS,
+        routing_language=None,
+        routing_diagnostic="Han-only text needs an exact-document choice",
+        language_override="zh",
+        layer_statuses=(status,),
+        translation_lines=(
+            TranslationReviewLine(
+                "line-0001",
+                "君の声",
+                "I hear your voice",
+                ContentProvenance.PROVIDER,
+                ApprovalState.UNREVIEWED,
+            ),
+        ),
+    )
+    dialog = ReviewCorrectionDialog(snapshot)
+    dialog.show()
+    qt_app.processEvents()
+
+    assert dialog.translation_original.text() == "Original (line-0001): 君の声"
+    assert dialog.translation_edit.text() == "I hear your voice"
+    assert dialog.automatic_language_button.isEnabled()
+    audit = dialog.findChild(QPlainTextEdit)
+    assert audit is not None
+    assert "state: ambiguous" in audit.toPlainText()
+    assert "translated: available-but-hidden" in audit.toPlainText()
+    assert "origins LRCLIB" in audit.toPlainText()
+
+    dialog.translation_edit.setText(" I can hear your voice ")
+    QTest.mouseClick(dialog.save_translation_button, Qt.MouseButton.LeftButton)
+    action = dialog.action()
+    assert action is not None
+    assert action.kind is CorrectionActionKind.PUT_TRANSLATION
+    assert action.source_line_id == "line-0001"
+    assert action.text == "I can hear your voice"
+
+    reset = ReviewCorrectionDialog(snapshot)
+    QTest.mouseClick(reset.reset_translation_button, Qt.MouseButton.LeftButton)
+    reset_action = reset.action()
+    assert reset_action is not None
+    assert reset_action.kind is CorrectionActionKind.RESET_TRANSLATION
+    assert reset_action.source_line_id == "line-0001"
+
+    japanese = ReviewCorrectionDialog(snapshot)
+    QTest.mouseClick(japanese.japanese_button, Qt.MouseButton.LeftButton)
+    assert japanese.action() is not None
+    assert japanese.action().kind is CorrectionActionKind.SET_LANGUAGE_JA  # type: ignore[union-attr]
+
+    automatic = ReviewCorrectionDialog(snapshot)
+    QTest.mouseClick(
+        automatic.automatic_language_button,
+        Qt.MouseButton.LeftButton,
+    )
+    assert automatic.action() is not None
+    assert automatic.action().kind is CorrectionActionKind.RESET_LANGUAGE  # type: ignore[union-attr]
 
 
 def test_review_dialog_offers_only_match_reset_when_rejected_document_is_hidden(

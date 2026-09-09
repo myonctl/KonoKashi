@@ -36,6 +36,8 @@ from konokashi.domain.representations import (
     RepresentationDisplaySettings,
     RomanizationProviderResult,
     RomanizationRequest,
+    TranslationGenerationRequest,
+    TranslationGenerationResult,
 )
 from konokashi.domain.synchronization import (
     AudioLatencyProbeResult,
@@ -459,6 +461,15 @@ class RomanizationProviderPort(Protocol):
 
     def generate(self, request: RomanizationRequest) -> RomanizationProviderResult:
         """Generate or return a controlled unavailable/failure result."""
+
+
+class TranslationGeneratorPort(Protocol):
+    """Optional future boundary; no translation generator is connected today."""
+
+    def generate(
+        self, request: TranslationGenerationRequest
+    ) -> TranslationGenerationResult:
+        """Generate one explicitly aligned result under separate product consent."""
 
 
 class LanguageEvidenceProviderPort(Protocol):

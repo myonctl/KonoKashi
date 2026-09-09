@@ -16,10 +16,12 @@ from konokashi.application.resolve_lyrics import LyricsResolver
 from konokashi.application.review_corrections import (
     ReviewCorrectionService,
     ReviewCorrectionSnapshot,
+    TranslationReviewLine,
 )
 from konokashi.application.select_player import PlayerSelectionService
 from konokashi.application.settings import DesktopInteractionSettings
 from konokashi.domain.lyrics import (
+    LyricDocument,
     LyricsAlternative,
     LyricsResolutionResult,
     RepresentationKind,
@@ -27,7 +29,10 @@ from konokashi.domain.lyrics import (
 from konokashi.domain.models import PlayerListResult
 from konokashi.domain.representations import (
     EffectiveRepresentationLine,
+    LanguageRoutingEvidence,
     RepresentationDisplaySettings,
+    RepresentationGenerationReport,
+    RepresentationLayerStatus,
 )
 from konokashi.domain.synchronization import LyricDocumentTiming
 from konokashi.domain.tracks import PlayerSelectionResult, ResolvedTrack
@@ -42,6 +47,9 @@ class FrontendLyricsBundle:
     representations: tuple[EffectiveRepresentationLine, ...]
     display_settings: RepresentationDisplaySettings
     document_timing: LyricDocumentTiming | None
+    generation_report: RepresentationGenerationReport | None = None
+    routing: LanguageRoutingEvidence | None = None
+    layer_statuses: tuple[RepresentationLayerStatus, ...] = ()
 
 
 class FrontendSessionPort(Protocol):
@@ -61,6 +69,13 @@ class FrontendSessionPort(Protocol):
 
     def put_display_settings(self, settings: RepresentationDisplaySettings) -> None:
         """Persist shared multilingual display settings."""
+
+    def representation_statuses(
+        self,
+        bundle: FrontendLyricsBundle,
+        settings: RepresentationDisplaySettings,
+    ) -> tuple[RepresentationLayerStatus, ...]:
+        """Recompute shown/hidden layer state without regenerating content."""
 
     def put_interaction_settings(self, settings: DesktopInteractionSettings) -> None:
         """Persist opt-in desktop interaction mechanics."""
@@ -103,6 +118,28 @@ class FrontendSessionPort(Protocol):
 
     def reset_match(self, track: ResolvedTrack) -> bool:
         """Reset current and rejected lyric match preferences for one source."""
+
+    def set_document_language(
+        self, bundle: FrontendLyricsBundle, language: str
+    ) -> None:
+        """Persist and regenerate one exact-document Han language route."""
+
+    def reset_document_language(self, bundle: FrontendLyricsBundle) -> bool:
+        """Reset exact-document language routing to automatic."""
+
+    def put_translation(
+        self,
+        bundle: FrontendLyricsBundle,
+        *,
+        source_line_id: str,
+        text: str,
+    ) -> None:
+        """Save and approve one explicitly mapped local translation line."""
+
+    def reset_translation(
+        self, bundle: FrontendLyricsBundle, *, source_line_id: str
+    ) -> bool:
+        """Reset the user decision for one exact translated line."""
 
     def set_display_delay(self, bundle: FrontendLyricsBundle, delay_us: int) -> None:
         """Persist one exact-document lyric delay."""
@@ -161,7 +198,7 @@ class FrontendSessionService:
         # desktop worker, and preserves imported/user-approved precedence.
         # Keeping it here also gives the future TUI the same behavior without
         # teaching either presentation adapter about romanization engines.
-        self._representations.generate(document)
+        report = self._representations.generate(document)
         effective = tuple(
             line
             for kind in (
@@ -172,12 +209,48 @@ class FrontendSessionService:
             for line in self._representations.effective_lines(document, kind)
         )
         timing = self._timing.get_document_timing(document.document_id)
-        return FrontendLyricsBundle(track, result, effective, settings, timing)
+        statuses = tuple(
+            self._representations.layer_status(document, kind, visible=visible)
+            for kind, visible in (
+                (RepresentationKind.ROMANIZED, settings.show_romanized),
+                (RepresentationKind.TRANSLITERATED, settings.show_romanized),
+                (RepresentationKind.TRANSLATED, settings.show_translated),
+            )
+        )
+        return FrontendLyricsBundle(
+            track,
+            result,
+            effective,
+            settings,
+            timing,
+            report,
+            self._representations.routing_language(document),
+            statuses,
+        )
 
     def put_display_settings(self, settings: RepresentationDisplaySettings) -> None:
         """Persist the same display policy used by every frontend."""
 
         self._settings.put_representation_display(settings)
+
+    def representation_statuses(
+        self,
+        bundle: FrontendLyricsBundle,
+        settings: RepresentationDisplaySettings,
+    ) -> tuple[RepresentationLayerStatus, ...]:
+        """Recompute availability after a visibility-only settings change."""
+
+        document = bundle.resolution.document
+        if document is None:
+            return ()
+        return tuple(
+            self._representations.layer_status(document, kind, visible=visible)
+            for kind, visible in (
+                (RepresentationKind.ROMANIZED, settings.show_romanized),
+                (RepresentationKind.TRANSLITERATED, settings.show_romanized),
+                (RepresentationKind.TRANSLATED, settings.show_translated),
+            )
+        )
 
     def put_interaction_settings(self, settings: DesktopInteractionSettings) -> None:
         """Persist desktop mechanics through the shared settings repository."""
@@ -237,7 +310,38 @@ class FrontendSessionService:
                 cache_hit=alternatives.cache_hit or enrichment_cache_hit,
                 network_used=(alternatives.network_used or enrichment_network_used),
             )
-        return self._corrections.snapshot(bundle.track, bundle.resolution, alternatives)
+        snapshot = self._corrections.snapshot(
+            bundle.track, bundle.resolution, alternatives
+        )
+        document = bundle.resolution.document
+        if document is None:
+            return snapshot
+        routing = self._representations.routing_language(document)
+        override = self._representations.language_override(document.document_id)
+        translated = self._representations.effective_lines(
+            document, RepresentationKind.TRANSLATED
+        )
+        return replace(
+            snapshot,
+            routing_status=routing.status,
+            routing_language=routing.language,
+            routing_diagnostic=routing.diagnostic,
+            language_override=(None if override is None else override.language),
+            layer_statuses=self.representation_statuses(
+                bundle, bundle.display_settings
+            ),
+            translation_lines=tuple(
+                TranslationReviewLine(
+                    item.original_line.line_id,
+                    item.original_line.text,
+                    item.text,
+                    item.provenance,
+                    item.approval_state,
+                    item.diagnostics,
+                )
+                for item in translated
+            ),
+        )
 
     def put_track_override(
         self, track: ResolvedTrack, *, title: str, artists: tuple[str, ...]
@@ -266,6 +370,49 @@ class FrontendSessionService:
     def reset_match(self, track: ResolvedTrack) -> bool:
         return self._corrections.reset_match(track)
 
+    def set_document_language(
+        self, bundle: FrontendLyricsBundle, language: str
+    ) -> None:
+        document = _require_document(bundle)
+        self._representations.set_language_override(document, language)
+        self._representations.generate(document)
+
+    def reset_document_language(self, bundle: FrontendLyricsBundle) -> bool:
+        document = _require_document(bundle)
+        removed = self._representations.reset_language_override(document)
+        self._representations.generate(document)
+        return removed
+
+    def put_translation(
+        self,
+        bundle: FrontendLyricsBundle,
+        *,
+        source_line_id: str,
+        text: str,
+    ) -> None:
+        document = _require_document(bundle)
+        self._representations.set_draft(
+            document,
+            source_line_id,
+            RepresentationKind.TRANSLATED,
+            text,
+        )
+        self._representations.approve(
+            document,
+            source_line_id,
+            RepresentationKind.TRANSLATED,
+        )
+
+    def reset_translation(
+        self, bundle: FrontendLyricsBundle, *, source_line_id: str
+    ) -> bool:
+        document = _require_document(bundle)
+        return self._representations.reset(
+            document,
+            source_line_id,
+            RepresentationKind.TRANSLATED,
+        )
+
     def set_display_delay(self, bundle: FrontendLyricsBundle, delay_us: int) -> None:
         self._corrections.set_display_delay(bundle.track, bundle.resolution, delay_us)
 
@@ -280,3 +427,10 @@ class FrontendSessionService:
             cancellation = getattr(self._youtube_metadata, "cancel_inflight", None)
             if callable(cancellation):
                 cancellation()
+
+
+def _require_document(bundle: FrontendLyricsBundle) -> LyricDocument:
+    document = bundle.resolution.document
+    if document is None:
+        raise ValueError("there is no current lyric document")
+    return document

@@ -66,6 +66,14 @@ def render_representations(
     decisions = service.decisions(document.document_id)
     language_override = service.language_override(document.document_id)
     routing = service.routing_language(document)
+    layer_statuses = tuple(
+        service.layer_status(document, kind, visible=visible)
+        for kind, visible in (
+            (RepresentationKind.ROMANIZED, settings.show_romanized),
+            (RepresentationKind.TRANSLITERATED, settings.show_romanized),
+            (RepresentationKind.TRANSLATED, settings.show_translated),
+        )
+    )
     scripts = sorted({analyze_scripts(line.text).label for line in originals})
     effective_pronunciation = tuple(
         line
@@ -89,12 +97,24 @@ def render_representations(
         f"user decisions: {len(decisions)}",
         "user-approved language: "
         + ("none" if language_override is None else language_override.language),
+        f"routing state: {routing.status.value}",
         "effective routing language: "
-        + ("ambiguous" if routing.language is None else routing.language),
+        + (routing.status.value if routing.language is None else routing.language),
         f"routing evidence: {routing.diagnostic}",
         f"romanized/transliterated aligned: {pronunciation_aligned}",
         f"romanized/transliterated missing: {pronunciation_missing}",
         f"translated aligned: {sum(line.text is not None for line in translated)}",
+        *(
+            (
+                f"{status.kind.value} state: {status.availability.value}; "
+                f"eligible {status.eligible}/{status.original_lines}; "
+                f"persisted {status.candidate_persisted}; "
+                f"selected {status.candidate_selected}; "
+                f"rendered {status.candidate_rendered}; "
+                f"origins {', '.join(status.origins) or 'none'}"
+            )
+            for status in layer_statuses
+        ),
     ]
     if report is not None:
         output.extend(
@@ -151,6 +171,8 @@ def render_representations(
         translation = translated_by_id[original.line_id]
         if settings.show_translated and translation.text is not None:
             output.append(f"  translated [{_status(translation)}]: {translation.text}")
+        elif settings.show_translated:
+            output.append("  translated [unavailable]: no aligned translation")
     if not full and len(originals) > len(shown):
         output.append(f"  ... {len(originals) - len(shown)} more lines; use --full")
     if report is not None and report.diagnostics:

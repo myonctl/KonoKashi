@@ -31,6 +31,7 @@ class GenerationStatus(Enum):
     """Outcome for one independently generated original line."""
 
     AVAILABLE = "available"
+    EMPTY = "generated-empty"
     UNAVAILABLE = "unavailable"
     FAILED = "failed"
 
@@ -42,6 +43,26 @@ class RepresentationUncertainty(Enum):
     AMBIGUOUS = "ambiguous"
 
 
+class LanguageRoutingStatus(Enum):
+    """Truthful document-level routing state independent of a language value."""
+
+    AUTOMATIC = "automatic"
+    EXPLICIT = "explicit"
+    AMBIGUOUS = "ambiguous"
+    UNAVAILABLE = "unavailable"
+    FAILED = "failed"
+
+
+class RepresentationAvailability(Enum):
+    """User-facing state of one aligned representation layer."""
+
+    AVAILABLE_SHOWN = "available-and-shown"
+    AVAILABLE_HIDDEN = "available-but-hidden"
+    UNAVAILABLE = "unavailable"
+    PARTIAL = "partial"
+    FAILED = "failed"
+
+
 @dataclass(frozen=True, slots=True)
 class LanguageRoutingEvidence:
     """Provider-neutral document-level language evidence for script routing."""
@@ -49,6 +70,7 @@ class LanguageRoutingEvidence:
     language: str | None
     uncertainty: RepresentationUncertainty
     diagnostic: str
+    status: LanguageRoutingStatus = LanguageRoutingStatus.AUTOMATIC
 
 
 @dataclass(frozen=True, slots=True)
@@ -83,6 +105,29 @@ class RomanizationProviderResult:
     language: str | None = None
     script: str = "Latn"
     uncertainty: RepresentationUncertainty = RepresentationUncertainty.AMBIGUOUS
+    diagnostics: tuple[str, ...] = field(default_factory=tuple)
+
+
+@dataclass(frozen=True, slots=True)
+class TranslationGenerationRequest:
+    """Future translation input with exact alignment and explicit target language."""
+
+    document_id: str
+    original_line_id: str
+    text: str
+    target_language: str
+    source_language: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class TranslationGenerationResult:
+    """Future provider-neutral result; no implementation is connected today."""
+
+    status: GenerationStatus
+    provider_name: str
+    provider_version: str
+    target_language: str
+    text: str | None = None
     diagnostics: tuple[str, ...] = field(default_factory=tuple)
 
 
@@ -149,6 +194,25 @@ class EffectiveRepresentationLine:
 
 
 @dataclass(frozen=True, slots=True)
+class RepresentationLayerStatus:
+    """Aggregate candidate/selection/render state for one exact document layer."""
+
+    kind: RepresentationKind
+    availability: RepresentationAvailability
+    original_lines: int
+    eligible: int
+    generated_successfully: int
+    generated_empty: int
+    engine_unavailable: int
+    generation_failed: int
+    candidate_persisted: int
+    candidate_selected: int
+    candidate_rendered: int
+    origins: tuple[str, ...] = field(default_factory=tuple)
+    diagnostics: tuple[str, ...] = field(default_factory=tuple)
+
+
+@dataclass(frozen=True, slots=True)
 class ScriptRoutingDecision:
     """Explain an adapter route or why generation is deliberately unavailable."""
 
@@ -158,6 +222,7 @@ class ScriptRoutingDecision:
     language: str | None
     uncertainty: RepresentationUncertainty
     diagnostic: str
+    eligible: bool = True
 
 
 @dataclass(frozen=True, slots=True)
@@ -171,6 +236,9 @@ class RepresentationGenerationReport:
     unavailable: int
     failed: int
     diagnostics: tuple[str, ...] = field(default_factory=tuple)
+    eligible: int = 0
+    generated_empty: int = 0
+    candidate_persisted: int = 0
 
 
 @dataclass(frozen=True, slots=True)

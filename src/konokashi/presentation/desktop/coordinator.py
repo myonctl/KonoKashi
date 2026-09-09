@@ -440,11 +440,19 @@ class DesktopCoordinator(QObject):
             bundle = self._bundle
             token = self._controller.current_token
             if bundle is not None and token is not None:
+                status_loader = getattr(self._frontend, "representation_statuses", None)
+                statuses = (
+                    status_loader(bundle, display)
+                    if callable(status_loader)
+                    else bundle.layer_statuses
+                )
                 self._controller.accept_resolution(
                     token,
                     bundle.resolution,
                     bundle.representations,
                     display,
+                    statuses,
+                    bundle.routing,
                 )
                 if self._publisher is not None and self._publisher.current is not None:
                     self._controller.accept_snapshot(self._publisher.current)
@@ -591,6 +599,8 @@ class DesktopCoordinator(QObject):
                 result.resolution,
                 result.representations,
                 result.display_settings,
+                result.layer_statuses,
+                result.routing,
             ):
                 return
             self._bundle = result
@@ -1023,6 +1033,29 @@ class DesktopCoordinator(QObject):
                 frontend.reject_alternative(track, action.alternative)
             elif action.kind is CorrectionActionKind.RESET_MATCH:
                 frontend.reset_match(track)
+            elif action.kind is CorrectionActionKind.SET_LANGUAGE_ZH:
+                frontend.set_document_language(bundle, "zh")
+            elif action.kind is CorrectionActionKind.SET_LANGUAGE_JA:
+                frontend.set_document_language(bundle, "ja")
+            elif action.kind is CorrectionActionKind.RESET_LANGUAGE:
+                frontend.reset_document_language(bundle)
+            elif action.kind is CorrectionActionKind.PUT_TRANSLATION:
+                if action.source_line_id is None or not action.text:
+                    raise ValueError(
+                        "an exact original line and non-blank translation are required"
+                    )
+                frontend.put_translation(
+                    bundle,
+                    source_line_id=action.source_line_id,
+                    text=action.text,
+                )
+            elif action.kind is CorrectionActionKind.RESET_TRANSLATION:
+                if action.source_line_id is None:
+                    raise ValueError("an exact original lyric line is required")
+                frontend.reset_translation(
+                    bundle,
+                    source_line_id=action.source_line_id,
+                )
             elif action.kind is CorrectionActionKind.SET_DELAY:
                 document = bundle.resolution.document
                 if document is None or action.delay_us is None:

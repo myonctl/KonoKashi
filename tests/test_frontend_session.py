@@ -19,7 +19,12 @@ from konokashi.domain.lyrics import (
 from konokashi.domain.models import PlayerListResult
 from konokashi.domain.representations import (
     EffectiveRepresentationLine,
+    LanguageRoutingEvidence,
+    RepresentationAvailability,
     RepresentationDisplaySettings,
+    RepresentationGenerationReport,
+    RepresentationLayerStatus,
+    RepresentationUncertainty,
 )
 from konokashi.domain.synchronization import LyricDocumentTiming
 from konokashi.domain.tracks import (
@@ -76,12 +81,38 @@ class _Representations:
 
     def generate(self, lyric_document):  # type: ignore[no-untyped-def]
         self.generated.append(lyric_document.document_id)
+        return RepresentationGenerationReport(lyric_document.document_id, 1, 1, 0, 0, 0)
 
     def effective_lines(self, lyric_document, kind):  # type: ignore[no-untyped-def]
         line = lyric_document.representations[0].lines[0]
         text = "romaji" if kind is RepresentationKind.ROMANIZED else None
         return (
             EffectiveRepresentationLine(line, kind, text, None, None, None, None, None),
+        )
+
+    def layer_status(self, lyric_document, kind, *, visible):  # type: ignore[no-untyped-def]
+        return RepresentationLayerStatus(
+            kind,
+            (
+                RepresentationAvailability.AVAILABLE_SHOWN
+                if visible
+                else RepresentationAvailability.AVAILABLE_HIDDEN
+            ),
+            1,
+            1,
+            1,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1 if visible else 0,
+            ("fixture",),
+        )
+
+    def routing_language(self, _document):  # type: ignore[no-untyped-def]
+        return LanguageRoutingEvidence(
+            "ja", RepresentationUncertainty.NONE, "fixture routing"
         )
 
 

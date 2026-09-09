@@ -20,7 +20,9 @@ from konokashi.domain.lyrics import (
 )
 from konokashi.domain.representations import (
     EffectiveRepresentationLine,
+    LanguageRoutingEvidence,
     RepresentationDisplaySettings,
+    RepresentationLayerStatus,
 )
 from konokashi.domain.synchronization import ClockHealth, PlaybackState
 from konokashi.domain.tracks import ResolvedTrack
@@ -192,6 +194,8 @@ class DesktopStateController:
         result: LyricsResolutionResult,
         representations: tuple[EffectiveRepresentationLine, ...] = (),
         settings: RepresentationDisplaySettings | None = None,
+        layer_statuses: tuple[RepresentationLayerStatus, ...] = (),
+        routing: LanguageRoutingEvidence | None = None,
     ) -> bool:
         """Accept only the current source result and map every normal outcome."""
 
@@ -203,6 +207,9 @@ class DesktopStateController:
         if settings is not None:
             self._settings = settings
         document = result.document
+        representation_diagnostics = _representation_diagnostics(
+            layer_statuses, routing
+        )
         if result.status is LyricsResolutionStatus.FOUND_TIMED and document is not None:
             self._state = self._replace_content(
                 state=DesktopLyricsState.TIMED,
@@ -211,7 +218,7 @@ class DesktopStateController:
                 match_confidence=(
                     None if result.confidence is None else result.confidence.value
                 ),
-                diagnostics=result.diagnostics,
+                diagnostics=(*result.diagnostics, *representation_diagnostics),
             )
             return True
         if (
@@ -226,7 +233,7 @@ class DesktopStateController:
                 match_confidence=(
                     None if result.confidence is None else result.confidence.value
                 ),
-                diagnostics=result.diagnostics,
+                diagnostics=(*result.diagnostics, *representation_diagnostics),
             )
             return True
         if result.status is LyricsResolutionStatus.INSTRUMENTAL:
@@ -241,14 +248,14 @@ class DesktopStateController:
                 match_confidence=(
                     None if result.confidence is None else result.confidence.value
                 ),
-                diagnostics=result.diagnostics,
+                diagnostics=(*result.diagnostics, *representation_diagnostics),
             )
             return True
         state = _state_for_resolution_status(result.status)
         self._state = self._replace_content(
             state=state,
             message=_STATUS_MESSAGES.get(result.status, result.status.value),
-            diagnostics=result.diagnostics,
+            diagnostics=(*result.diagnostics, *representation_diagnostics),
         )
         return True
 
@@ -433,3 +440,30 @@ def _state_for_resolution_status(status: LyricsResolutionStatus) -> DesktopLyric
     }:
         return DesktopLyricsState.PROVIDER_FAILURE
     return DesktopLyricsState.ERROR
+
+
+def _representation_diagnostics(
+    statuses: tuple[RepresentationLayerStatus, ...],
+    routing: LanguageRoutingEvidence | None = None,
+) -> tuple[str, ...]:
+    output: list[str] = []
+    if routing is not None:
+        output.append(
+            f"document language routing: {routing.status.value}; "
+            f"language {routing.language or 'undetermined'}; "
+            f"evidence {routing.diagnostic}"
+        )
+    for status in statuses:
+        output.append(
+            f"{status.kind.value} layer: {status.availability.value}; "
+            f"selected {status.candidate_selected}/{status.original_lines}; "
+            + (
+                "origin unavailable"
+                if not status.origins
+                else "origin " + ", ".join(status.origins)
+            )
+        )
+        output.extend(
+            f"{status.kind.value} layer detail: {item}" for item in status.diagnostics
+        )
+    return tuple(output)

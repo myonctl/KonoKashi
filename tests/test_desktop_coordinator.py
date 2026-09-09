@@ -222,6 +222,30 @@ class _Frontend:
         self.correction_calls.append(("reset-match", track))
         return True
 
+    def set_document_language(
+        self, bundle: FrontendLyricsBundle, language: str
+    ) -> None:
+        self.correction_calls.append(("language", (bundle, language)))
+
+    def reset_document_language(self, bundle: FrontendLyricsBundle) -> bool:
+        self.correction_calls.append(("reset-language", bundle))
+        return True
+
+    def put_translation(
+        self,
+        bundle: FrontendLyricsBundle,
+        *,
+        source_line_id: str,
+        text: str,
+    ) -> None:
+        self.correction_calls.append(("translation", (bundle, source_line_id, text)))
+
+    def reset_translation(
+        self, bundle: FrontendLyricsBundle, *, source_line_id: str
+    ) -> bool:
+        self.correction_calls.append(("reset-translation", (bundle, source_line_id)))
+        return True
+
     def set_display_delay(self, bundle: FrontendLyricsBundle, delay_us: int) -> None:
         self.correction_calls.append(("delay", (bundle, delay_us)))
 
@@ -548,6 +572,52 @@ def test_review_load_and_track_correction_dispatch_through_application_boundary(
     assert title == "Corrected"
     assert artists == ("Artist",)
     assert frontend.load_calls == [track, track]
+    coordinator.close()
+    window.close()
+
+
+def test_representation_corrections_dispatch_exact_document_values(
+    qt_app: QApplication,
+) -> None:
+    window = _ReviewWindow()
+    coordinator = _ImmediateCoordinator(qt_app, window)
+    track = _track("xa4WrgqI7q0", "Track A")
+    frontend = _Frontend(track)
+    coordinator._frontend = frontend
+    coordinator._begin_track(track)
+
+    requests = (
+        CorrectionActionRequest(CorrectionActionKind.SET_LANGUAGE_ZH),
+        CorrectionActionRequest(CorrectionActionKind.SET_LANGUAGE_JA),
+        CorrectionActionRequest(CorrectionActionKind.RESET_LANGUAGE),
+        CorrectionActionRequest(
+            CorrectionActionKind.PUT_TRANSLATION,
+            source_line_id="line-0001",
+            text="Translated line",
+        ),
+        CorrectionActionRequest(
+            CorrectionActionKind.RESET_TRANSLATION,
+            source_line_id="line-0001",
+        ),
+    )
+    for request in requests:
+        coordinator._apply_correction(request)
+
+    kinds = [kind for kind, _value in frontend.correction_calls]
+    assert kinds == [
+        "language",
+        "language",
+        "reset-language",
+        "translation",
+        "reset-translation",
+    ]
+    assert frontend.correction_calls[0][1][1] == "zh"
+    assert frontend.correction_calls[1][1][1] == "ja"
+    assert frontend.correction_calls[3][1][1:] == (
+        "line-0001",
+        "Translated line",
+    )
+    assert frontend.correction_calls[4][1][1] == "line-0001"
     coordinator.close()
     window.close()
 

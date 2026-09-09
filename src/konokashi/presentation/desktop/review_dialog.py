@@ -22,7 +22,10 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from konokashi.application.review_corrections import ReviewCorrectionSnapshot
+from konokashi.application.review_corrections import (
+    ReviewCorrectionSnapshot,
+    TranslationReviewLine,
+)
 from konokashi.domain.lyrics import LyricsAlternative
 
 
@@ -41,6 +44,11 @@ class CorrectionActionKind(Enum):
     RESET_MATCH = "reset-match"
     SET_DELAY = "set-delay"
     RESET_DELAY = "reset-delay"
+    SET_LANGUAGE_ZH = "set-language-zh"
+    SET_LANGUAGE_JA = "set-language-ja"
+    RESET_LANGUAGE = "reset-language"
+    PUT_TRANSLATION = "put-translation"
+    RESET_TRANSLATION = "reset-translation"
 
 
 @dataclass(frozen=True, slots=True)
@@ -52,6 +60,8 @@ class CorrectionActionRequest:
     artists: tuple[str, ...] = ()
     alternative: LyricsAlternative | None = None
     delay_us: int | None = None
+    source_line_id: str | None = None
+    text: str | None = None
 
 
 def _plain_label(text: str) -> QLabel:
@@ -239,6 +249,80 @@ class ReviewCorrectionDialog(QDialog):
         lyrics_layout.addLayout(match_buttons)
         root.addWidget(lyrics_group)
 
+        language_group = QGroupBox("Han-language routing")
+        language_layout = QVBoxLayout(language_group)
+        routing_text = (
+            "No lyric document is loaded."
+            if snapshot.routing_status is None
+            else (
+                f"State: {snapshot.routing_status.value} · "
+                f"language: {snapshot.routing_language or 'undetermined'}\n"
+                f"{snapshot.routing_diagnostic or ''}"
+            )
+        )
+        language_layout.addWidget(_plain_label(routing_text))
+        language_buttons = QHBoxLayout()
+        self.chinese_button = QPushButton("Chinese (zh)")
+        self.japanese_button = QPushButton("Japanese (ja)")
+        self.automatic_language_button = QPushButton("Reset to automatic")
+        self.chinese_button.setEnabled(has_document)
+        self.japanese_button.setEnabled(has_document)
+        self.automatic_language_button.setEnabled(
+            has_document and snapshot.language_override is not None
+        )
+        self.chinese_button.clicked.connect(
+            lambda: self._finish(CorrectionActionKind.SET_LANGUAGE_ZH)
+        )
+        self.japanese_button.clicked.connect(
+            lambda: self._finish(CorrectionActionKind.SET_LANGUAGE_JA)
+        )
+        self.automatic_language_button.clicked.connect(
+            lambda: self._finish(CorrectionActionKind.RESET_LANGUAGE)
+        )
+        language_buttons.addWidget(self.chinese_button)
+        language_buttons.addWidget(self.japanese_button)
+        language_buttons.addWidget(self.automatic_language_button)
+        language_layout.addLayout(language_buttons)
+        root.addWidget(language_group)
+
+        translation_group = QGroupBox("Local aligned translation")
+        translation_layout = QVBoxLayout(translation_group)
+        translation_layout.addWidget(
+            _plain_label(
+                "KonoKashi has no automatic translation backend. Edit one exact "
+                "original line locally; saving approves that aligned translation "
+                "without replacing the original lyrics."
+            )
+        )
+        self.translation_lines = QComboBox()
+        self.translation_lines.setAccessibleName("Original lyric line to translate")
+        for line in snapshot.translation_lines:
+            self.translation_lines.addItem(
+                f"{line.source_line_id} · {line.original_text}",
+                line,
+            )
+        self.translation_lines.setEnabled(bool(snapshot.translation_lines))
+        translation_layout.addWidget(self.translation_lines)
+        self.translation_original = _plain_label("")
+        self.translation_original.setAccessibleName("Selected original lyric text")
+        translation_layout.addWidget(self.translation_original)
+        self.translation_edit = QLineEdit()
+        self.translation_edit.setAccessibleName("Local aligned translation text")
+        translation_layout.addWidget(self.translation_edit)
+        translation_buttons = QHBoxLayout()
+        self.save_translation_button = QPushButton("Save and approve translation")
+        self.reset_translation_button = QPushButton("Reset translation")
+        self.save_translation_button.clicked.connect(self._save_translation)
+        self.reset_translation_button.clicked.connect(self._reset_translation)
+        translation_buttons.addWidget(self.save_translation_button)
+        translation_buttons.addWidget(self.reset_translation_button)
+        translation_layout.addLayout(translation_buttons)
+        self.translation_lines.currentIndexChanged.connect(
+            self._update_translation_line
+        )
+        self._update_translation_line()
+        root.addWidget(translation_group)
+
         delay_group = QGroupBox("Recording lyric timing")
         delay_layout = QHBoxLayout(delay_group)
         self.delay_ms = QSpinBox()
@@ -344,6 +428,40 @@ class ReviewCorrectionDialog(QDialog):
             f"Strategy: {value.strategy}\nEvidence: {evidence}"
         )
 
+    def _update_translation_line(self) -> None:
+        value = self.translation_lines.currentData()
+        if not isinstance(value, TranslationReviewLine):
+            self.translation_original.setText("No original lyric line is available.")
+            self.translation_edit.clear()
+            self.save_translation_button.setEnabled(False)
+            self.reset_translation_button.setEnabled(False)
+            return
+        self.translation_original.setText(
+            f"Original ({value.source_line_id}): {value.original_text}"
+        )
+        self.translation_edit.setText(value.translated_text or "")
+        self.save_translation_button.setEnabled(True)
+        self.reset_translation_button.setEnabled(
+            value.translated_text is not None or value.approval_state is not None
+        )
+
+    def _save_translation(self) -> None:
+        value = self.translation_lines.currentData()
+        if isinstance(value, TranslationReviewLine):
+            self._finish(
+                CorrectionActionKind.PUT_TRANSLATION,
+                source_line_id=value.source_line_id,
+                text=self.translation_edit.text().strip(),
+            )
+
+    def _reset_translation(self) -> None:
+        value = self.translation_lines.currentData()
+        if isinstance(value, TranslationReviewLine):
+            self._finish(
+                CorrectionActionKind.RESET_TRANSLATION,
+                source_line_id=value.source_line_id,
+            )
+
     def _finish(
         self,
         kind: CorrectionActionKind,
@@ -352,6 +470,8 @@ class ReviewCorrectionDialog(QDialog):
         artists: tuple[str, ...] = (),
         alternative: LyricsAlternative | None = None,
         delay_us: int | None = None,
+        source_line_id: str | None = None,
+        text: str | None = None,
     ) -> None:
         self._action = CorrectionActionRequest(
             kind,
@@ -359,6 +479,8 @@ class ReviewCorrectionDialog(QDialog):
             artists=artists,
             alternative=alternative,
             delay_us=delay_us,
+            source_line_id=source_line_id,
+            text=text,
         )
         self.accept()
 
@@ -404,6 +526,29 @@ class ReviewCorrectionDialog(QDialog):
             *(f"- {item}" for item in track.warnings or ("none",)),
             "Lyric match evidence:",
             *(f"- {item}" for item in snapshot.current_match_evidence or ("none",)),
+            "",
+            "Representation routing:",
+            "state: "
+            + (
+                "unavailable"
+                if snapshot.routing_status is None
+                else snapshot.routing_status.value
+            ),
+            f"language: {snapshot.routing_language or '<undetermined>'}",
+            f"evidence: {snapshot.routing_diagnostic or 'none'}",
+            "",
+            "Representation layers:",
+            *(
+                (
+                    f"- {item.kind.value}: {item.availability.value}; "
+                    f"eligible {item.eligible}/{item.original_lines}; "
+                    f"persisted {item.candidate_persisted}; "
+                    f"selected {item.candidate_selected}; "
+                    f"rendered {item.candidate_rendered}; "
+                    f"origins {', '.join(item.origins) or 'none'}"
+                )
+                for item in snapshot.layer_statuses
+            ),
         ]
         if snapshot.diagnostics:
             lines.extend(

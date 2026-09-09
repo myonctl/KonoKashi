@@ -9,6 +9,7 @@ from konokashi.domain.lyrics import RepresentationKind
 from konokashi.domain.representations import (
     GenerationStatus,
     LanguageRoutingEvidence,
+    LanguageRoutingStatus,
     RepresentationUncertainty,
     RomanizationProviderResult,
     RomanizationRequest,
@@ -210,6 +211,7 @@ class IcuHanLanguageEvidenceAdapter:
                 RepresentationUncertainty.AMBIGUOUS,
                 "Han-only document is too short for conservative Chinese "
                 "variant evidence",
+                LanguageRoutingStatus.AMBIGUOUS,
             )
         try:
             import icu  # type: ignore[import-untyped]
@@ -229,6 +231,7 @@ class IcuHanLanguageEvidenceAdapter:
                 None,
                 RepresentationUncertainty.AMBIGUOUS,
                 f"Chinese language-evidence adapter failed: {type(error).__name__}",
+                LanguageRoutingStatus.FAILED,
             )
         variant_changes = max(
             sum(left != right for left, right in zip(han, traditional, strict=False)),
@@ -239,6 +242,7 @@ class IcuHanLanguageEvidenceAdapter:
                 None,
                 RepresentationUncertainty.AMBIGUOUS,
                 "Han-only document lacks sufficient Chinese-specific variant evidence",
+                LanguageRoutingStatus.AMBIGUOUS,
             )
         return LanguageRoutingEvidence(
             "zh",

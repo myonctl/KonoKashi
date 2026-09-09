@@ -2,8 +2,12 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from pathlib import Path
 
+from konokashi.domain.lyrics import ApprovalState, ContentProvenance, RepresentationKind
+from konokashi.domain.representations import GenerationStatus, RepresentationCandidate
+from konokashi.infrastructure.storage.bootstrap import open_storage
 from konokashi.infrastructure.storage.migrations import (
     CURRENT_SCHEMA_VERSION,
     MIGRATIONS,
@@ -120,3 +124,87 @@ def test_schema_eight_upgrade_preserves_user_and_library_data(tmp_path: Path) ->
             ).fetchone()[0]
             == 0
         )
+
+
+def test_schema_ten_upgrade_preserves_candidates_and_accepts_generated_empty(
+    tmp_path: Path,
+) -> None:
+    database = SQLiteDatabase(tmp_path / "development-schema-10.sqlite3")
+    database.initialize(MIGRATIONS[:10])
+    timestamp = "2026-09-09T00:00:00+00:00"
+    with database.transaction() as connection:
+        connection.execute(
+            """
+            INSERT INTO lyrics_documents(
+                document_id, document_kind, source_name, original_text,
+                approval_state, retrieved_at
+            ) VALUES ('preserved-doc', 'plain', 'fixture', '君', 'unreviewed', ?)
+            """,
+            (timestamp,),
+        )
+        connection.execute(
+            """
+            INSERT INTO lyric_representations(
+                document_id, representation_id, representation_kind, provenance,
+                approval_state, position
+            ) VALUES ('preserved-doc', 'original', 'original', 'local',
+                      'unreviewed', 0)
+            """
+        )
+        connection.execute(
+            """
+            INSERT INTO lyric_lines(
+                document_id, representation_id, line_id, position, line_text
+            ) VALUES ('preserved-doc', 'original', 'line-1', 0, '君')
+            """
+        )
+        connection.execute(
+            """
+            INSERT INTO lyric_representation_candidates(
+                candidate_id, document_id, source_line_id, representation_kind,
+                candidate_status, candidate_text, provenance, source_name,
+                source_version, approval_state, uncertainty, created_at, updated_at
+            ) VALUES ('available', 'preserved-doc', 'line-1', 'romanized',
+                      'available', 'kimi', 'generated', 'fixture', '1',
+                      'unreviewed', 'none', ?, ?)
+            """,
+            (timestamp, timestamp),
+        )
+        connection.execute(
+            """
+            INSERT INTO lyric_representation_candidate_diagnostics(
+                candidate_id, position, diagnostic
+            ) VALUES ('available', 0, 'preserve this diagnostic')
+            """
+        )
+
+    assert database.initialize() == CURRENT_SCHEMA_VERSION
+    repositories = open_storage(database.path)
+    existing = repositories.representations.candidates("preserved-doc")
+    assert existing[0].text == "kimi"
+    assert existing[0].diagnostics == ("preserve this diagnostic",)
+
+    now = datetime.now(UTC)
+    repositories.representations.put_candidates(
+        (
+            RepresentationCandidate(
+                "empty",
+                "preserved-doc",
+                "line-1",
+                RepresentationKind.ROMANIZED,
+                GenerationStatus.EMPTY,
+                ContentProvenance.GENERATED,
+                "fixture",
+                "2",
+                ApprovalState.UNREVIEWED,
+                existing[0].uncertainty,
+                now,
+                now,
+                diagnostics=("engine generated empty text",),
+            ),
+        )
+    )
+    assert {
+        candidate.status
+        for candidate in repositories.representations.candidates("preserved-doc")
+    } == {GenerationStatus.AVAILABLE, GenerationStatus.EMPTY}

@@ -309,12 +309,6 @@ MIGRATIONS: tuple[Migration, ...] = (
             )
             """,
             """
-            CREATE INDEX lyric_representation_candidates_lookup
-            ON lyric_representation_candidates(
-                document_id, source_line_id, representation_kind, provenance
-            )
-            """,
-            """
             CREATE TABLE lyric_representation_candidate_diagnostics (
                 candidate_id TEXT NOT NULL
                     REFERENCES lyric_representation_candidates(candidate_id)
@@ -554,6 +548,95 @@ MIGRATIONS: tuple[Migration, ...] = (
                 migrated_at TEXT NOT NULL
             )
             """,
+        ),
+    ),
+    Migration(
+        11,
+        "distinguish empty representation generation results",
+        (
+            """
+            ALTER TABLE lyric_representation_candidate_diagnostics
+            RENAME TO lyric_representation_candidate_diagnostics_v10
+            """,
+            """
+            ALTER TABLE lyric_representation_candidates
+            RENAME TO lyric_representation_candidates_v10
+            """,
+            "DROP INDEX IF EXISTS lyric_representation_candidates_lookup",
+            """
+            CREATE TABLE lyric_representation_candidates (
+                candidate_id TEXT PRIMARY KEY,
+                document_id TEXT NOT NULL
+                    REFERENCES lyrics_documents(document_id) ON DELETE CASCADE,
+                source_line_id TEXT NOT NULL,
+                representation_kind TEXT NOT NULL CHECK (
+                    representation_kind IN ('romanized', 'transliterated', 'translated')
+                ),
+                candidate_status TEXT NOT NULL CHECK (
+                    candidate_status IN (
+                        'available', 'generated-empty', 'unavailable', 'failed'
+                    )
+                ),
+                candidate_text TEXT,
+                language TEXT,
+                script TEXT,
+                provenance TEXT NOT NULL CHECK (
+                    provenance IN ('provider', 'local', 'imported', 'generated', 'user')
+                ),
+                source_name TEXT NOT NULL CHECK (length(source_name) > 0),
+                source_version TEXT,
+                approval_state TEXT NOT NULL CHECK (
+                    approval_state IN ('unreviewed', 'approved', 'rejected')
+                ),
+                uncertainty TEXT NOT NULL CHECK (
+                    uncertainty IN ('none', 'ambiguous')
+                ),
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                CHECK (
+                    (candidate_status = 'available' AND candidate_text IS NOT NULL)
+                    OR (candidate_status != 'available')
+                )
+            )
+            """,
+            """
+            INSERT INTO lyric_representation_candidates(
+                candidate_id, document_id, source_line_id, representation_kind,
+                candidate_status, candidate_text, language, script, provenance,
+                source_name, source_version, approval_state, uncertainty,
+                created_at, updated_at
+            )
+            SELECT candidate_id, document_id, source_line_id, representation_kind,
+                   candidate_status, candidate_text, language, script, provenance,
+                   source_name, source_version, approval_state, uncertainty,
+                   created_at, updated_at
+            FROM lyric_representation_candidates_v10
+            """,
+            """
+            CREATE INDEX IF NOT EXISTS lyric_representation_candidates_lookup
+            ON lyric_representation_candidates(
+                document_id, source_line_id, representation_kind, provenance
+            )
+            """,
+            """
+            CREATE TABLE lyric_representation_candidate_diagnostics (
+                candidate_id TEXT NOT NULL
+                    REFERENCES lyric_representation_candidates(candidate_id)
+                    ON DELETE CASCADE,
+                position INTEGER NOT NULL CHECK (position >= 0),
+                diagnostic TEXT NOT NULL CHECK (length(diagnostic) > 0),
+                PRIMARY KEY (candidate_id, position)
+            )
+            """,
+            """
+            INSERT INTO lyric_representation_candidate_diagnostics(
+                candidate_id, position, diagnostic
+            )
+            SELECT candidate_id, position, diagnostic
+            FROM lyric_representation_candidate_diagnostics_v10
+            """,
+            "DROP TABLE lyric_representation_candidate_diagnostics_v10",
+            "DROP TABLE lyric_representation_candidates_v10",
         ),
     ),
 )

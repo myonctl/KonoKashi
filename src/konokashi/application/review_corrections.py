@@ -19,6 +19,7 @@ from konokashi.domain.identity import (
     YouTubeIdentity,
 )
 from konokashi.domain.lyrics import (
+    ApprovalState,
     ContentProvenance,
     LyricDocument,
     LyricsAlternative,
@@ -27,6 +28,10 @@ from konokashi.domain.lyrics import (
     LyricsMatchConfidence,
     LyricsMatchDecision,
     LyricsResolutionResult,
+)
+from konokashi.domain.representations import (
+    LanguageRoutingStatus,
+    RepresentationLayerStatus,
 )
 from konokashi.domain.synchronization import LyricDocumentTiming
 from konokashi.domain.tracks import ApprovedTrackIdentity, ResolvedTrack
@@ -59,6 +64,18 @@ class TrackAuditEvidence:
 
 
 @dataclass(frozen=True, slots=True)
+class TranslationReviewLine:
+    """One exact original-line mapping for local translation authoring."""
+
+    source_line_id: str
+    original_text: str
+    translated_text: str | None = None
+    provenance: ContentProvenance | None = None
+    approval_state: ApprovalState | None = None
+    diagnostics: tuple[str, ...] = field(default_factory=tuple)
+
+
+@dataclass(frozen=True, slots=True)
 class ReviewCorrectionSnapshot:
     """One source-bound review model shared by desktop and future TUI surfaces."""
 
@@ -81,6 +98,12 @@ class ReviewCorrectionSnapshot:
     search_title: str | None = None
     search_artists: tuple[str, ...] = field(default_factory=tuple)
     youtube_enrichment_available: bool = False
+    routing_status: LanguageRoutingStatus | None = None
+    routing_language: str | None = None
+    routing_diagnostic: str | None = None
+    language_override: str | None = None
+    layer_statuses: tuple[RepresentationLayerStatus, ...] = field(default_factory=tuple)
+    translation_lines: tuple[TranslationReviewLine, ...] = field(default_factory=tuple)
 
 
 class ReviewCorrectionService:

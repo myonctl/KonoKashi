@@ -78,6 +78,8 @@ prepared but are not published.
 3. Open Settings in the desktop app to choose players, lyric layers, appearance,
    spacing, and music-library roots.
 4. Use the review controls when a recording or lyric match needs correction.
+   Review also exposes exact-document Chinese/Japanese routing and local,
+   per-line translation editing when lyrics are loaded.
 
 Useful diagnostics:
 
@@ -216,8 +218,9 @@ are not all individually certified.
   accepted automatically.
 - Native installations need an optional `yt-dlp` executable for user-requested
   YouTube metadata enrichment; its absence leaves normal resolution unchanged.
-- Translation generation is not implemented; translations are imported or
-  user-provided layers.
+- Translation generation is not implemented. Translation means aligned provider,
+  imported, local, or user text. Desktop Review can edit and approve one exact
+  original line; neither that path nor the representation CLI uploads lyrics.
 - The current icon is an intentional temporary project mark, not a finalized
   trademark design.
 - No public release, AUR package, or Flathub package exists yet.

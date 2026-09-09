@@ -9,6 +9,7 @@ import pytest
 
 from konokashi.domain.representations import (
     GenerationStatus,
+    LanguageRoutingStatus,
     RomanizationRequest,
     RomanizationRoute,
 )
@@ -172,6 +173,24 @@ def test_icu_han_language_evidence_is_bounded_and_conservative(
 
     assert evidence.language == language
     assert evidence.diagnostic
+
+
+def test_icu_han_language_evidence_failure_is_not_reported_as_ambiguity(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class BrokenTransform:
+        def transliterate(self, _text: str) -> str:
+            raise RuntimeError("fixture failure")
+
+    adapter = IcuHanLanguageEvidenceAdapter()
+    monkeypatch.setattr(adapter, "_simplified_to_traditional", BrokenTransform())
+    monkeypatch.setattr(adapter, "_traditional_to_simplified", BrokenTransform())
+
+    evidence = adapter.classify_han("阳光彩虹小白马")
+
+    assert evidence.status is LanguageRoutingStatus.FAILED
+    assert evidence.language is None
+    assert "failed: RuntimeError" in evidence.diagnostic
 
 
 def test_blank_adapter_input_is_controlled() -> None:

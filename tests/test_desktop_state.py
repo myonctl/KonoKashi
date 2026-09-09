@@ -21,7 +21,10 @@ from konokashi.domain.lyrics import (
 )
 from konokashi.domain.representations import (
     EffectiveRepresentationLine,
+    LanguageRoutingEvidence,
+    LanguageRoutingStatus,
     RepresentationDisplaySettings,
+    RepresentationUncertainty,
 )
 from konokashi.domain.synchronization import (
     AudioOutputLatency,
@@ -343,6 +346,32 @@ def test_untimed_and_instrumental_are_normal_readable_states() -> None:
     )
     assert controller.state.state is DesktopLyricsState.INSTRUMENTAL
     assert controller.state.status_message == "Instrumental recording"
+
+
+def test_details_diagnostics_retain_document_routing_state() -> None:
+    controller = DesktopStateController()
+    track = _track("xa4WrgqI7q0", "Track")
+    token = controller.begin_resolution(track)
+    routing = LanguageRoutingEvidence(
+        "zh",
+        RepresentationUncertainty.NONE,
+        "user-approved document language override selected",
+        LanguageRoutingStatus.EXPLICIT,
+    )
+
+    assert controller.accept_resolution(
+        token,
+        LyricsResolutionResult(
+            track.source_identity,
+            LyricsResolutionStatus.FOUND_TIMED,
+            document=document(),
+        ),
+        routing=routing,
+    )
+    assert any(
+        "document language routing: explicit; language zh" in diagnostic
+        for diagnostic in controller.state.diagnostics
+    )
 
 
 def test_progress_handles_stopped_and_unknown_duration_without_fake_value() -> None:
