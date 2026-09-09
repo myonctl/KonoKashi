@@ -3,12 +3,13 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Protocol
 
 from konokashi.application.ports import (
     SettingsRepositoryPort,
     TimingCalibrationRepositoryPort,
+    YouTubeMetadataEnrichmentPort,
 )
 from konokashi.application.representations import RepresentationService
 from konokashi.application.resolve_lyrics import LyricsResolver
@@ -70,6 +71,9 @@ class FrontendSessionPort(Protocol):
         *,
         offline: bool = False,
         refresh: bool = False,
+        title: str | None = None,
+        artists: tuple[str, ...] = (),
+        enrich_youtube: bool = False,
     ) -> ReviewCorrectionSnapshot:
         """Load alternatives and audit evidence for one exact current source."""
 
@@ -91,6 +95,11 @@ class FrontendSessionPort(Protocol):
         self, track: ResolvedTrack, alternative: LyricsAlternative
     ) -> None:
         """Approve one explicitly selected provider alternative."""
+
+    def reject_alternative(
+        self, track: ResolvedTrack, alternative: LyricsAlternative
+    ) -> None:
+        """Reject one explicitly selected provider alternative."""
 
     def reset_match(self, track: ResolvedTrack) -> bool:
         """Reset current and rejected lyric match preferences for one source."""
@@ -117,6 +126,7 @@ class FrontendSessionService:
         timing: TimingCalibrationRepositoryPort,
         corrections: ReviewCorrectionService,
         cancel_inflight: Callable[[], None] | None = None,
+        youtube_metadata: YouTubeMetadataEnrichmentPort | None = None,
     ) -> None:
         self._selection = selection
         self._lyrics = lyrics
@@ -125,6 +135,7 @@ class FrontendSessionService:
         self._timing = timing
         self._corrections = corrections
         self._cancel_inflight = cancel_inflight or (lambda: None)
+        self._youtube_metadata = youtube_metadata
 
     def select_track(self, players: PlayerListResult) -> PlayerSelectionResult:
         """Select from a captured player list using durable shared policy."""
@@ -179,12 +190,53 @@ class FrontendSessionService:
         *,
         offline: bool = False,
         refresh: bool = False,
+        title: str | None = None,
+        artists: tuple[str, ...] = (),
+        enrich_youtube: bool = False,
     ) -> ReviewCorrectionSnapshot:
         """Return source-bound alternatives and raw/effective audit evidence."""
 
+        search_track = bundle.track
+        enrichment_diagnostics: tuple[str, ...] = ()
+        enrichment_cache_hit = False
+        enrichment_network_used = False
+        if enrich_youtube and self._youtube_metadata is not None:
+            enrichment = self._youtube_metadata.enrich(
+                bundle.track,
+                offline=offline,
+                refresh=refresh,
+            )
+            enrichment_diagnostics = enrichment.diagnostics
+            enrichment_cache_hit = enrichment.cache_hit
+            enrichment_network_used = enrichment.network_used
+            if enrichment.candidates:
+                interpretations = bundle.track.interpretation_candidates or (
+                    bundle.track.candidate,
+                )
+                search_track = replace(
+                    bundle.track,
+                    interpretation_candidates=(
+                        *interpretations,
+                        *enrichment.candidates,
+                    ),
+                )
         alternatives = self._lyrics.alternatives(
-            bundle.track, offline=offline, refresh=refresh
+            search_track,
+            offline=offline,
+            refresh=refresh,
+            title=title,
+            artists=artists,
         )
+        if enrichment_diagnostics or enrichment_cache_hit or enrichment_network_used:
+            alternatives = replace(
+                alternatives,
+                diagnostics=(
+                    *enrichment_diagnostics,
+                    *alternatives.diagnostics,
+                ),
+                cache_hit=alternatives.cache_hit or enrichment_cache_hit,
+                network_used=(alternatives.network_used or enrichment_network_used),
+            )
         return self._corrections.snapshot(bundle.track, bundle.resolution, alternatives)
 
     def put_track_override(
@@ -206,6 +258,11 @@ class FrontendSessionService:
     ) -> None:
         self._corrections.choose_alternative(track, alternative)
 
+    def reject_alternative(
+        self, track: ResolvedTrack, alternative: LyricsAlternative
+    ) -> None:
+        self._corrections.reject_alternative(track, alternative)
+
     def reset_match(self, track: ResolvedTrack) -> bool:
         return self._corrections.reset_match(track)
 
@@ -219,3 +276,7 @@ class FrontendSessionService:
         """Cancel a provider request after a source change or frontend shutdown."""
 
         self._cancel_inflight()
+        if self._youtube_metadata is not None:
+            cancellation = getattr(self._youtube_metadata, "cancel_inflight", None)
+            if callable(cancellation):
+                cancellation()

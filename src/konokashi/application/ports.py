@@ -50,6 +50,7 @@ from konokashi.domain.tracks import (
     ResolvedTrack,
     TrackCandidate,
 )
+from konokashi.domain.youtube_metadata import YouTubeMetadataEnrichmentResult
 
 
 class DiagnosticStatus(Enum):
@@ -283,6 +284,19 @@ class TrackMetadataReaderPort(Protocol):
         reported_metadata: RawTrackMetadata,
     ) -> TrackCandidate | None:
         """Return safe enrichment or a normal miss; Stage 2 has no adapter."""
+
+
+class YouTubeMetadataEnrichmentPort(Protocol):
+    """Obtain bounded recording evidence for one confirmed public video."""
+
+    def enrich(
+        self,
+        track: ResolvedTrack,
+        *,
+        offline: bool = False,
+        refresh: bool = False,
+    ) -> YouTubeMetadataEnrichmentResult:
+        """Return sanitized candidates without downloading media or lyric text."""
 
 
 class TrackOverrideRepositoryPort(Protocol):

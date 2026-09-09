@@ -162,6 +162,7 @@ class _Frontend:
         self.display_settings: RepresentationDisplaySettings | None = None
         self.interaction_settings: DesktopInteractionSettings | None = None
         self.review_calls: list[FrontendLyricsBundle] = []
+        self.review_options: list[dict[str, object]] = []
         self.correction_calls: list[tuple[str, object]] = []
 
     def select_track(self, players: PlayerListResult) -> PlayerSelectionResult:
@@ -194,8 +195,9 @@ class _Frontend:
     def cancel_inflight(self) -> None:
         self.cancellations += 1
 
-    def review_track(self, bundle: FrontendLyricsBundle):  # type: ignore[no-untyped-def]
+    def review_track(self, bundle: FrontendLyricsBundle, **kwargs):  # type: ignore[no-untyped-def]
         self.review_calls.append(bundle)
+        self.review_options.append(kwargs)
         return _review_snapshot()
 
     def put_track_override(
@@ -521,6 +523,17 @@ def test_review_load_and_track_correction_dispatch_through_application_boundary(
 
     assert len(frontend.review_calls) == 1
     assert window.reviews == [_review_snapshot()]
+
+    coordinator._apply_correction(
+        CorrectionActionRequest(CorrectionActionKind.ENRICH_YOUTUBE)
+    )
+    assert len(frontend.review_calls) == 2
+    assert frontend.review_options[-1] == {
+        "refresh": False,
+        "title": None,
+        "artists": (),
+        "enrich_youtube": True,
+    }
 
     coordinator._apply_correction(
         CorrectionActionRequest(

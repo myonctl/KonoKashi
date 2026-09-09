@@ -34,6 +34,10 @@ class CorrectionActionKind(Enum):
     APPROVE_CURRENT = "approve-current"
     REJECT_CURRENT = "reject-current"
     CHOOSE_ALTERNATIVE = "choose-alternative"
+    REJECT_ALTERNATIVE = "reject-alternative"
+    SEARCH_MATCHES = "search-matches"
+    REFRESH_MATCHES = "refresh-matches"
+    ENRICH_YOUTUBE = "enrich-youtube"
     RESET_MATCH = "reset-match"
     SET_DELAY = "set-delay"
     RESET_DELAY = "reset-delay"
@@ -72,7 +76,7 @@ class ReviewCorrectionDialog(QDialog):
         super().__init__(parent)
         self._snapshot = snapshot
         self._action: CorrectionActionRequest | None = None
-        self.setWindowTitle("Review and correct")
+        self.setWindowTitle("Possible lyrics matches")
         self.resize(760, 680)
         root = QVBoxLayout(self)
 
@@ -110,7 +114,7 @@ class ReviewCorrectionDialog(QDialog):
         metadata_layout.addRow(metadata_buttons)
         root.addWidget(metadata_group)
 
-        lyrics_group = QGroupBox("Lyrics match")
+        lyrics_group = QGroupBox("Possible lyrics matches…")
         lyrics_layout = QVBoxLayout(lyrics_group)
         current = _plain_label(
             "Current: "
@@ -129,6 +133,45 @@ class ReviewCorrectionDialog(QDialog):
             )
         )
         lyrics_layout.addWidget(current)
+        search_layout = QFormLayout()
+        self.search_title_edit = QLineEdit(
+            snapshot.search_title or snapshot.track.effective_title or ""
+        )
+        self.search_title_edit.setAccessibleName("Lyrics search title")
+        self.search_artists_edit = QLineEdit(
+            "; ".join(snapshot.search_artists or snapshot.track.effective_artists)
+        )
+        self.search_artists_edit.setAccessibleName("Lyrics search artists")
+        self.search_artists_edit.setPlaceholderText(
+            "Separate multiple artists with semicolons"
+        )
+        search_layout.addRow("Search title", self.search_title_edit)
+        search_layout.addRow("Search artist(s)", self.search_artists_edit)
+        lyrics_layout.addLayout(search_layout)
+        search_buttons = QHBoxLayout()
+        self.search_button = QPushButton("Search")
+        self.refresh_button = QPushButton("Refresh")
+        self.enrich_button = QPushButton("Use YouTube metadata")
+        self.search_button.clicked.connect(
+            lambda: self._search(CorrectionActionKind.SEARCH_MATCHES)
+        )
+        self.refresh_button.clicked.connect(
+            lambda: self._search(CorrectionActionKind.REFRESH_MATCHES)
+        )
+        self.enrich_button.setEnabled(snapshot.youtube_enrichment_available)
+        self.enrich_button.setToolTip(
+            "Contact YouTube for this public video's title, description credits, "
+            "uploader, and duration. Audio, video, cookies, and lyric text are "
+            "never sent or downloaded."
+        )
+        self.enrich_button.clicked.connect(
+            lambda: self._finish(CorrectionActionKind.ENRICH_YOUTUBE)
+        )
+        search_buttons.addWidget(self.search_button)
+        search_buttons.addWidget(self.refresh_button)
+        search_buttons.addWidget(self.enrich_button)
+        search_buttons.addStretch(1)
+        lyrics_layout.addLayout(search_buttons)
         self.alternatives = QComboBox()
         self.alternatives.setAccessibleName("Alternative lyric results")
         for item in snapshot.alternatives:
@@ -145,24 +188,37 @@ class ReviewCorrectionDialog(QDialog):
             )
             self.alternatives.addItem(
                 f"{item.candidate.artist_name} — {item.candidate.track_name} · "
-                f"{duration} · {item.confidence.value}{suffix}",
+                f"{duration} · {item.candidate.provider} "
+                f"#{item.candidate.record_id} · overall {item.confidence.value} · "
+                f"text {item.text_confidence.value} · "
+                f"timing {item.timing_confidence.value}{suffix}",
                 item,
             )
         self.alternatives.setEnabled(bool(snapshot.alternatives))
         lyrics_layout.addWidget(self.alternatives)
+        self.alternative_details = _plain_label("")
+        self.alternative_details.setAccessibleName("Selected lyric match evidence")
+        lyrics_layout.addWidget(self.alternative_details)
+        self.alternatives.currentIndexChanged.connect(self._update_alternative_details)
+        self._update_alternative_details()
         match_buttons = QHBoxLayout()
         self.choose_button = QPushButton("Choose alternative")
+        self.reject_alternative_button = QPushButton("Reject alternative")
         self.approve_button = QPushButton("Approve current")
         self.reject_button = QPushButton("Reject current")
         self.reset_match_button = QPushButton("Reset match choices")
         has_document = snapshot.current_document_id is not None
         self.choose_button.setEnabled(snapshot.durable and bool(snapshot.alternatives))
+        self.reject_alternative_button.setEnabled(
+            snapshot.durable and bool(snapshot.alternatives)
+        )
         self.approve_button.setEnabled(snapshot.durable and has_document)
         self.reject_button.setEnabled(snapshot.durable and has_document)
         self.reset_match_button.setEnabled(
             snapshot.durable and snapshot.current_match_decision is not None
         )
         self.choose_button.clicked.connect(self._choose_alternative)
+        self.reject_alternative_button.clicked.connect(self._reject_alternative)
         self.approve_button.clicked.connect(
             lambda: self._finish(CorrectionActionKind.APPROVE_CURRENT)
         )
@@ -174,6 +230,7 @@ class ReviewCorrectionDialog(QDialog):
         )
         for button in (
             self.choose_button,
+            self.reject_alternative_button,
             self.approve_button,
             self.reject_button,
             self.reset_match_button,
@@ -241,6 +298,51 @@ class ReviewCorrectionDialog(QDialog):
                 CorrectionActionKind.CHOOSE_ALTERNATIVE,
                 alternative=value,
             )
+
+    def _reject_alternative(self) -> None:
+        value = self.alternatives.currentData()
+        if isinstance(value, LyricsAlternative):
+            self._finish(
+                CorrectionActionKind.REJECT_ALTERNATIVE,
+                alternative=value,
+            )
+
+    def _search(self, kind: CorrectionActionKind) -> None:
+        artists = tuple(
+            item.strip()
+            for item in self.search_artists_edit.text().split(";")
+            if item.strip()
+        )
+        self._finish(
+            kind,
+            title=self.search_title_edit.text().strip(),
+            artists=artists,
+        )
+
+    def _update_alternative_details(self) -> None:
+        value = self.alternatives.currentData()
+        if not isinstance(value, LyricsAlternative):
+            self.alternative_details.setText(
+                "No provider candidates are available. Edit the bounded search "
+                "above or refresh the provider cache."
+            )
+            return
+        candidate = value.candidate
+        duration = (
+            "unknown"
+            if candidate.duration_ms is None
+            else f"{candidate.duration_ms} ms"
+        )
+        evidence = "; ".join(value.evidence) if value.evidence else "none"
+        self.alternative_details.setText(
+            f"Provider: {candidate.provider} · Record: {candidate.record_id}\n"
+            f"Artist: {candidate.artist_name}\n"
+            f"Title: {candidate.track_name}\n"
+            f"Duration: {duration}\n"
+            f"Text confidence: {value.text_confidence.value} · "
+            f"Timing confidence: {value.timing_confidence.value}\n"
+            f"Strategy: {value.strategy}\nEvidence: {evidence}"
+        )
 
     def _finish(
         self,

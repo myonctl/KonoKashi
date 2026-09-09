@@ -28,6 +28,14 @@ class ApprovedTrackIdentity:
 
 
 @dataclass(frozen=True, slots=True)
+class ArtistCredit:
+    """Ordered musical artists and explicitly featured contributors."""
+
+    main_artists: tuple[str, ...] = field(default_factory=tuple)
+    contributors: tuple[str, ...] = field(default_factory=tuple)
+
+
+@dataclass(frozen=True, slots=True)
 class TrackCandidate:
     """One non-destructive interpretation of raw track metadata."""
 
@@ -37,6 +45,9 @@ class TrackCandidate:
     duration_us: int | None
     evidence: tuple[str, ...] = field(default_factory=tuple)
     transformations: tuple[str, ...] = field(default_factory=tuple)
+    strategy: str = "reported-mpris"
+    artist_credit: ArtistCredit | None = None
+    field_provenance: tuple[tuple[str, str], ...] = field(default_factory=tuple)
 
 
 @dataclass(frozen=True, slots=True)
@@ -52,6 +63,7 @@ class ResolvedTrack:
     user_approved: bool = False
     automatic_candidate: TrackCandidate | None = None
     automatic_confidence: Confidence | None = None
+    interpretation_candidates: tuple[TrackCandidate, ...] = field(default_factory=tuple)
 
 
 @dataclass(frozen=True, slots=True)

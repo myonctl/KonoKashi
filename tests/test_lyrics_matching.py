@@ -344,3 +344,72 @@ def test_album_conflict_prevents_high_without_overriding_track_identity() -> Non
 
     assert assessment.confidence is LyricsMatchConfidence.MEDIUM
     assert any("album differs" in item for item in assessment.evidence)
+
+
+def test_structured_artist_credits_allow_omission_but_reject_wrong_contributor() -> (
+    None
+):
+    query = LyricsQuery(
+        "Android Girl",
+        ("DECO*27 feat. Hatsune Miku",),
+        None,
+        215_441,
+        main_artists=("DECO*27",),
+        contributors=("Hatsune Miku",),
+    )
+    omitted = assess_candidate(
+        query,
+        _candidate(
+            title="Android Girl",
+            artist="DECO*27",
+            album=None,
+            duration_ms=215_200,
+        ),
+    )
+    wrong = assess_candidate(
+        query,
+        _candidate(
+            title="Android Girl",
+            artist="DECO*27 feat. GUMI",
+            album=None,
+            duration_ms=215_200,
+        ),
+    )
+
+    assert omitted.confidence is LyricsMatchConfidence.HIGH
+    assert "omits reported contributor" in " ".join(omitted.evidence)
+    assert wrong.confidence is LyricsMatchConfidence.MEDIUM
+    assert wrong.confidence is not LyricsMatchConfidence.HIGH
+    assert "contributor credits differ" in " ".join(wrong.evidence)
+
+
+def test_reordered_or_incomplete_artist_sets_stay_below_automatic_high() -> None:
+    query = LyricsQuery(
+        "Али Ули",
+        ("Lida, S3RL",),
+        None,
+        178_000,
+        main_artists=("Lida", "S3RL"),
+    )
+    reordered = assess_candidate(
+        query,
+        _candidate(
+            title="Али Ули",
+            artist="S3RL & Lida",
+            album=None,
+            duration_ms=178_000,
+        ),
+    )
+    incomplete = assess_candidate(
+        query,
+        _candidate(
+            title="Али Ули",
+            artist="Lida",
+            album=None,
+            duration_ms=178_000,
+        ),
+    )
+
+    assert reordered.confidence is LyricsMatchConfidence.MEDIUM
+    assert reordered.text_confidence is LyricsMatchConfidence.MEDIUM
+    assert incomplete.confidence is LyricsMatchConfidence.LOW

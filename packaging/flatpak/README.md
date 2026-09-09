@@ -19,7 +19,9 @@ the Python dependency manifest.
 
 ## Permissions
 
-- `--share=network`: query LRCLIB when local lyrics and cache miss.
+- `--share=network`: query LRCLIB when local lyrics and cache miss, and contact
+  YouTube only after the user selects **Use YouTube metadata** for the current
+  confirmed public video.
 - `--socket=wayland` and `--socket=fallback-x11`: display the Qt desktop UI.
 - `--share=ipc` and `--device=dri`: Qt/X11 shared-memory and accelerated display
   support; neither grants file or bus access.
@@ -33,6 +35,12 @@ The installed KDE runtime also adds read-only `xdg-config/kdeglobals` access
 and talk access to `com.canonical.AppMenu.Registrar`, `org.kde.KGlobalSettings`,
 and `org.kde.kconfig.notify` for desktop integration. Review effective
 permissions with `flatpak info --show-permissions io.github.myonctl.KonoKashi`.
+
+The sandbox cannot use a host `yt-dlp` executable. The manifest therefore pins
+the official 2026.08.19 Unix zipapp and its SHA-256 in `/app/bin`. KonoKashi
+invokes it with user configuration ignored, without cookies, authentication,
+playlist traversal, or media download. If that module is removed or unavailable,
+ordinary MPRIS and LRCLIB resolution remains usable.
 
 Arbitrary configured library roots outside the Music directory are unavailable
 unless the user grants a path override. KonoKashi does not yet provide a file

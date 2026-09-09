@@ -6,7 +6,7 @@ import re
 import unicodedata
 from dataclasses import dataclass
 
-from konokashi.domain.tracks import TrackCandidate
+from konokashi.domain.tracks import ArtistCredit, TrackCandidate
 
 _DASH_TRANSLATION = str.maketrans(
     {"\N{EN DASH}": "-", "\N{EM DASH}": "-", "\N{MINUS SIGN}": "-"}
@@ -22,6 +22,12 @@ _QUOTE_TRANSLATION = str.maketrans(
     }
 )
 _FEATURING = re.compile(r"\b(?:feat(?:uring)?|ft)\.?\s+", re.IGNORECASE)
+_CREDIT_SEPARATOR = re.compile(r"\s*(?:,|[•·]|&|\band\b)\s*", re.IGNORECASE)
+_AMBIGUOUS_TITLE_SEPARATOR = re.compile(r"\s+(?P<separator>[/|:·])\s+")
+_SPACED_DASH_SEPARATOR = re.compile(r"\s+-\s+")
+_TRAILING_GROUP = re.compile(
+    r"^(?P<base>.+?)\s*(?P<group>\[[^\[\]()]+\]|\([^\[\]()]+\))\s*$"
+)
 _RECORDING_DECORATION = re.compile(
     r"\b(?:live|remix|cover|instrumental|acoustic|nightcore|version|edit|mix)\b",
     re.IGNORECASE,
@@ -111,6 +117,30 @@ def normalize_artist(value: str) -> NormalizedValue:
     return NormalizedValue(artist, tuple(transformations))
 
 
+def parse_artist_credits(values: tuple[str, ...]) -> ArtistCredit:
+    """Parse ordered main/featured names without flattening separator evidence."""
+
+    main: list[str] = []
+    contributors: list[str] = []
+
+    def append_unique(target: list[str], value: str) -> None:
+        normalized = normalize_artist(value).value.strip()
+        if normalized and comparison_key(normalized) not in {
+            comparison_key(item) for item in (*main, *contributors)
+        }:
+            target.append(normalized)
+
+    for raw in values:
+        normalized = normalize_artist(raw).value
+        featured = _FEATURING.split(normalized, maxsplit=1)
+        for name in _CREDIT_SEPARATOR.split(featured[0]):
+            append_unique(main, name)
+        if len(featured) == 2:
+            for name in _CREDIT_SEPARATOR.split(featured[1]):
+                append_unique(contributors, name)
+    return ArtistCredit(tuple(main), tuple(contributors))
+
+
 def comparison_key(value: str) -> str:
     """Build a punctuation-tolerant key without erasing version words."""
 
@@ -139,11 +169,11 @@ def _remove_presentation_suffix(value: str) -> NormalizedValue:
     return NormalizedValue(current, tuple(transformations))
 
 
-def parse_youtube_title(
+def parse_youtube_title_candidates(
     raw_title: str,
     reported_artists: tuple[str, ...] | None,
-) -> TrackCandidate | None:
-    """Parse artist/title evidence from a YouTube video title conservatively."""
+) -> tuple[TrackCandidate, ...]:
+    """Return bounded artist/title interpretations with inspectable provenance."""
 
     normalized = normalize_text(raw_title)
     transformations = list(normalized.transformations)
@@ -157,7 +187,9 @@ def parse_youtube_title(
         transformations.append("removed browser presentation suffix '- YouTube'")
         title_text = without_youtube.rstrip()
 
-    parts = re.split(r"\s+-\s+", title_text, maxsplit=1)
+    parts: list[str] = []
+    separator = ""
+    ambiguous_separator_seen = False
     reported_keys = {
         comparison_key(artist) for artist in reported_artists or () if artist.strip()
     }
@@ -165,24 +197,72 @@ def parse_youtube_title(
     if quotation is not None:
         suffix = quotation.group(3).strip()
         if suffix and not _FEATURING.match(suffix):
-            return None
+            return ()
         if _RECORDING_DECORATION.search(suffix):
-            return None
-        parts = [quotation.group(1).strip(), quotation.group(2).strip()]
+            return ()
+        quoted_title = quotation.group(2).strip()
+        parts = [
+            quotation.group(1).strip(),
+            f"{quoted_title} {suffix}".strip(),
+        ]
+        separator = "Japanese quotation"
         transformations.append("parsed Japanese artist/title quotation")
         if suffix:
             transformations.append(f"preserved featured performer credit: {suffix}")
-    elif len(parts) == 2:
-        # Only reverse the conventional order when the reported artist
-        # corroborates the right-hand side. A title's internal hyphen is not
-        # evidence of a different artist.
-        if (
-            comparison_key(parts[1]) in reported_keys
-            and comparison_key(parts[0]) not in reported_keys
-        ):
-            parts.reverse()
-            transformations.append("reported artist corroborates title/artist order")
-    elif len(reported_keys) == 1 and _FEATURING.search(title_text):
+    else:
+        dash_parts = _SPACED_DASH_SEPARATOR.split(title_text, maxsplit=1)
+        if len(dash_parts) == 2:
+            parts = dash_parts
+            separator = "spaced dash"
+            # Only reverse the conventional order when the reported artist
+            # corroborates the right-hand side. A title's internal hyphen is not
+            # evidence of a different artist.
+            if (
+                comparison_key(parts[1]) in reported_keys
+                and comparison_key(parts[0]) not in reported_keys
+            ):
+                parts.reverse()
+                transformations.append(
+                    "reported artist corroborates title/artist order"
+                )
+        else:
+            ambiguous = _AMBIGUOUS_TITLE_SEPARATOR.split(title_text, maxsplit=1)
+            # re.split includes the named separator group: left, separator, right.
+            if len(ambiguous) == 3:
+                ambiguous_separator_seen = True
+                left, separator_value, right = ambiguous
+                left_key = comparison_key(left)
+                right_key = comparison_key(right)
+                left_matches = any(
+                    left_key == key or left_key.startswith(f"{key} ")
+                    for key in reported_keys
+                )
+                right_matches = any(
+                    right_key == key or right_key.startswith(f"{key} ")
+                    for key in reported_keys
+                )
+                if left_matches != right_matches:
+                    parts = [left.strip(), right.strip()]
+                    if right_matches:
+                        parts.reverse()
+                        transformations.append(
+                            "reported artist corroborates title/artist order"
+                        )
+                    separator = {
+                        "/": "slash",
+                        "|": "pipe",
+                        ":": "colon",
+                        "·": "middle dot",
+                    }[separator_value]
+                    transformations.append(
+                        f"reported artist corroborates ambiguous {separator} separator"
+                    )
+    if (
+        not parts
+        and not ambiguous_separator_seen
+        and len(reported_keys) == 1
+        and _FEATURING.search(title_text)
+    ):
         # A credit-bearing browser title plus one reported artist supplies a
         # bounded alternative to a separator; ordinary unstructured videos
         # continue to have no inferred musical artist.
@@ -193,11 +273,13 @@ def parse_youtube_title(
         transformations.append(
             "used reported artist with explicit featured performer credit"
         )
+        separator = "reported-artist evidence"
     if len(parts) != 2 or not parts[0].strip() or not parts[1].strip():
-        return None
+        return ()
     artist_value = normalize_artist(parts[0].strip())
+    artist_credit = parse_artist_credits((artist_value.value,))
     transformations.extend(artist_value.transformations)
-    transformations.append("split artist/title separator")
+    transformations.append(f"split artist/title {separator} separator")
     candidate_title = parts[1].strip()
 
     if candidate_title.startswith('"'):
@@ -227,24 +309,78 @@ def parse_youtube_title(
     transformations.extend(cleaned_title.transformations)
     final_title = cleaned_title.value.strip().strip('"').strip()
     credit = _FEATURING.search(final_title)
+    contributors = list(artist_credit.contributors)
     if credit is not None and credit.start() > 0:
         base = final_title[: credit.start()].rstrip()
-        # Do not strip parenthesized recording/version descriptions; only a
-        # trailing, unparenthesized performer credit is a title decoration.
-        if not any(char in base for char in "([") and not _RECORDING_DECORATION.search(
-            final_title[credit.start() :]
-        ):
+        suffix = final_title[credit.end() :].strip()
+        suffix_version = _TRAILING_GROUP.fullmatch(suffix)
+        contributor_text = suffix
+        version_group = ""
+        if suffix_version is not None:
+            contributor_text = suffix_version.group("base").strip()
+            version_group = suffix_version.group("group")
+        parsed_contributors = parse_artist_credits((contributor_text,)).main_artists
+        if parsed_contributors:
+            contributors.extend(parsed_contributors)
             transformations.append(
                 f"preserved featured performer credit: {final_title[credit.start() :]}"
             )
-            final_title = base
+            final_title = f"{base} {version_group}".strip()
     if not artist_value.value or not final_title:
-        return None
-    return TrackCandidate(
+        return ()
+    artist_credit = ArtistCredit(
+        artist_credit.main_artists,
+        tuple(dict.fromkeys(contributors)),
+    )
+    primary = TrackCandidate(
         title=final_title,
         artists=(artist_value.value,),
         album=None,
         duration_us=None,
         evidence=("artist/title parsed from video title",),
         transformations=tuple(dict.fromkeys(transformations)),
+        strategy=f"youtube-title:{separator}",
+        artist_credit=artist_credit,
+        field_provenance=(
+            ("title", "mpris-title"),
+            ("artists", "mpris-title"),
+            *((("contributors", "mpris-title"),) if contributors else ()),
+        ),
     )
+    candidates = [primary]
+    trailing = _TRAILING_GROUP.fullmatch(final_title)
+    if trailing is not None and parse_title_version(final_title).qualifier is None:
+        base_title = trailing.group("base").strip()
+        if base_title:
+            candidates.append(
+                TrackCandidate(
+                    title=base_title,
+                    artists=primary.artists,
+                    album=None,
+                    duration_us=None,
+                    evidence=(
+                        *primary.evidence,
+                        "retained optional title variant without "
+                        "trailing bracket group",
+                    ),
+                    transformations=(
+                        *primary.transformations,
+                        f"optional candidate removed trailing bracket group "
+                        f"{trailing.group('group')!r}",
+                    ),
+                    strategy=f"{primary.strategy}:optional-trailing-group",
+                    artist_credit=primary.artist_credit,
+                    field_provenance=primary.field_provenance,
+                )
+            )
+    return tuple(candidates)
+
+
+def parse_youtube_title(
+    raw_title: str,
+    reported_artists: tuple[str, ...] | None,
+) -> TrackCandidate | None:
+    """Return the primary conservative candidate for compatibility callers."""
+
+    candidates = parse_youtube_title_candidates(raw_title, reported_artists)
+    return candidates[0] if candidates else None

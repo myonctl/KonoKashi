@@ -18,6 +18,9 @@ from konokashi.infrastructure.lyrics.provider_documents import (
 from konokashi.infrastructure.metadata.local_paths import (
     FilesystemLocalPathCanonicalizer,
 )
+from konokashi.infrastructure.metadata.youtube import (
+    YtDlpYouTubeMetadataEnricher,
+)
 from konokashi.infrastructure.romanization.offline import (
     IcuHanLanguageEvidenceAdapter,
     OfflineRomanizationProvider,
@@ -71,4 +74,5 @@ def create_frontend_session(
             timing=storage.timing_calibrations,
         ),
         cancellation if callable(cancellation) else None,
+        YtDlpYouTubeMetadataEnricher(storage.provider_cache),
     )

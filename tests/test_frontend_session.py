@@ -4,10 +4,14 @@ from __future__ import annotations
 
 from dataclasses import replace
 
-from konokashi.application.frontend_session import FrontendSessionService
+from konokashi.application.frontend_session import (
+    FrontendLyricsBundle,
+    FrontendSessionService,
+)
 from konokashi.application.settings import DesktopInteractionSettings
 from konokashi.domain.identity import YouTubeIdentity
 from konokashi.domain.lyrics import (
+    LyricsAlternativeResult,
     LyricsResolutionResult,
     LyricsResolutionStatus,
     RepresentationKind,
@@ -19,12 +23,14 @@ from konokashi.domain.representations import (
 )
 from konokashi.domain.synchronization import LyricDocumentTiming
 from konokashi.domain.tracks import (
+    ArtistCredit,
     Confidence,
     PlayerAssessment,
     PlayerSelectionResult,
     ResolvedTrack,
     TrackCandidate,
 )
+from konokashi.domain.youtube_metadata import YouTubeMetadataEnrichmentResult
 from tests.stage2_helpers import fixture_snapshot
 from tests.test_lyrics_sync import document
 
@@ -149,3 +155,72 @@ def test_frontend_session_combines_existing_services_without_adapter_values() ->
     assert settings.interactions == interactions
     service.cancel_inflight()
     assert cancellations == ["cancelled"]
+
+
+def test_review_only_youtube_enrichment_feeds_bounded_interpretations() -> None:
+    track = _track()
+    native = TrackCandidate(
+        "アンドロイドガール",
+        ("DECO*27",),
+        None,
+        215_200_000,
+        strategy="youtube-enrichment:youtube_description",
+        artist_credit=ArtistCredit(("DECO*27",), ("初音ミク",)),
+    )
+
+    class Lyrics:
+        searched_track = None
+
+        def alternatives(self, searched_track, **kwargs):  # type: ignore[no-untyped-def]
+            self.searched_track = searched_track
+            assert kwargs["title"] is None
+            return LyricsAlternativeResult(searched_track.source_identity)
+
+    class Enricher:
+        calls = 0
+
+        def enrich(self, enriched_track, **kwargs):  # type: ignore[no-untyped-def]
+            self.calls += 1
+            assert enriched_track is track
+            assert kwargs == {"offline": False, "refresh": False}
+            return YouTubeMetadataEnrichmentResult(
+                track.source_identity,  # type: ignore[arg-type]
+                (native,),
+                ("enriched",),
+            )
+
+    class Corrections:
+        alternatives = None
+
+        def snapshot(self, snapshot_track, resolution, alternatives):  # type: ignore[no-untyped-def]
+            assert snapshot_track is track
+            assert resolution.source_identity == track.source_identity
+            self.alternatives = alternatives
+            return "review"
+
+    lyrics = Lyrics()
+    enricher = Enricher()
+    corrections = Corrections()
+    service = FrontendSessionService(
+        _Selection(track),  # type: ignore[arg-type]
+        lyrics,  # type: ignore[arg-type]
+        _Representations(),  # type: ignore[arg-type]
+        _Settings(),  # type: ignore[arg-type]
+        _Timing(),  # type: ignore[arg-type]
+        corrections,  # type: ignore[arg-type]
+        youtube_metadata=enricher,  # type: ignore[arg-type]
+    )
+    bundle = FrontendLyricsBundle(
+        track,
+        LyricsResolutionResult(track.source_identity, LyricsResolutionStatus.NO_RESULT),
+        (),
+        RepresentationDisplaySettings(),
+        None,
+    )
+
+    assert service.review_track(bundle, enrich_youtube=True) == "review"
+    assert enricher.calls == 1
+    assert lyrics.searched_track is not None
+    assert native in lyrics.searched_track.interpretation_candidates
+    assert corrections.alternatives is not None
+    assert corrections.alternatives.diagnostics[0] == "enriched"

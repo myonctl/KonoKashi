@@ -10,8 +10,10 @@ from konokashi.domain.normalization import (
     comparison_key,
     normalize_artist,
     normalize_text,
+    parse_artist_credits,
     parse_title_version,
     parse_youtube_title,
+    parse_youtube_title_candidates,
 )
 from konokashi.domain.tracks import ApprovedTrackIdentity, Confidence
 from tests.stage2_helpers import (
@@ -278,3 +280,46 @@ def test_feature_credit_cleanup_does_not_erase_recording_versions(version: str) 
     )
     assert candidate is not None
     assert version in candidate.title
+
+
+@pytest.mark.parametrize(
+    "raw_title",
+    (
+        "DECO*27 / Android Girl feat. Hatsune Miku",
+        "DECO*27 | Android Girl feat. Hatsune Miku",
+        "DECO*27 : Android Girl feat. Hatsune Miku",
+        "DECO*27 · Android Girl feat. Hatsune Miku",
+    ),
+)
+def test_ambiguous_separators_require_and_retain_artist_corroboration(
+    raw_title: str,
+) -> None:
+    candidate = parse_youtube_title(raw_title, ("DECO*27",))
+
+    assert candidate is not None
+    assert candidate.title == "Android Girl"
+    assert candidate.artist_credit is not None
+    assert candidate.artist_credit.main_artists == ("DECO*27",)
+    assert candidate.artist_credit.contributors == ("Hatsune Miku",)
+    assert candidate.strategy.startswith("youtube-title:")
+    assert parse_youtube_title(raw_title, ("Unrelated uploader",)) is None
+
+
+def test_artist_arrays_and_credit_separators_preserve_order_and_names() -> None:
+    credit = parse_artist_credits(("Lida • S3RL", "Guest A feat. Guest B & Guest C"))
+
+    assert credit.main_artists == ("Lida", "S3RL", "Guest A")
+    assert credit.contributors == ("Guest B", "Guest C")
+
+
+def test_arbitrary_trailing_group_is_an_optional_candidate_variant() -> None:
+    candidates = parse_youtube_title_candidates(
+        "Lida, S3RL - Али Ули [Премьера альбома]",
+        ("Lida",),
+    )
+
+    assert [item.title for item in candidates] == [
+        "Али Ули [Премьера альбома]",
+        "Али Ули",
+    ]
+    assert candidates[1].strategy.endswith("optional-trailing-group")

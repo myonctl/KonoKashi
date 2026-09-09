@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -29,7 +30,12 @@ from konokashi.domain.lyrics import (
     TimingProvenance,
 )
 from konokashi.domain.models import PlayerCapabilities, PlayerSnapshot, RawTrackMetadata
-from konokashi.domain.tracks import Confidence, ResolvedTrack, TrackCandidate
+from konokashi.domain.tracks import (
+    ArtistCredit,
+    Confidence,
+    ResolvedTrack,
+    TrackCandidate,
+)
 from konokashi.infrastructure.lyrics.provider_documents import (
     ProviderLyricDocumentBuilder,
 )
@@ -362,7 +368,7 @@ def test_low_or_medium_candidates_are_ambiguous_and_not_auto_attached(
     assert open_storage(path).lyrics_matches.get(track.source_identity) is None
 
 
-def test_tied_high_candidates_are_ambiguous_but_unique_closest_is_accepted(
+def test_multiple_high_candidates_remain_ambiguous_even_with_closest_duration(
     tmp_path: Path,
 ) -> None:
     track = _track(album=None)
@@ -390,10 +396,9 @@ def test_tied_high_candidates_are_ambiguous_but_unique_closest_is_accepted(
             raw_payload=b"closest",
         )
     )
-    accepted = _resolver(tmp_path / "closest.sqlite3", closest).resolve(track)
-    assert accepted.status is LyricsResolutionStatus.FOUND_TIMED
-    assert accepted.document is not None
-    assert accepted.document.provider_record_id == "a"
+    still_ambiguous = _resolver(tmp_path / "closest.sqlite3", closest).resolve(track)
+    assert still_ambiguous.status is LyricsResolutionStatus.AMBIGUOUS
+    assert still_ambiguous.document is None
 
 
 def test_instrumental_provider_state_persists_without_fake_lines(
@@ -474,6 +479,104 @@ def test_provider_no_result_raw_cache_prevents_repeat_requests(tmp_path: Path) -
     assert second.network_used is False
     assert cached_provider.exact_queries == []
     assert cached_provider.search_queries == []
+    query = LyricsQuery(
+        "Elevate (Radio Edit)",
+        ("Little Sis Nora & S3RL",),
+        "Elevate",
+        183_771,
+    )
+    entry = open_storage(path).provider_cache.get(
+        "LRCLIB", provider_cache_key("LRCLIB", query, search=False)
+    )
+    assert entry is not None
+    assert entry.expires_at == NOW + timedelta(hours=12)
+
+
+def test_positive_provider_cache_has_longer_explicit_ttl(tmp_path: Path) -> None:
+    path = tmp_path / "positive-ttl.sqlite3"
+    track = _track()
+    provider = _FakeProvider(
+        exact=LyricsProviderResult(
+            LyricsProviderStatus.RESULTS,
+            (_candidate(),),
+            raw_payload=b"positive",
+        )
+    )
+
+    _resolver(path, provider).resolve(track)
+
+    query = LyricsQuery(
+        "Elevate (Radio Edit)",
+        ("Little Sis Nora & S3RL",),
+        "Elevate",
+        183_771,
+    )
+    entry = open_storage(path).provider_cache.get(
+        "LRCLIB", provider_cache_key("LRCLIB", query, search=False)
+    )
+    assert entry is not None
+    assert entry.expires_at == NOW + timedelta(days=7)
+
+
+def test_offline_expired_positive_is_labelled_but_negative_is_not_current(
+    tmp_path: Path,
+) -> None:
+    track = _track()
+    query = LyricsQuery(
+        "Elevate (Radio Edit)",
+        ("Little Sis Nora & S3RL",),
+        "Elevate",
+        183_771,
+    )
+    positive_path = tmp_path / "stale-positive.sqlite3"
+    positive_storage = open_storage(positive_path)
+    positive_storage.provider_cache.put(
+        ProviderCacheEntry(
+            "LRCLIB",
+            provider_cache_key("LRCLIB", query, search=False),
+            b"stale-positive",
+            NOW - timedelta(days=9),
+            NOW - timedelta(days=2),
+        )
+    )
+    cached = LyricsProviderResult(
+        LyricsProviderStatus.RESULTS,
+        (_candidate(),),
+        raw_payload=b"stale-positive",
+    )
+    positive = _resolver(
+        positive_path,
+        _FakeProvider(cached={(b"stale-positive", False): cached}),
+    ).resolve(track, offline=True)
+
+    assert positive.status is LyricsResolutionStatus.FOUND_TIMED
+    assert positive.cache_hit is True
+    assert "stale positive" in " ".join(positive.diagnostics)
+
+    negative_path = tmp_path / "stale-negative.sqlite3"
+    negative_storage = open_storage(negative_path)
+    negative_storage.provider_cache.put(
+        ProviderCacheEntry(
+            "LRCLIB",
+            provider_cache_key("LRCLIB", query, search=False),
+            b"stale-negative",
+            NOW - timedelta(days=2),
+            NOW - timedelta(days=1),
+        )
+    )
+    negative = _resolver(
+        negative_path,
+        _FakeProvider(
+            cached={
+                (b"stale-negative", False): LyricsProviderResult(
+                    LyricsProviderStatus.NO_RESULT
+                )
+            }
+        ),
+    ).resolve(track, offline=True)
+
+    assert negative.status is LyricsResolutionStatus.OFFLINE_MISS
+    assert negative.cache_hit is False
 
 
 def test_explicitly_expired_provider_cache_is_not_reused(tmp_path: Path) -> None:
@@ -958,3 +1061,171 @@ def test_broad_artist_catalogue_can_resolve_cross_script_phonetic_title(
     assert [query.broad for query in provider.search_queries] == [False, True]
     assert "transliteration" in " ".join(result.evidence)
     assert "broader artist catalogue" in " ".join(result.diagnostics)
+
+
+def test_native_interpretation_is_searched_after_english_miss(
+    tmp_path: Path,
+) -> None:
+    class NativeOnlyProvider(_FakeProvider):
+        def search(self, query: LyricsQuery) -> LyricsProviderResult:
+            self.search_queries.append(query)
+            if query.title != "アンドロイドガール":
+                return LyricsProviderResult(
+                    LyricsProviderStatus.NO_RESULT, raw_payload=b""
+                )
+            return LyricsProviderResult(
+                LyricsProviderStatus.RESULTS,
+                (
+                    _candidate(
+                        "android-native",
+                        title="アンドロイドガール",
+                        artist="DECO*27",
+                        album=None,
+                        duration_ms=215_200,
+                    ),
+                ),
+                raw_payload=b"native",
+            )
+
+    track = _track(
+        title="Android Girl",
+        artists=("DECO*27",),
+        album=None,
+        duration_us=215_441_000,
+    )
+    native = TrackCandidate(
+        "アンドロイドガール",
+        ("DECO*27",),
+        None,
+        215_200_000,
+        ("native title extracted from YouTube description",),
+        strategy="youtube-enrichment:youtube_description",
+        artist_credit=ArtistCredit(("DECO*27",), ("初音ミク",)),
+        field_provenance=(
+            ("title", "youtube_description"),
+            ("artists", "youtube_description"),
+        ),
+    )
+    track = replace(
+        track,
+        interpretation_candidates=(track.candidate, native),
+    )
+    provider = NativeOnlyProvider()
+
+    result = _resolver(tmp_path / "native-interpretation.sqlite3", provider).resolve(
+        track
+    )
+
+    assert result.status is LyricsResolutionStatus.FOUND_TIMED
+    assert result.document is not None
+    assert result.document.source_title == "アンドロイドガール"
+    assert any(query.title == "アンドロイドガール" for query in provider.search_queries)
+    assert "youtube-enrichment" in " ".join(result.diagnostics)
+
+
+def test_equally_plausible_native_artist_forms_remain_reviewable(
+    tmp_path: Path,
+) -> None:
+    candidates = (
+        _candidate(
+            "ali-bullet",
+            title="Али Ули",
+            artist="Lida • S3RL",
+            album=None,
+            duration_ms=178_000,
+        ),
+        _candidate(
+            "ali-ampersand",
+            title="Али Ули",
+            artist="Lida & S3RL",
+            album=None,
+            duration_ms=178_000,
+        ),
+    )
+
+    class NativeAliProvider(_FakeProvider):
+        def search(self, query: LyricsQuery) -> LyricsProviderResult:
+            self.search_queries.append(query)
+            if query.title != "Али Ули":
+                return LyricsProviderResult(
+                    LyricsProviderStatus.NO_RESULT, raw_payload=b""
+                )
+            return LyricsProviderResult(
+                LyricsProviderStatus.RESULTS,
+                candidates,
+                raw_payload=b"ali-native",
+            )
+
+    track = _track(
+        title="Ali Uli",
+        artists=("Lida, S3RL",),
+        album=None,
+        duration_us=178_000_000,
+    )
+    native = TrackCandidate(
+        "Али Ули",
+        ("Lida, S3RL",),
+        None,
+        178_000_000,
+        ("native title extracted from YouTube description",),
+        strategy="youtube-enrichment:optional-trailing-group",
+        artist_credit=ArtistCredit(("Lida", "S3RL")),
+    )
+    track = replace(
+        track,
+        interpretation_candidates=(track.candidate, native),
+    )
+    provider = NativeAliProvider()
+    resolver = _resolver(tmp_path / "ali-ambiguous.sqlite3", provider)
+
+    result = resolver.resolve(track)
+    review = resolver.alternatives(track, refresh=True)
+
+    assert result.status is LyricsResolutionStatus.AMBIGUOUS
+    assert {item.record_id for item in result.alternatives} == {
+        "ali-bullet",
+        "ali-ampersand",
+    }
+    assert {item.candidate.record_id for item in review.alternatives} == {
+        "ali-bullet",
+        "ali-ampersand",
+    }
+    assert all(
+        item.text_confidence is LyricsMatchConfidence.HIGH
+        and item.timing_confidence is LyricsMatchConfidence.HIGH
+        for item in review.alternatives
+    )
+
+
+def test_manual_alternative_search_is_bounded_and_does_not_mutate_track(
+    tmp_path: Path,
+) -> None:
+    track = _track(title="Raw title", artists=("Raw artist",), album=None)
+    provider = _FakeProvider(
+        search=LyricsProviderResult(
+            LyricsProviderStatus.RESULTS,
+            (
+                _candidate(
+                    "manual",
+                    title="Manual title",
+                    artist="Manual artist",
+                    album=None,
+                ),
+            ),
+            raw_payload=b"manual",
+        )
+    )
+
+    review = _resolver(tmp_path / "manual-search.sqlite3", provider).alternatives(
+        track,
+        title=" Manual title ",
+        artists=(" Manual artist ",),
+    )
+
+    assert review.search_title == "Manual title"
+    assert review.search_artists == ("Manual artist",)
+    assert {query.title for query in provider.search_queries} == {"Manual title"}
+    assert {query.artist_name for query in provider.search_queries} == {"Manual artist"}
+    assert len(provider.search_queries) == 2
+    assert track.raw_snapshot.metadata.title == "Raw title"
+    assert track.candidate.title == "Raw title"

@@ -550,6 +550,11 @@ def test_review_is_enabled_only_after_source_resolution(qt_app: QApplication) ->
     assert not window.review_button.isEnabled()
     window.render_state(timed)
     assert window.review_button.isEnabled()
+    window.render_state(replace(timed, state=DesktopLyricsState.AMBIGUOUS))
+    assert window.review_button.text() == "Possible lyrics matches…"
+    assert window.review_action.text() == "&Possible lyrics matches…"
+    window.render_state(replace(timed, state=DesktopLyricsState.NO_RESULT))
+    assert "Search, refresh" in window.review_button.toolTip()
     window.render_state(replace(timed, state=DesktopLyricsState.ERROR))
     assert not window.review_button.isEnabled()
     window.close()
@@ -645,6 +650,9 @@ def test_review_dialog_exposes_bounded_audit_and_explicit_actions(
     assert "Effective interpretation" in audit.toPlainText()
     assert dialog.alternatives.count() == 1
     assert "Provider <title>" in dialog.alternatives.itemText(0)
+    assert "Record: 42" in dialog.alternative_details.text()
+    assert "Text confidence:" in dialog.alternative_details.text()
+    assert "Timing confidence:" in dialog.alternative_details.text()
     assert dialog.reset_delay_button.isEnabled()
 
     QTest.mouseClick(dialog.choose_button, Qt.MouseButton.LeftButton)
@@ -653,6 +661,17 @@ def test_review_dialog_exposes_bounded_audit_and_explicit_actions(
     assert action.kind is CorrectionActionKind.CHOOSE_ALTERNATIVE
     assert action.alternative is not None
     assert action.alternative.candidate.record_id == "42"
+
+    reject_dialog = ReviewCorrectionDialog(_review_snapshot())
+    QTest.mouseClick(
+        reject_dialog.reject_alternative_button,
+        Qt.MouseButton.LeftButton,
+    )
+    reject_action = reject_dialog.action()
+    assert reject_action is not None
+    assert reject_action.kind is CorrectionActionKind.REJECT_ALTERNATIVE
+    assert reject_action.alternative is not None
+    assert reject_action.alternative.candidate.record_id == "42"
 
 
 def test_review_dialog_track_and_delay_requests_are_typed(
@@ -675,6 +694,27 @@ def test_review_dialog_track_and_delay_requests_are_typed(
     assert delay_action is not None
     assert delay_action.kind is CorrectionActionKind.SET_DELAY
     assert delay_action.delay_us == -250_000
+
+    search_dialog = ReviewCorrectionDialog(
+        replace(_review_snapshot(), youtube_enrichment_available=True)
+    )
+    search_dialog.search_title_edit.setText(" Manual title ")
+    search_dialog.search_artists_edit.setText("Artist A; Artist B")
+    QTest.mouseClick(search_dialog.search_button, Qt.MouseButton.LeftButton)
+    search_action = search_dialog.action()
+    assert search_action is not None
+    assert search_action.kind is CorrectionActionKind.SEARCH_MATCHES
+    assert search_action.title == "Manual title"
+    assert search_action.artists == ("Artist A", "Artist B")
+
+    enrich_dialog = ReviewCorrectionDialog(
+        replace(_review_snapshot(), youtube_enrichment_available=True)
+    )
+    assert enrich_dialog.enrich_button.isEnabled()
+    QTest.mouseClick(enrich_dialog.enrich_button, Qt.MouseButton.LeftButton)
+    enrich_action = enrich_dialog.action()
+    assert enrich_action is not None
+    assert enrich_action.kind is CorrectionActionKind.ENRICH_YOUTUBE
 
 
 def test_review_dialog_offers_only_match_reset_when_rejected_document_is_hidden(

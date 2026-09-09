@@ -999,6 +999,28 @@ class MainWindow(DesktopWindowSurface):
                 DesktopLyricsState.ERROR,
             }
         )
+        possible_matches = state.state in {
+            DesktopLyricsState.AMBIGUOUS,
+            DesktopLyricsState.NO_RESULT,
+        }
+        self.review_button.setText(
+            "Possible lyrics matches…" if possible_matches else "Review"
+        )
+        self.review_button.setAccessibleName(
+            "Possible lyrics matches"
+            if possible_matches
+            else "Review and correct this track and lyrics"
+        )
+        self.review_button.setToolTip(
+            "Search, refresh, and choose a possible lyrics match"
+            if possible_matches
+            else "Review the detected track and lyrics match"
+        )
+        self.review_action.setText(
+            "&Possible lyrics matches…"
+            if possible_matches
+            else "&Review track and lyrics…"
+        )
         self.review_action.setEnabled(self.review_button.isEnabled())
         self.details_action.setEnabled(self.details_button.isEnabled())
         self._apply_visibility()

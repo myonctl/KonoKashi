@@ -159,6 +159,10 @@ class LyricsQuery:
     duration_ms: int | None
     broad: bool = False
     source_confidence: str | None = None
+    main_artists: tuple[str, ...] = field(default_factory=tuple)
+    contributors: tuple[str, ...] = field(default_factory=tuple)
+    strategy: str = "resolved-track"
+    provenance: tuple[tuple[str, str], ...] = field(default_factory=tuple)
 
     @property
     def artist_name(self) -> str:
@@ -245,6 +249,9 @@ class LyricsAlternative:
     evidence: tuple[str, ...] = field(default_factory=tuple)
     current: bool = False
     rejected: bool = False
+    text_confidence: LyricsMatchConfidence = LyricsMatchConfidence.LOW
+    timing_confidence: LyricsMatchConfidence = LyricsMatchConfidence.LOW
+    strategy: str = "resolved-track"
 
 
 @dataclass(frozen=True, slots=True)
@@ -256,6 +263,8 @@ class LyricsAlternativeResult:
     diagnostics: tuple[str, ...] = field(default_factory=tuple)
     cache_hit: bool = False
     network_used: bool = False
+    search_title: str | None = None
+    search_artists: tuple[str, ...] = field(default_factory=tuple)
 
 
 class LyricsTextParseStatus(Enum):

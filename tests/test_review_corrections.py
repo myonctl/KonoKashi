@@ -267,6 +267,37 @@ def test_reject_and_choose_alternative_change_only_match_decision(
     assert storage.lyrics_matches.rejections(track.source_identity) == ()  # type: ignore[attr-defined]
 
 
+def test_reject_alternative_preserves_current_match(tmp_path: Path) -> None:
+    service, storage = _service(tmp_path / "reject-alternative.sqlite3")
+    track = _track()
+    builder = ProviderLyricDocumentBuilder()
+    current_document, _ = builder.build(_candidate("current-document"), NOW)
+    assert current_document is not None
+    storage.lyrics.put(current_document)  # type: ignore[attr-defined]
+    current = LyricsMatch(
+        current_document.document_id,
+        LyricsMatchDecision.CANDIDATE,
+        ContentProvenance.PROVIDER,
+        NOW,
+        LyricsMatchConfidence.HIGH,
+    )
+    storage.lyrics_matches.put(track.source_identity, current)  # type: ignore[attr-defined]
+    candidate = _candidate("wrong-alternative", "Wrong recording")
+    alternative = LyricsAlternative(
+        builder.document_id(candidate),
+        candidate,
+        LyricsMatchConfidence.LOW,
+        ("recording evidence conflicts",),
+    )
+
+    service.reject_alternative(track, alternative)
+
+    assert storage.lyrics_matches.get(track.source_identity) == current  # type: ignore[attr-defined]
+    rejections = storage.lyrics_matches.rejections(track.source_identity)  # type: ignore[attr-defined]
+    assert tuple(item.document_id for item in rejections) == (alternative.document_id,)
+    assert storage.lyrics.get(alternative.document_id) is not None  # type: ignore[attr-defined]
+
+
 def test_reject_rolls_back_history_when_current_decision_cannot_be_saved(
     tmp_path: Path,
 ) -> None:

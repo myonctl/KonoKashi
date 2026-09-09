@@ -10,7 +10,8 @@ from konokashi.domain.normalization import (
     comparison_key,
     normalize_artist,
     normalize_text,
-    parse_youtube_title,
+    parse_artist_credits,
+    parse_youtube_title_candidates,
 )
 from konokashi.domain.tracks import Confidence, ResolvedTrack, TrackCandidate
 
@@ -31,11 +32,14 @@ class TrackResolver:
 
         source = self._sources.resolve(snapshot)
         if isinstance(source.identity, YouTubeIdentity):
-            automatic_candidate = self._youtube_candidate(snapshot)
+            interpretations = self._youtube_candidates(snapshot)
         else:
-            automatic_candidate = self._reported_candidate(
-                snapshot, is_local=isinstance(source.identity, LocalFileIdentity)
+            interpretations = (
+                self._reported_candidate(
+                    snapshot, is_local=isinstance(source.identity, LocalFileIdentity)
+                ),
             )
+        automatic_candidate = interpretations[0]
         automatic_confidence, automatic_warnings = self._confidence(
             snapshot, automatic_candidate, source.identity
         )
@@ -51,6 +55,12 @@ class TrackResolver:
                 ),
                 duration_us=snapshot.metadata.duration_us,
                 evidence=("user-approved correction for stable source identity",),
+                strategy="user-correction",
+                artist_credit=parse_artist_credits(approved.artists),
+                field_provenance=(
+                    ("title", "user-correction"),
+                    ("artists", "user-correction"),
+                ),
             )
             return ResolvedTrack(
                 snapshot,
@@ -62,6 +72,7 @@ class TrackResolver:
                 user_approved=True,
                 automatic_candidate=automatic_candidate,
                 automatic_confidence=automatic_confidence,
+                interpretation_candidates=(candidate, *interpretations),
             )
 
         evidence = source.evidence + automatic_candidate.evidence
@@ -72,6 +83,7 @@ class TrackResolver:
             automatic_confidence,
             evidence,
             source.warnings + automatic_warnings,
+            interpretation_candidates=interpretations,
         )
 
     def _reported_candidate(
@@ -100,45 +112,87 @@ class TrackResolver:
             duration_us=metadata.duration_us,
             evidence=tuple(evidence),
             transformations=tuple(dict.fromkeys(transformations)),
+            strategy="reported-mpris",
+            artist_credit=parse_artist_credits(tuple(artists)),
+            field_provenance=tuple(
+                item
+                for item, present in (
+                    (("title", "mpris-title"), title is not None),
+                    (("artists", "mpris-artists"), bool(artists)),
+                    (("album", "mpris-album"), metadata.album is not None),
+                    (("duration", "mpris-duration"), metadata.duration_us is not None),
+                )
+                if present
+            ),
         )
 
-    def _youtube_candidate(self, snapshot: PlayerSnapshot) -> TrackCandidate:
+    def _youtube_candidates(
+        self, snapshot: PlayerSnapshot
+    ) -> tuple[TrackCandidate, ...]:
         metadata = snapshot.metadata
-        parsed = (
-            parse_youtube_title(metadata.title, metadata.artists)
+        parsed_candidates = (
+            parse_youtube_title_candidates(metadata.title, metadata.artists)
             if metadata.title
-            else None
+            else ()
         )
-        if parsed is None:
+        if not parsed_candidates:
             reported = self._reported_candidate(snapshot)
             uploader_evidence = tuple(
                 f"preserved reported artist as uploader evidence: {artist}"
                 for artist in metadata.artists or ()
                 if artist.strip()
             )
-            return TrackCandidate(
-                title=reported.title,
-                artists=(),
-                album=reported.album,
-                duration_us=reported.duration_us,
-                evidence=(
-                    *uploader_evidence,
-                    "video title did not contain unambiguous artist/title separator",
+            return (
+                TrackCandidate(
+                    title=reported.title,
+                    artists=(),
+                    album=reported.album,
+                    duration_us=reported.duration_us,
+                    evidence=(
+                        *uploader_evidence,
+                        "video title did not contain unambiguous "
+                        "artist/title separator",
+                    ),
+                    transformations=reported.transformations,
+                    strategy="youtube-unstructured-title",
+                    field_provenance=(
+                        ("title", "mpris-title"),
+                        ("uploader", "mpris-artists"),
+                        *(
+                            (("duration", "mpris-duration"),)
+                            if reported.duration_us
+                            else ()
+                        ),
+                    ),
                 ),
-                transformations=reported.transformations,
             )
         uploader_evidence = tuple(
             f"preserved reported artist as uploader evidence: {artist}"
             for artist in metadata.artists or ()
             if artist.strip()
         )
-        return TrackCandidate(
-            title=parsed.title,
-            artists=parsed.artists,
-            album=metadata.album,
-            duration_us=metadata.duration_us,
-            evidence=parsed.evidence + uploader_evidence,
-            transformations=parsed.transformations,
+        return tuple(
+            TrackCandidate(
+                title=parsed.title,
+                artists=parsed.artists,
+                album=metadata.album,
+                duration_us=metadata.duration_us,
+                evidence=parsed.evidence + uploader_evidence,
+                transformations=parsed.transformations,
+                strategy=parsed.strategy,
+                artist_credit=parsed.artist_credit,
+                field_provenance=(
+                    *parsed.field_provenance,
+                    *((("album", "mpris-album"),) if metadata.album else ()),
+                    *(
+                        (("duration", "mpris-duration"),)
+                        if metadata.duration_us
+                        else ()
+                    ),
+                    *((("uploader", "mpris-artists"),) if metadata.artists else ()),
+                ),
+            )
+            for parsed in parsed_candidates
         )
 
     @staticmethod

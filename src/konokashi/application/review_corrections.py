@@ -13,7 +13,11 @@ from konokashi.application.ports import (
     TimingCalibrationRepositoryPort,
     TrackOverrideRepositoryPort,
 )
-from konokashi.domain.identity import PersistenceScope, SourceIdentity
+from konokashi.domain.identity import (
+    PersistenceScope,
+    SourceIdentity,
+    YouTubeIdentity,
+)
 from konokashi.domain.lyrics import (
     ContentProvenance,
     LyricDocument,
@@ -74,6 +78,9 @@ class ReviewCorrectionSnapshot:
     display_delay_us: int
     alternatives: tuple[LyricsAlternative, ...] = field(default_factory=tuple)
     diagnostics: tuple[str, ...] = field(default_factory=tuple)
+    search_title: str | None = None
+    search_artists: tuple[str, ...] = field(default_factory=tuple)
+    youtube_enrichment_available: bool = False
 
 
 class ReviewCorrectionService:
@@ -185,6 +192,11 @@ class ReviewCorrectionService:
             display_delay_us=(0 if timing is None else timing.lyrics_display_delay_us),
             alternatives=alternatives.alternatives,
             diagnostics=(*resolution.diagnostics, *alternatives.diagnostics),
+            search_title=alternatives.search_title,
+            search_artists=alternatives.search_artists,
+            youtube_enrichment_available=isinstance(
+                track.source_identity, YouTubeIdentity
+            ),
         )
 
     def put_track_override(
@@ -287,6 +299,38 @@ class ReviewCorrectionService:
                 tuple(
                     dict.fromkeys(
                         (*alternative.evidence, "explicitly selected by the user")
+                    )
+                ),
+            ),
+        )
+
+    def reject_alternative(
+        self, track: ResolvedTrack, alternative: LyricsAlternative
+    ) -> None:
+        """Reject one review candidate without replacing a usable current match."""
+
+        self._require_durable(track)
+        expected_id = self._provider_documents.document_id(alternative.candidate)
+        if expected_id != alternative.document_id:
+            raise ReviewCorrectionError("alternative document identity is inconsistent")
+        document, diagnostics = self._provider_documents.build(
+            alternative.candidate, self._now()
+        )
+        if document is None:
+            detail = "; ".join(diagnostics) or "candidate has no usable lyric content"
+            raise ReviewCorrectionError(f"selected alternative is invalid: {detail}")
+        self._lyrics.put(document)
+        self._matches.put_rejection(
+            track.source_identity,
+            LyricsMatch(
+                document.document_id,
+                LyricsMatchDecision.REJECTED,
+                ContentProvenance.USER,
+                self._now(),
+                alternative.confidence,
+                tuple(
+                    dict.fromkeys(
+                        (*alternative.evidence, "explicitly rejected by the user")
                     )
                 ),
             ),

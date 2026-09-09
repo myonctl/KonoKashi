@@ -192,6 +192,16 @@ scanner, customizable desktop appearance/layout, GUI settings, terminal settings
 interface, CLI, migrations, backup, and privacy-bounded diagnostics are
 functional.
 
+Ambiguous and suitable no-result states expose **Possible lyrics matches…**.
+That review surface shows provider identity, separate text/timing confidence and
+evidence, and supports refresh, bounded manual title/artist search, choose,
+reject, and reset. For a confirmed YouTube video, **Use YouTube metadata** may
+optionally contact YouTube for that current public video's title, uploader,
+duration, and description credits. It never downloads audio/video, reads
+cookies, authenticates, uploads lyric text, or treats the description as lyrics.
+Only bounded extracted recording fields are cached; description prose is
+discarded.
+
 Real-world verification has focused on Artix Linux with KDE Plasma, Strawberry,
 and Plasma Browser Integration. Standards-compliant MPRIS players may work but
 are not all individually certified.
@@ -204,6 +214,8 @@ are not all individually certified.
 - Local sidecar access depends on the player exposing a usable local file URL.
 - Browser/player metadata quality varies, so low-confidence matches are not
   accepted automatically.
+- Native installations need an optional `yt-dlp` executable for user-requested
+  YouTube metadata enrichment; its absence leaves normal resolution unchanged.
 - Translation generation is not implemented; translations are imported or
   user-provided layers.
 - The current icon is an intentional temporary project mark, not a finalized

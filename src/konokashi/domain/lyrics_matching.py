@@ -11,7 +11,11 @@ from konokashi.domain.lyrics import (
     LyricsProviderCandidate,
     LyricsQuery,
 )
-from konokashi.domain.normalization import comparison_key, parse_title_version
+from konokashi.domain.normalization import (
+    comparison_key,
+    parse_artist_credits,
+    parse_title_version,
+)
 
 _VERSION_MARKERS = (
     "radio edit",
@@ -49,6 +53,7 @@ class CandidateMatchAssessment:
     title_relation: str
     text_confidence: LyricsMatchConfidence
     timing_confidence: LyricsMatchConfidence
+    query_strategy: str = "resolved-track"
 
 
 def assess_candidate(
@@ -68,11 +73,6 @@ def assess_candidate(
     base_equal = bool(comparison_key(query_version.base_title)) and comparison_key(
         query_version.base_title
     ) == comparison_key(provider_version.base_title)
-    if title_equal:
-        evidence.append("normalized title matches")
-    else:
-        evidence.append("normalized title differs")
-
     if candidate.synced_lyrics:
         evidence.append("synchronized lyrics are available")
     elif candidate.plain_lyrics:
@@ -80,13 +80,57 @@ def assess_candidate(
     if query.source_confidence is not None:
         evidence.append(f"recording metadata confidence is {query.source_confidence}")
 
-    query_artist = comparison_key(query.artist_name)
-    provider_artist = comparison_key(candidate.artist_name)
-    artist_equal = bool(query_artist) and query_artist == provider_artist
-    if artist_equal:
-        evidence.append("normalized musical artist matches")
+    query_credit = parse_artist_credits(query.artists)
+    if query.main_artists:
+        query_credit = type(query_credit)(query.main_artists, query.contributors)
+    provider_credit = parse_artist_credits((candidate.artist_name,))
+    query_main = tuple(comparison_key(item) for item in query_credit.main_artists)
+    provider_main = tuple(comparison_key(item) for item in provider_credit.main_artists)
+    main_order_equal = bool(query_main) and query_main == provider_main
+    main_set_equal = (
+        bool(query_main)
+        and len(query_main) == len(provider_main)
+        and set(query_main) == set(provider_main)
+    )
+    query_contributors = tuple(
+        comparison_key(item) for item in query_credit.contributors
+    )
+    provider_contributors = tuple(
+        comparison_key(item) for item in provider_credit.contributors
+    )
+    contributor_order_equal = query_contributors == provider_contributors
+    contributor_set_equal = (
+        bool(query_contributors)
+        and len(query_contributors) == len(provider_contributors)
+        and set(query_contributors) == set(provider_contributors)
+    )
+    provider_omits_contributors = bool(query_contributors) and not provider_contributors
+    artist_high_eligible = main_order_equal and (
+        contributor_order_equal or provider_omits_contributors
+    )
+    artist_correlated = main_order_equal or main_set_equal
+    if main_order_equal:
+        evidence.append("ordered main-artist credits match")
+    elif main_set_equal:
+        evidence.append("complete main-artist set matches but order differs")
     else:
-        evidence.append("normalized musical artist differs")
+        evidence.append("main-artist credits differ or are incomplete")
+    if contributor_order_equal and query_contributors:
+        evidence.append("ordered contributor credits match")
+    elif contributor_set_equal:
+        evidence.append("complete contributor set matches but order differs")
+        artist_high_eligible = False
+    elif provider_omits_contributors:
+        evidence.append(
+            "provider omits reported contributor credit; main artist remains usable"
+        )
+    elif query_contributors or provider_contributors:
+        evidence.append("contributor credits differ or are incomplete")
+        artist_high_eligible = False
+    if title_equal:
+        evidence.append("normalized title matches")
+    else:
+        evidence.append("normalized title differs")
 
     query_versions = _version_markers(query.title)
     provider_versions = _version_markers(candidate.track_name)
@@ -143,7 +187,7 @@ def assess_candidate(
     )
     phonetic_match = (
         not base_equal
-        and artist_equal
+        and artist_high_eligible
         and duration_near
         and version_compatible
         and phonetic_similarity >= 0.72
@@ -183,13 +227,19 @@ def assess_candidate(
         title_relation = "different"
 
     if (
-        artist_equal
+        artist_high_eligible
         and instrumental_compatible
         and (
             (title_equal and version_compatible) or safe_base_fallback or phonetic_match
         )
     ):
         text_confidence = LyricsMatchConfidence.HIGH
+    elif (
+        artist_correlated
+        and instrumental_compatible
+        and ((title_equal and version_compatible) or safe_base_fallback)
+    ):
+        text_confidence = LyricsMatchConfidence.MEDIUM
     else:
         text_confidence = LyricsMatchConfidence.LOW
 
@@ -209,7 +259,7 @@ def assess_candidate(
 
     if (
         title_equal
-        and artist_equal
+        and artist_high_eligible
         and version_compatible
         and duration_compatible
         and album_compatible
@@ -218,7 +268,7 @@ def assess_candidate(
         confidence = LyricsMatchConfidence.HIGH
     elif (
         title_equal
-        and artist_equal
+        and artist_high_eligible
         and version_compatible
         and (duration_difference is None or duration_difference <= 5_000)
         and instrumental_compatible
@@ -232,6 +282,12 @@ def assess_candidate(
         confidence = LyricsMatchConfidence.HIGH
     else:
         confidence = LyricsMatchConfidence.LOW
+    if (
+        confidence is LyricsMatchConfidence.LOW
+        and text_confidence is LyricsMatchConfidence.MEDIUM
+        and (duration_difference is None or duration_near)
+    ):
+        confidence = LyricsMatchConfidence.MEDIUM
     if query.source_confidence == "Low" and confidence is LyricsMatchConfidence.HIGH:
         evidence.append("low-confidence recording metadata prevents automatic match")
         confidence = LyricsMatchConfidence.MEDIUM
@@ -243,6 +299,7 @@ def assess_candidate(
         title_relation,
         text_confidence,
         timing_confidence,
+        query.strategy,
     )
 
 

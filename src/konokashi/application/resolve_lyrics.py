@@ -6,7 +6,7 @@ import json
 import time
 from collections.abc import Callable, Sequence
 from dataclasses import replace
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from hashlib import sha256
 
 from konokashi.application.ports import (
@@ -37,8 +37,8 @@ from konokashi.domain.lyrics import (
     ProviderCacheEntry,
 )
 from konokashi.domain.lyrics_matching import CandidateMatchAssessment, assess_candidate
-from konokashi.domain.normalization import parse_title_version
-from konokashi.domain.tracks import ResolvedTrack
+from konokashi.domain.normalization import parse_artist_credits, parse_title_version
+from konokashi.domain.tracks import ResolvedTrack, TrackCandidate
 
 _CONFIDENCE_RANK = {
     LyricsMatchConfidence.HIGH: 0,
@@ -46,6 +46,8 @@ _CONFIDENCE_RANK = {
     LyricsMatchConfidence.LOW: 2,
     LyricsMatchConfidence.APPROVED: -1,
 }
+_RESULTS_CACHE_TTL = timedelta(days=7)
+_NO_RESULT_CACHE_TTL = timedelta(hours=12)
 
 
 class LyricsResolver:
@@ -173,8 +175,8 @@ class LyricsResolver:
                 )
             automatic_fallback = (current_document, current_match)
 
-        query = _query(track)
-        if query is None:
+        queries = _queries(track)
+        if not queries:
             diagnostics.append(
                 "provider lookup skipped because resolved title or musical artist "
                 "is missing"
@@ -191,6 +193,7 @@ class LyricsResolver:
                 network_used=False,
             )
 
+        query = queries[0]
         all_assessments: list[CandidateMatchAssessment] = []
         network_used = False
         cache_hit = False
@@ -221,15 +224,6 @@ class LyricsResolver:
                     if self._provider_documents.document_id(candidate)
                     not in rejected_document_ids
                 )
-                accepted = self._unique_high(all_assessments)
-                if accepted is not None:
-                    return self._accept_provider(
-                        track,
-                        accepted,
-                        diagnostics,
-                        cache_hit=cache_hit,
-                        network_used=network_used,
-                    )
         else:
             missing = []
             if query.album is None:
@@ -240,8 +234,11 @@ class LyricsResolver:
                 "exact LRCLIB lookup skipped; missing " + ", ".join(missing)
             )
 
-        for strategy, search_query in _search_queries(query):
-            diagnostics.append(f"provider strategy: {strategy}")
+        for strategy, search_query, assessment_query in _candidate_search_plan(queries):
+            diagnostics.append(
+                f"provider strategy: {strategy} "
+                f"[interpretation: {assessment_query.strategy}]"
+            )
             if offline:
                 search, search_cached, search_network = self._provider_result(
                     search_query, search=True, offline=True, refresh=False
@@ -272,23 +269,10 @@ class LyricsResolver:
                 )
             if search.status is LyricsProviderStatus.RESULTS:
                 all_assessments.extend(
-                    self._assess(query, candidate)
+                    self._assess(assessment_query, candidate)
                     for candidate in search.candidates
                     if self._provider_documents.document_id(candidate)
                     not in rejected_document_ids
-                )
-            accepted = self._unique_high(all_assessments)
-            if accepted is not None:
-                diagnostics.extend(
-                    _assessment_diagnostic(item)
-                    for item in _deduplicate_assessments(all_assessments)
-                )
-                return self._accept_provider(
-                    track,
-                    accepted,
-                    diagnostics,
-                    cache_hit=cache_hit,
-                    network_used=network_used,
                 )
         assessments = _deduplicate_assessments(all_assessments)
         accepted = self._unique_high(assessments)
@@ -333,12 +317,22 @@ class LyricsResolver:
         )
 
     def alternatives(
-        self, track: ResolvedTrack, *, offline: bool = False, refresh: bool = False
+        self,
+        track: ResolvedTrack,
+        *,
+        offline: bool = False,
+        refresh: bool = False,
+        title: str | None = None,
+        artists: tuple[str, ...] = (),
     ) -> LyricsAlternativeResult:
         """Return reviewable provider candidates without changing match decisions."""
 
-        query = _query(track)
-        if query is None:
+        queries = (
+            _manual_queries(track, title, artists)
+            if title is not None
+            else _queries(track)
+        )
+        if not queries:
             return LyricsAlternativeResult(
                 track.source_identity,
                 diagnostics=(
@@ -346,6 +340,7 @@ class LyricsResolver:
                     "artist is missing",
                 ),
             )
+        query = queries[0]
         diagnostics: list[str] = []
         assessments: list[CandidateMatchAssessment] = []
         cache_hit = False
@@ -367,8 +362,11 @@ class LyricsResolver:
             diagnostics.append(
                 "exact alternative lookup skipped because album or duration is missing"
             )
-        for strategy, search_query in _search_queries(query):
-            diagnostics.append(f"provider strategy: {strategy}")
+        for strategy, search_query, assessment_query in _candidate_search_plan(queries):
+            diagnostics.append(
+                f"provider strategy: {strategy} "
+                f"[interpretation: {assessment_query.strategy}]"
+            )
             if offline:
                 search, cached, network = self._provider_result(
                     search_query, search=True, offline=True, refresh=False
@@ -384,7 +382,8 @@ class LyricsResolver:
             diagnostics.extend(search.diagnostics)
             if search.status is LyricsProviderStatus.RESULTS:
                 assessments.extend(
-                    self._assess(query, candidate) for candidate in search.candidates
+                    self._assess(assessment_query, candidate)
+                    for candidate in search.candidates
                 )
             elif search.status is not LyricsProviderStatus.NO_RESULT:
                 diagnostics.append(f"{strategy} lookup ended as {search.status.value}")
@@ -416,6 +415,9 @@ class LyricsResolver:
                     self._provider_documents.document_id(assessment.candidate)
                     in rejected_document_ids
                 ),
+                text_confidence=assessment.text_confidence,
+                timing_confidence=assessment.timing_confidence,
+                strategy=assessment.query_strategy,
             )
             for assessment in _ordered(_deduplicate_assessments(assessments))
         )
@@ -425,6 +427,8 @@ class LyricsResolver:
             tuple(diagnostics),
             cache_hit,
             network_used,
+            query.title,
+            query.artists,
         )
 
     def _provider_result(
@@ -438,11 +442,24 @@ class LyricsResolver:
         cache_key = provider_cache_key(self._provider.name, query, search=search)
         if not refresh:
             cached = self._provider_cache.get(self._provider.name, cache_key)
-            if cached is not None and (
-                cached.expires_at is None or cached.expires_at > self._now()
-            ):
+            if cached is not None:
+                current = cached.expires_at is None or cached.expires_at > self._now()
                 parsed = self._provider.parse_cached(cached.payload, search=search)
-                return parsed, True, False
+                if current:
+                    return parsed, True, False
+                if offline and parsed.status is LyricsProviderStatus.RESULTS:
+                    return (
+                        replace(
+                            parsed,
+                            diagnostics=(
+                                *parsed.diagnostics,
+                                "offline mode: using explicitly stale positive "
+                                "provider-cache fallback",
+                            ),
+                        ),
+                        True,
+                        False,
+                    )
         if offline:
             return (
                 LyricsProviderResult(
@@ -457,12 +474,19 @@ class LyricsResolver:
             LyricsProviderStatus.RESULTS,
             LyricsProviderStatus.NO_RESULT,
         }:
+            ttl = (
+                _RESULTS_CACHE_TTL
+                if result.status is LyricsProviderStatus.RESULTS
+                else _NO_RESULT_CACHE_TTL
+            )
+            retrieved_at = self._now()
             self._provider_cache.put(
                 ProviderCacheEntry(
                     self._provider.name,
                     cache_key,
                     result.raw_payload,
-                    self._now(),
+                    retrieved_at,
+                    retrieved_at + ttl,
                 )
             )
         return result, False, True
@@ -570,16 +594,13 @@ class LyricsResolver:
             return high[0]
         if len(high) > 1:
             first_relation = _title_relation_rank(high[0])
-            second_relation = _title_relation_rank(high[1])
-            if first_relation < second_relation:
+            if all(first_relation < _title_relation_rank(other) for other in high[1:]):
                 return high[0]
-            first_synced = bool(high[0].candidate.synced_lyrics)
-            second_synced = bool(high[1].candidate.synced_lyrics)
-            if first_synced and not second_synced:
-                return high[0]
-            first = high[0].duration_difference_ms
-            second = high[1].duration_difference_ms
-            if first is not None and (second is None or first < second):
+            if high[0].candidate.synced_lyrics and all(
+                _same_recording_fields(high[0], other)
+                and not other.candidate.synced_lyrics
+                for other in high[1:]
+            ):
                 return high[0]
         return None
 
@@ -683,18 +704,83 @@ def provider_cache_key(provider: str, query: LyricsQuery, *, search: bool) -> st
     return sha256(payload).hexdigest()
 
 
-def _query(track: ResolvedTrack) -> LyricsQuery | None:
-    title = track.candidate.title
-    artists = tuple(artist for artist in track.candidate.artists if artist.strip())
+def _candidate_query(
+    track: ResolvedTrack, candidate: TrackCandidate
+) -> LyricsQuery | None:
+    title = candidate.title
+    artists = tuple(artist for artist in candidate.artists if artist.strip())
     if title is None or not title.strip() or not artists:
         return None
-    duration = track.candidate.duration_us
+    duration = candidate.duration_us
+    credit = candidate.artist_credit
     return LyricsQuery(
         title,
         artists,
-        track.candidate.album if track.candidate.album else None,
+        candidate.album if candidate.album else None,
         None if duration is None else (duration + 500) // 1000,
         source_confidence=track.confidence.value,
+        main_artists=() if credit is None else credit.main_artists,
+        contributors=() if credit is None else credit.contributors,
+        strategy=candidate.strategy,
+        provenance=candidate.field_provenance,
+    )
+
+
+def _queries(track: ResolvedTrack) -> tuple[LyricsQuery, ...]:
+    candidates = (
+        (track.candidate,)
+        if track.user_approved or not track.interpretation_candidates
+        else track.interpretation_candidates
+    )
+    result: list[LyricsQuery] = []
+    seen: set[tuple[object, ...]] = set()
+    for candidate in candidates:
+        query = _candidate_query(track, candidate)
+        if query is None:
+            continue
+        key = (
+            query.title,
+            query.artists,
+            query.album,
+            query.duration_ms,
+            query.main_artists,
+            query.contributors,
+        )
+        if key not in seen:
+            seen.add(key)
+            result.append(query)
+    return tuple(result)
+
+
+def _manual_queries(
+    track: ResolvedTrack,
+    title: str | None,
+    artists: tuple[str, ...],
+) -> tuple[LyricsQuery, ...]:
+    """Build one bounded review-only query without mutating raw track metadata."""
+
+    cleaned_title = "" if title is None else title.strip()
+    cleaned_artists = tuple(item.strip() for item in artists if item.strip())
+    if not cleaned_title or not cleaned_artists:
+        return ()
+    duration = track.candidate.duration_us
+    credit = parse_artist_credits(cleaned_artists)
+    return (
+        LyricsQuery(
+            cleaned_title,
+            cleaned_artists,
+            None,
+            None if duration is None else (duration + 500) // 1000,
+            source_confidence=track.confidence.value,
+            main_artists=credit.main_artists,
+            contributors=credit.contributors,
+            strategy="manual-review-search",
+            provenance=(
+                ("title", "manual-review-search"),
+                ("artists", "manual-review-search"),
+                *((("duration", "mpris-duration"),) if duration is not None else ()),
+            ),
+        ),
     )
 
 
@@ -716,20 +802,61 @@ def _search_queries(query: LyricsQuery) -> tuple[tuple[str, LyricsQuery], ...]:
     return tuple(strategies)
 
 
+def _candidate_search_plan(
+    queries: Sequence[LyricsQuery],
+) -> tuple[tuple[str, LyricsQuery, LyricsQuery], ...]:
+    """Build bounded lookups while retaining each scoring interpretation."""
+
+    plan: list[tuple[str, LyricsQuery, LyricsQuery]] = []
+    seen: set[tuple[object, ...]] = set()
+    for assessment_query in queries:
+        for strategy, search_query in _search_queries(assessment_query):
+            key = (
+                search_query.title,
+                search_query.artists,
+                search_query.album,
+                search_query.duration_ms,
+                search_query.broad,
+                assessment_query.main_artists,
+                assessment_query.contributors,
+            )
+            if key not in seen:
+                seen.add(key)
+                plan.append((strategy, search_query, assessment_query))
+    return tuple(plan)
+
+
 def _ordered(
     assessments: Sequence[CandidateMatchAssessment],
 ) -> list[CandidateMatchAssessment]:
-    return sorted(
-        assessments,
-        key=lambda item: (
-            _CONFIDENCE_RANK[item.confidence],
-            _title_relation_rank(item),
-            0 if item.candidate.synced_lyrics else 1,
+    return sorted(assessments, key=_assessment_sort_key)
+
+
+def _assessment_sort_key(
+    item: CandidateMatchAssessment,
+) -> tuple[int, int, int, int, str]:
+    return (
+        _CONFIDENCE_RANK[item.confidence],
+        _title_relation_rank(item),
+        0 if item.candidate.synced_lyrics else 1,
+        (
             item.duration_difference_ms
             if item.duration_difference_ms is not None
-            else 2**63,
-            item.candidate.record_id,
+            else 2**63
         ),
+        item.candidate.record_id,
+    )
+
+
+def _same_recording_fields(
+    first: CandidateMatchAssessment,
+    second: CandidateMatchAssessment,
+) -> bool:
+    return (
+        first.candidate.track_name == second.candidate.track_name
+        and first.candidate.artist_name == second.candidate.artist_name
+        and first.candidate.album_name == second.candidate.album_name
+        and first.candidate.duration_ms == second.candidate.duration_ms
     )
 
 
@@ -760,8 +887,8 @@ def _deduplicate_assessments(
     for assessment in assessments:
         key = (assessment.candidate.provider, assessment.candidate.record_id)
         existing = by_record.get(key)
-        new_rank = _CONFIDENCE_RANK[assessment.confidence]
-        old_rank = None if existing is None else _CONFIDENCE_RANK[existing.confidence]
-        if existing is None or (old_rank is not None and new_rank < old_rank):
+        if existing is None or _assessment_sort_key(assessment) < _assessment_sort_key(
+            existing
+        ):
             by_record[key] = assessment
     return list(by_record.values())

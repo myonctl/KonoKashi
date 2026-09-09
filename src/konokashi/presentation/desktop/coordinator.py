@@ -924,7 +924,14 @@ class DesktopCoordinator(QObject):
                 + (f"\n{error}" if error is not None else "")
             )
 
-    def _load_review(self) -> None:
+    def _load_review(
+        self,
+        *,
+        refresh: bool = False,
+        title: str | None = None,
+        artists: tuple[str, ...] = (),
+        enrich_youtube: bool = False,
+    ) -> None:
         """Load provider alternatives and audit evidence outside the UI thread."""
 
         frontend = self._frontend
@@ -937,7 +944,15 @@ class DesktopCoordinator(QObject):
         source = track.source_identity
 
         def load() -> ReviewCorrectionSnapshot:
-            return frontend.review_track(bundle)
+            if title is None and not artists and not refresh and not enrich_youtube:
+                return frontend.review_track(bundle)
+            return frontend.review_track(
+                bundle,
+                refresh=refresh,
+                title=title,
+                artists=artists,
+                enrich_youtube=enrich_youtube,
+            )
 
         def loaded(result: object | None, error: BaseException | None) -> None:
             current = self._track
@@ -970,6 +985,18 @@ class DesktopCoordinator(QObject):
         track = self._track
         if frontend is None or bundle is None or track is None or self._closed:
             return
+        if value.kind in {
+            CorrectionActionKind.SEARCH_MATCHES,
+            CorrectionActionKind.REFRESH_MATCHES,
+            CorrectionActionKind.ENRICH_YOUTUBE,
+        }:
+            self._load_review(
+                refresh=value.kind is CorrectionActionKind.REFRESH_MATCHES,
+                title=value.title,
+                artists=value.artists,
+                enrich_youtube=value.kind is CorrectionActionKind.ENRICH_YOUTUBE,
+            )
+            return
         source = track.source_identity
         action = value
 
@@ -990,6 +1017,10 @@ class DesktopCoordinator(QObject):
                 if action.alternative is None:
                     raise ValueError("no alternative lyric result was selected")
                 frontend.choose_alternative(track, action.alternative)
+            elif action.kind is CorrectionActionKind.REJECT_ALTERNATIVE:
+                if action.alternative is None:
+                    raise ValueError("no alternative lyric result was selected")
+                frontend.reject_alternative(track, action.alternative)
             elif action.kind is CorrectionActionKind.RESET_MATCH:
                 frontend.reset_match(track)
             elif action.kind is CorrectionActionKind.SET_DELAY:
