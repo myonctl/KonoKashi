@@ -179,7 +179,14 @@ def test_beta_version_is_consistent_across_release_candidates() -> None:
     assert "pkgver=0.1.0beta1" in aur
     assert "_sdistver=0.1.0b1" in aur
     assert "pkgver = 0.1.0beta1" in srcinfo
-    assert "source = konokashi-0.1.0b1.tar.gz" in srcinfo
+    assert (
+        "source = konokashi-0.1.0b1.tar.gz::https://github.com/myonctl/KonoKashi/"
+        "releases/download/v0.1.0-beta.1/konokashi-0.1.0b1.tar.gz"
+    ) in srcinfo
+    assert (
+        "sha256sums = c0727503df631741a1ebe1d8cdb1836363eb727c1930fea0e4ce921b327734d8"
+        in srcinfo
+    )
 
 
 def test_release_copy_excludes_maintainer_and_flatpak_worktrees() -> None:
@@ -205,6 +212,15 @@ def test_flatpak_manifest_uses_narrow_runtime_permissions() -> None:
     assert "--filesystem=home" not in manifest
     assert "--filesystem=host" not in manifest
     assert "--socket=session-bus" not in manifest
+    assert "type: archive" in manifest
+    assert (
+        "https://github.com/myonctl/KonoKashi/releases/download/"
+        "v0.1.0-beta.1/konokashi-0.1.0b1.tar.gz"
+    ) in manifest
+    assert (
+        "sha256: c0727503df631741a1ebe1d8cdb1836363eb727c1930fea0e4ce921b327734d8"
+        in manifest
+    )
     candidate_notes = (REPOSITORY_ROOT / "packaging/flatpak/README.md").read_text(
         encoding="utf-8"
     )

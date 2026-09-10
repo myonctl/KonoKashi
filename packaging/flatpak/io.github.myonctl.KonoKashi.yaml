@@ -55,18 +55,11 @@ modules:
       - install -Dm644 io.github.myonctl.KonoKashi.desktop /app/share/applications/io.github.myonctl.KonoKashi.desktop
       - install -Dm644 src/konokashi/resources/io.github.myonctl.KonoKashi.svg /app/share/icons/hicolor/scalable/apps/io.github.myonctl.KonoKashi.svg
       - install -Dm644 src/konokashi/resources/io.github.myonctl.KonoKashi.metainfo.xml /app/share/metainfo/io.github.myonctl.KonoKashi.metainfo.xml
+      - install -Dm644 LICENSE /app/share/licenses/io.github.myonctl.KonoKashi/LICENSE
     sources:
-      - type: dir
-        path: ../..
-        skip:
-          - .git
-          - .maintainer-private
-          - .release-readiness-work
-          - .venv
-          - build
-          - dist
-          - '*.egg-info'
-          - __pycache__
+      - type: archive
+        url: https://github.com/myonctl/KonoKashi/releases/download/v0.1.0-beta.1/konokashi-0.1.0b1.tar.gz
+        sha256: c0727503df631741a1ebe1d8cdb1836363eb727c1930fea0e4ce921b327734d8
 
 cleanup-commands:
   - /app/cleanup-BaseApp.sh

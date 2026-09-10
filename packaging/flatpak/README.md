@@ -1,17 +1,20 @@
 # Flatpak candidate
 
-This directory contains the local `0.1.0-beta.1` build candidate, not a Flathub
-submission.
+This directory contains the generic `0.1.0-beta.1` build candidate, not a
+Flathub submission.
 `io.github.myonctl.KonoKashi` matches the current GitHub repository identity and
 the existing desktop application ID.
 
-The manifest uses the current `io.qt.PySide.BaseApp` 6.11 branch and generated,
-hash-pinned Python sources. Its local `dir` source deliberately excludes Git,
-maintainer-private notes, environments, and build output. Before a Flathub
-submission, replace that source with an immutable public release archive and
-checksum; move the manifest to the submission repository's top level; preserve
-the declared `PolyForm-Noncommercial-1.0.0` project license; and disclose
-AI-assisted packaging as required by the current Flathub generative-AI policy.
+The manifest uses the current `io.qt.PySide.BaseApp` 6.11 branch, generated
+hash-pinned Python sources, and the immutable public GitHub release sdist. It
+installs the PolyForm Noncommercial license explicitly. Preserve the declared
+`PolyForm-Noncommercial-1.0.0` project license and disclose AI-assisted
+packaging as required by the current Flathub generative-AI policy.
+
+Flathub's stable repository only accepts stable software, and current policy
+says new submissions are not accepted to its beta repository. Do not submit
+this first beta to Flathub; retain the manifest for direct local builds and
+reassess submission when KonoKashi has a stable release.
 
 Fugashi is built separately from the exact upstream v1.5.2 Git commit because
 its PyPI source build reported version `0.0.0` in this SDK. MeCab is also built
@@ -71,4 +74,5 @@ flatpak --user remote-add --if-not-exists --no-gpg-verify konokashi-local repo
 flatpak --user install --noninteractive konokashi-local io.github.myonctl.KonoKashi
 ```
 
-Do not submit this candidate until the readiness report's blockers are resolved.
+Do not submit this beta candidate to Flathub under the current stable-release
+policy.

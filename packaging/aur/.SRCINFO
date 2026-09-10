@@ -24,7 +24,7 @@ pkgbase = konokashi
 	depends = python-unidic-lite>=1.0.8
 	optdepends = playerctl: optional MPRIS debugging
 	optdepends = pipewire: optional audio timing diagnostics
-	source = konokashi-0.1.0b1.tar.gz
-	sha256sums = 42849c7d6781e538f7f73de9944dc3b78a2fe9438b2a2cde10c9cd229f0f09fc
+	source = konokashi-0.1.0b1.tar.gz::https://github.com/myonctl/KonoKashi/releases/download/v0.1.0-beta.1/konokashi-0.1.0b1.tar.gz
+	sha256sums = c0727503df631741a1ebe1d8cdb1836363eb727c1930fea0e4ce921b327734d8
 
 pkgname = konokashi

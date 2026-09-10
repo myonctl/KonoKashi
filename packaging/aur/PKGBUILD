@@ -1,4 +1,4 @@
-# Local readiness candidate. See README.md before building or submitting.
+# Public-release packaging candidate. See README.md before submitting.
 # Maintainer: myonctl
 pkgname=konokashi
 pkgver=0.1.0beta1
@@ -25,10 +25,8 @@ depends=(
 makedepends=('python-build' 'python-installer' 'python-setuptools' 'python-wheel')
 checkdepends=('python-pytest')
 optdepends=('playerctl: optional MPRIS debugging' 'pipewire: optional audio timing diagnostics')
-# No public release exists. Supply the reviewed local sdist alongside PKGBUILD.
-# Replace this with the final immutable HTTPS release-asset URL before submission.
-source=("$pkgname-$_sdistver.tar.gz")
-sha256sums=('42849c7d6781e538f7f73de9944dc3b78a2fe9438b2a2cde10c9cd229f0f09fc')
+source=("$pkgname-$_sdistver.tar.gz::https://github.com/myonctl/KonoKashi/releases/download/v0.1.0-beta.1/$pkgname-$_sdistver.tar.gz")
+sha256sums=('c0727503df631741a1ebe1d8cdb1836363eb727c1930fea0e4ce921b327734d8')
 
 build() {
   cd "$pkgname-$_sdistver"

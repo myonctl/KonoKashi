@@ -1,18 +1,14 @@
 # AUR preparation
 
-`konokashi` is the sole proposed package. This is a **local candidate, not ready
-for AUR submission**. The project is source-available under
-`PolyForm-Noncommercial-1.0.0`, but no public source release exists.
-The recipe identifies the local candidate as `0.1.0-beta.1` and consumes the
-exact reviewed PEP 440 source archive `konokashi-0.1.0b1.tar.gz` with a real
-SHA-256 checksum. It does not invent a public tag or
-download URL. Do not upload the source archive to an AUR Git repository.
+`konokashi` is the sole proposed package. The recipe identifies the public
+`0.1.0-beta.1` prerelease as `pkgver=0.1.0beta1` and consumes the immutable
+GitHub release sdist `konokashi-0.1.0b1.tar.gz`. Its SHA-256 matches the public
+`SHA256SUMS.txt`. Do not upload that source archive to an AUR Git repository.
 
-Before submission, select the public version, publish the separately authorized
-immutable source release, replace `source` with its HTTPS asset URL, update its
-checksum, and regenerate `.SRCINFO` using `makepkg --printsrcinfo`.
-Keep `pkgrel=1` for a new upstream version and increment it for packaging-only
-updates. This beta candidate is not a public release announcement.
+The project is source-available under `PolyForm-Noncommercial-1.0.0`; do not
+describe it as OSI Open Source. Keep `pkgrel=1` for this new upstream version
+and increment it for packaging-only updates. Regenerate `.SRCINFO` using
+`makepkg --printsrcinfo` after every recipe change.
 
 The package uses PEP 517 wheel construction and installs into makepkg's staging
 directory with Python installer. Neither build nor package functions download
@@ -22,9 +18,10 @@ own payload is architecture independent (`any`); x86_64 dependency resolution an
 installation must pass before submission. No provides/conflicts or VCS variant
 is necessary for the sole package name.
 
-Current dependency review found `python-cutlet` older than the required 0.5.2,
-and missing `python-pypinyin`/`python-jaconv` results from AUR RPC. Recheck and
-resolve those dependencies before claiming a normal installation works.
+The 2026-09-10 dependency review found AUR `python-cutlet` at 0.5.0-2, older
+than the required 0.5.2, and no AUR packages named `python-pypinyin` or
+`python-jaconv`. The latter is also a dependency of `python-cutlet`. Resolve
+those packages before submission or claiming a normal installation works.
 
 For local validation, place the matching source archive beside a copy of the
 recipe in a temporary build directory, then run `makepkg --verifysource`,
@@ -41,10 +38,10 @@ Pacman removal should leave XDG configuration, database, cache, and music intact
 
 ## Local results
 
-Source verification, generated `.SRCINFO` comparison, and shell syntax passed.
-Normal makepkg stopped at missing runtime dependencies. A `--nodeps` build with
-development-environment tooling completed and ran all 44 selected tests (two
-upstream warnings). This is not an installed-product or clean-chroot result.
+The public immutable source verifies against its pinned SHA-256. Generated
+`.SRCINFO` comparison and shell syntax pass. A normal makepkg/clean-chroot build
+remains blocked by the unresolved runtime dependency graph above; a `--nodeps`
+build is not proof of a resolvable or installable AUR package.
 
 Signed distribution namcap 3.6.0 tooling was extracted into a temporary directory
 for analysis. The PKGBUILD check passed. Package analysis prompted the addition
