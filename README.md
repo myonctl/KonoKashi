@@ -4,7 +4,7 @@
 
 [![CI](https://github.com/myonctl/KonoKashi/actions/workflows/ci.yml/badge.svg)](https://github.com/myonctl/KonoKashi/actions/workflows/ci.yml)
 ![Linux](https://img.shields.io/badge/platform-Linux-FCC624)
-![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-3776AB)
+![Python 3.11–3.14](https://img.shields.io/badge/python-3.11%E2%80%933.14-3776AB)
 
 ![KonoKashi advancing through synchronized Japanese, romanized, and English lyric layers](assets/readme/konokashi-demo.gif)
 
@@ -66,8 +66,8 @@ included.
 ## Try it
 
 KonoKashi currently supports installation from a source checkout on Linux with
-Python 3.11 or newer. Use a dedicated virtual environment rather than the
-distribution's system Python.
+Python 3.11 through 3.14; every advertised version is exercised in CI. Use a
+dedicated virtual environment rather than the distribution's system Python.
 
 A desktop session needs a Qt/EGL runtime and session D-Bus. If PyICU has no
 wheel for your Python version, install ICU development headers, `pkg-config`,

@@ -14,11 +14,13 @@ import sys
 import tarfile
 import tempfile
 import zipfile
+from email.parser import Parser
 from io import BytesIO
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 APP_ID = "io.github.myonctl.KonoKashi"
+REQUIRED_PYTHON_BOUNDS = frozenset({">=3.11", "<3.15"})
 REQUIRED_WHEEL_SUFFIXES = (
     "konokashi/cli.py",
     "konokashi/presentation/tui/settings_app.py",
@@ -133,10 +135,10 @@ def _build(output: Path, environment: dict[str, str], epoch: int) -> None:
             env=environment,
             check=True,
         )
-    source = next(output.glob("*.tar.gz"), None)
-    if source is None:
+    source_archive = next(output.glob("*.tar.gz"), None)
+    if source_archive is None:
         raise ReleaseBuildError("build did not produce a source distribution")
-    _canonicalize_sdist(source, epoch)
+    _canonicalize_sdist(source_archive, epoch)
 
 
 def _artifacts(directory: Path) -> dict[str, Path]:
@@ -165,6 +167,23 @@ def _verify_contents(artifacts: dict[str, Path]) -> None:
     source = next(path for name, path in artifacts.items() if name.endswith(".tar.gz"))
     with zipfile.ZipFile(wheel) as archive:
         wheel_names = set(archive.namelist())
+        metadata_names = sorted(
+            name for name in wheel_names if name.endswith(".dist-info/METADATA")
+        )
+        if len(metadata_names) != 1:
+            raise ReleaseBuildError("wheel must contain exactly one METADATA file")
+        metadata = Parser().parsestr(
+            archive.read(metadata_names[0]).decode("utf-8", errors="strict")
+        )
+        python_bounds = frozenset(
+            item.strip()
+            for item in (metadata.get("Requires-Python") or "").split(",")
+            if item.strip()
+        )
+        if python_bounds != REQUIRED_PYTHON_BOUNDS:
+            raise ReleaseBuildError(
+                "wheel Requires-Python does not match the supported CI range"
+            )
     missing_wheel = [
         suffix
         for suffix in REQUIRED_WHEEL_SUFFIXES

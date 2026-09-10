@@ -9,6 +9,7 @@ from pathlib import Path
 
 import pytest
 from scripts.build_release import (
+    REQUIRED_PYTHON_BOUNDS,
     REQUIRED_SDIST_SUFFIXES,
     REQUIRED_WHEEL_SUFFIXES,
     ReleaseBuildError,
@@ -16,11 +17,21 @@ from scripts.build_release import (
 )
 
 
-def _write_artifacts(tmp_path: Path, *, unexpected: bool) -> dict[str, Path]:
+def _write_artifacts(
+    tmp_path: Path,
+    *,
+    unexpected: bool,
+    python_bounds: frozenset[str] = REQUIRED_PYTHON_BOUNDS,
+) -> dict[str, Path]:
     wheel = tmp_path / "konokashi-0.1.0b1-py3-none-any.whl"
     with zipfile.ZipFile(wheel, "w") as archive:
         for name in REQUIRED_WHEEL_SUFFIXES:
             archive.writestr(name, b"current")
+        archive.writestr(
+            "konokashi-0.1.0b1.dist-info/METADATA",
+            "Metadata-Version: 2.4\n"
+            f"Requires-Python: {','.join(sorted(python_bounds))}\n",
+        )
         if unexpected:
             archive.writestr("obsolete_package/__init__.py", b"unexpected")
 
@@ -45,3 +56,16 @@ def test_release_content_check_accepts_only_current_namespace(tmp_path: Path) ->
 def test_release_content_check_rejects_unexpected_namespace(tmp_path: Path) -> None:
     with pytest.raises(ReleaseBuildError, match="unexpected package namespace"):
         _verify_contents(_write_artifacts(tmp_path, unexpected=True))
+
+
+def test_release_content_check_rejects_unadvertised_python_range(
+    tmp_path: Path,
+) -> None:
+    artifacts = _write_artifacts(
+        tmp_path,
+        unexpected=False,
+        python_bounds=frozenset({">=3.12"}),
+    )
+
+    with pytest.raises(ReleaseBuildError, match="Requires-Python"):
+        _verify_contents(artifacts)

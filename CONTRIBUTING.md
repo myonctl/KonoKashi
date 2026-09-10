@@ -10,7 +10,7 @@ that it may be distributed under those terms. Read `LICENSE` before contributing
 
 ## Development setup
 
-Use Linux and Python 3.11 or newer. From a fresh checkout:
+Use Linux and Python 3.11 through 3.14. From a fresh checkout:
 
 ```bash
 python -m venv .venv

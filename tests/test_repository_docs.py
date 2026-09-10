@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import subprocess
+import tomllib
 from pathlib import Path
 
 REPOSITORY_ROOT = Path(__file__).parents[1]
@@ -125,6 +126,37 @@ def test_github_actions_runs_the_required_quality_gate() -> None:
     )
 
     assert all(command in content for command in required_commands)
+
+
+def test_advertised_python_versions_are_bounded_and_exercised_in_ci() -> None:
+    pyproject = tomllib.loads(
+        (REPOSITORY_ROOT / "pyproject.toml").read_text(encoding="utf-8")
+    )
+    workflow = (REPOSITORY_ROOT / ".github/workflows/ci.yml").read_text(
+        encoding="utf-8"
+    )
+    readme = (REPOSITORY_ROOT / "README.md").read_text(encoding="utf-8")
+    contributing = (REPOSITORY_ROOT / "CONTRIBUTING.md").read_text(encoding="utf-8")
+    aur = (REPOSITORY_ROOT / "packaging/aur/PKGBUILD").read_text(encoding="utf-8")
+
+    assert pyproject["project"]["requires-python"] == ">=3.11,<3.15"
+    for version in ("3.11", "3.12", "3.13", "3.14"):
+        assert f'"Programming Language :: Python :: {version}"' in (
+            REPOSITORY_ROOT / "pyproject.toml"
+        ).read_text(encoding="utf-8")
+    assert 'python-version: ["3.11", "3.12", "3.13", "3.14"]' in workflow
+    assert "python-version: ${{ matrix.python-version }}" in workflow
+    assert "Python 3.11 through 3.14" in readme
+    assert "Python 3.11 through 3.14" in contributing
+    assert "'python>=3.11'" in aur
+    assert "'python<3.15'" in aur
+
+
+def test_security_policy_uses_enabled_private_reporting_route() -> None:
+    policy = (REPOSITORY_ROOT / "SECURITY.md").read_text(encoding="utf-8")
+
+    assert "Private vulnerability reporting is enabled" in policy
+    assert "Before this repository becomes public" not in policy
 
 
 def test_readme_is_product_first_and_honest_about_license() -> None:

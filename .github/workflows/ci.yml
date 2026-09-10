@@ -9,14 +9,19 @@ permissions:
 
 jobs:
   quality:
+    name: Quality (Python ${{ matrix.python-version }})
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12", "3.13", "3.14"]
     env:
       QT_QPA_PLATFORM: offscreen
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-python@v6
         with:
-          python-version: "3.12"
+          python-version: ${{ matrix.python-version }}
           cache: pip
       - name: Install Qt headless runtime
         run: |
@@ -29,7 +34,7 @@ jobs:
       - name: Ruff format
         run: python -m ruff format --check .
       - name: Mypy
-        run: python -m mypy src
+        run: python -m mypy src scripts/build_release.py scripts/evaluate_matching.py
       - name: Tests
         run: python -m pytest
       - name: Installed CLI smoke checks

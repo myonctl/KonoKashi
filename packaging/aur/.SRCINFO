@@ -12,6 +12,7 @@ pkgbase = konokashi
 	makedepends = python-wheel
 	depends = hicolor-icon-theme
 	depends = python>=3.11
+	depends = python<3.15
 	depends = pyside6>=6.8.2
 	depends = python-cutlet>=0.5.2
 	depends = python-fugashi>=1.5.2

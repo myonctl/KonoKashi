@@ -4,6 +4,13 @@ All notable user-visible changes are recorded here.
 
 ## Unreleased
 
+### Changed
+
+- Python support is explicitly bounded to 3.11–3.14 and every advertised
+  interpreter is exercised by the CI quality gate.
+- Security guidance now points to the repository's enabled private
+  vulnerability-reporting workflow.
+
 ## 0.1.0-beta.1 — 2026-09-10
 
 ### Added

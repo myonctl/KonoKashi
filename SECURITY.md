@@ -10,15 +10,14 @@ versioned support policy is published.
 Do not open a public issue containing vulnerability details, exploit code,
 credentials, private filesystem paths, or personal media information.
 
-Before this repository becomes public, its owner must enable GitHub private
-vulnerability reporting. Once enabled, use the repository's **Security** page
-and select **Report a vulnerability**. This sends the report privately to the
-maintainer through a GitHub repository security advisory.
+Use the repository's **Security** page and select **Report a vulnerability**.
+Private vulnerability reporting is enabled and sends the report privately to
+the maintainer through a GitHub repository security advisory.
 
 No dedicated security email has been established, and this policy deliberately
-does not publish or invent one. If the private reporting button is unavailable,
-open a public issue containing only a request for a private reporting route—do
-not include sensitive details.
+does not publish or invent one. If GitHub's private reporting button is
+temporarily unavailable, open a public issue containing only a request for a
+private reporting route—do not include sensitive details.
 
 ## What to include
 
