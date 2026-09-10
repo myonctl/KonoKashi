@@ -1,0 +1,344 @@
+{
+  "schema_version": 1,
+  "cases": [
+    {
+      "id": "synthetic-auto-accept",
+      "description": "one exact metadata candidate is accepted automatically",
+      "track": {
+        "service_name": "evaluation01",
+        "title": "Glass Horizon",
+        "artists": ["Aster Vale"],
+        "album": "Sky Archive",
+        "duration_ms": 180000,
+        "url": "file:///synthetic/evaluation01.flac"
+      },
+      "provider": {
+        "candidates": [
+          {
+            "record_id": "auto-accepted-record",
+            "track_name": "Glass Horizon",
+            "artist_name": "Aster Vale",
+            "album_name": "Sky Archive",
+            "duration_ms": 180000,
+            "plain_lyrics": "An invented horizon line.",
+            "synced_lyrics": "[00:01.00]An invented horizon line."
+          }
+        ]
+      },
+      "expected": {
+        "category": "automatic-accept",
+        "status": "Timed",
+        "record_id": "auto-accepted-record",
+        "timing": "synced",
+        "origin": "provider-auto",
+        "network_used": true
+      }
+    },
+    {
+      "id": "synthetic-ambiguous-tie",
+      "description": "two equally plausible synchronized records remain ambiguous",
+      "track": {
+        "service_name": "evaluation02",
+        "title": "Twin Lantern",
+        "artists": ["North Room"],
+        "album": "Two Windows",
+        "duration_ms": 201000,
+        "url": "file:///synthetic/evaluation02.flac"
+      },
+      "provider": {
+        "candidates": [
+          {
+            "record_id": "twin-record-a",
+            "track_name": "Twin Lantern",
+            "artist_name": "North Room",
+            "album_name": "Two Windows",
+            "duration_ms": 201000,
+            "synced_lyrics": "[00:02.00]First invented lantern line."
+          },
+          {
+            "record_id": "twin-record-b",
+            "track_name": "Twin Lantern",
+            "artist_name": "North Room",
+            "album_name": "Two Windows",
+            "duration_ms": 201000,
+            "synced_lyrics": "[00:02.00]Second invented lantern line."
+          }
+        ]
+      },
+      "expected": {
+        "category": "ambiguous",
+        "status": "Ambiguous",
+        "record_id": null,
+        "timing": "none",
+        "origin": "none",
+        "network_used": true
+      }
+    },
+    {
+      "id": "synthetic-provider-reject",
+      "description": "a provider no-result is not converted into a guessed match",
+      "track": {
+        "service_name": "evaluation03",
+        "title": "Empty Map",
+        "artists": ["Quiet Index"],
+        "album": "No Entries",
+        "duration_ms": 99000,
+        "url": "file:///synthetic/evaluation03.flac"
+      },
+      "provider": {
+        "exact": {"status": "no-result"},
+        "search": {"status": "no-result"}
+      },
+      "expected": {
+        "category": "reject",
+        "status": "No result",
+        "record_id": null,
+        "timing": "none",
+        "origin": "none",
+        "network_used": true
+      }
+    },
+    {
+      "id": "synthetic-plain-timing-fallback",
+      "description": "strong text with weak version timing falls back to provider plain text",
+      "track": {
+        "service_name": "evaluation04",
+        "title": "Paper Moon (Radio Edit)",
+        "artists": ["Signal Garden"],
+        "album": "Folded Light",
+        "duration_ms": 183000,
+        "url": "file:///synthetic/evaluation04.flac"
+      },
+      "provider": {
+        "candidates": [
+          {
+            "record_id": "paper-moon-plain-fallback",
+            "track_name": "Paper Moon",
+            "artist_name": "Signal Garden",
+            "album_name": "Folded Light",
+            "duration_ms": 180000,
+            "plain_lyrics": "A folded paper moon appears.",
+            "synced_lyrics": "[00:03.00]A folded paper moon appears."
+          }
+        ]
+      },
+      "expected": {
+        "category": "plain-only-fallback",
+        "status": "Untimed",
+        "record_id": "paper-moon-plain-fallback",
+        "timing": "plain",
+        "origin": "provider-auto",
+        "network_used": true
+      }
+    },
+    {
+      "id": "synthetic-synced-trusted",
+      "description": "exact identity and duration retain synchronized timing",
+      "track": {
+        "service_name": "evaluation05",
+        "title": "Clockwork Rain",
+        "artists": ["Copper Avenue"],
+        "album": "Measured Weather",
+        "duration_ms": 240000,
+        "url": "file:///synthetic/evaluation05.flac"
+      },
+      "provider": {
+        "candidates": [
+          {
+            "record_id": "clockwork-rain-synced",
+            "track_name": "Clockwork Rain",
+            "artist_name": "Copper Avenue",
+            "album_name": "Measured Weather",
+            "duration_ms": 240500,
+            "plain_lyrics": "Invented rain keeps time.",
+            "synced_lyrics": "[00:04.00]Invented rain keeps time."
+          }
+        ]
+      },
+      "expected": {
+        "category": "synced-trusted",
+        "status": "Timed",
+        "record_id": "clockwork-rain-synced",
+        "timing": "synced",
+        "origin": "provider-auto",
+        "network_used": true
+      }
+    },
+    {
+      "id": "synthetic-synced-timing-rejected",
+      "description": "weak version timing without plain text remains ambiguous",
+      "track": {
+        "service_name": "evaluation06",
+        "title": "Soft Circuit (Radio Edit)",
+        "artists": ["Low Current"],
+        "album": "Night Board",
+        "duration_ms": 213000,
+        "url": "file:///synthetic/evaluation06.flac"
+      },
+      "provider": {
+        "candidates": [
+          {
+            "record_id": "soft-circuit-untrusted-timing",
+            "track_name": "Soft Circuit",
+            "artist_name": "Low Current",
+            "album_name": "Night Board",
+            "duration_ms": 210000,
+            "synced_lyrics": "[00:05.00]An invented circuit hums."
+          }
+        ]
+      },
+      "expected": {
+        "category": "synced-timing-rejected",
+        "status": "Ambiguous",
+        "record_id": null,
+        "timing": "none",
+        "origin": "none",
+        "network_used": true
+      }
+    },
+    {
+      "id": "synthetic-local-wins",
+      "description": "exact local lyrics win before a strong network candidate",
+      "track": {
+        "service_name": "evaluation07",
+        "title": "Home Signal",
+        "artists": ["Local Array"],
+        "album": "Near Field",
+        "duration_ms": 150000,
+        "url": "file:///synthetic/evaluation07.flac"
+      },
+      "local": {
+        "source_name": "evaluation-sidecar",
+        "record_id": "local-home-signal",
+        "lyrics": "[00:01.00]The invented local signal arrives."
+      },
+      "provider": {
+        "candidates": [
+          {
+            "record_id": "network-home-signal",
+            "track_name": "Home Signal",
+            "artist_name": "Local Array",
+            "album_name": "Near Field",
+            "duration_ms": 150000,
+            "synced_lyrics": "[00:01.00]The invented network signal arrives."
+          }
+        ]
+      },
+      "expected": {
+        "category": "local-override-wins",
+        "status": "Timed",
+        "record_id": "local-home-signal",
+        "timing": "synced",
+        "origin": "local",
+        "network_used": false
+      }
+    },
+    {
+      "id": "synthetic-approved-match-wins",
+      "description": "a durable approved provider document wins without a new lookup",
+      "track": {
+        "service_name": "evaluation08",
+        "title": "Remembered Harbor",
+        "artists": ["Anchor Memory"],
+        "album": "Saved Course",
+        "duration_ms": 205000,
+        "url": "file:///synthetic/evaluation08.flac"
+      },
+      "provider": {
+        "candidates": [
+          {
+            "record_id": "approved-harbor-record",
+            "track_name": "Remembered Harbor",
+            "artist_name": "Anchor Memory",
+            "album_name": "Saved Course",
+            "duration_ms": 205000,
+            "synced_lyrics": "[00:06.00]An invented harbor remembers."
+          }
+        ]
+      },
+      "prior": {
+        "approved_record_id": "approved-harbor-record"
+      },
+      "expected": {
+        "category": "approved-user-match-wins",
+        "status": "Timed",
+        "record_id": "approved-harbor-record",
+        "timing": "synced",
+        "origin": "approved",
+        "network_used": false
+      }
+    },
+    {
+      "id": "synthetic-rejection-persists",
+      "description": "a previously rejected provider record remains suppressed",
+      "track": {
+        "service_name": "evaluation09",
+        "title": "Closed Door",
+        "artists": ["Second Choice"],
+        "album": "Remember No",
+        "duration_ms": 175000,
+        "url": "file:///synthetic/evaluation09.flac"
+      },
+      "provider": {
+        "candidates": [
+          {
+            "record_id": "rejected-door-record",
+            "track_name": "Closed Door",
+            "artist_name": "Second Choice",
+            "album_name": "Remember No",
+            "duration_ms": 175000,
+            "synced_lyrics": "[00:07.00]An invented door remains closed."
+          }
+        ]
+      },
+      "prior": {
+        "rejected_record_ids": ["rejected-door-record"],
+        "current_rejection": true
+      },
+      "expected": {
+        "category": "rejected-result-remains-rejected",
+        "status": "No result",
+        "record_id": null,
+        "timing": "none",
+        "origin": "none",
+        "network_used": true
+      }
+    },
+    {
+      "id": "synthetic-provider-search-fallback",
+      "description": "a no-result exact lookup falls through to scored provider search",
+      "track": {
+        "service_name": "evaluation10",
+        "title": "Search Window",
+        "artists": ["Fallback House"],
+        "album": "Second Query",
+        "duration_ms": 196000,
+        "url": "file:///synthetic/evaluation10.flac"
+      },
+      "provider": {
+        "exact": {"status": "no-result"},
+        "search": {
+          "status": "results",
+          "candidates": [
+            {
+              "record_id": "provider-search-record",
+              "track_name": "Search Window",
+              "artist_name": "Fallback House",
+              "album_name": "Second Query",
+              "duration_ms": 196000,
+              "synced_lyrics": "[00:08.00]An invented search window opens."
+            }
+          ]
+        }
+      },
+      "expected": {
+        "category": "provider-search-fallback",
+        "status": "Timed",
+        "record_id": "provider-search-record",
+        "timing": "synced",
+        "origin": "provider-auto",
+        "network_used": true
+      }
+    }
+  ]
+}

@@ -1,1 +1,4 @@
 include assets/readme/konokashi-demo.gif
+include scripts/__init__.py
+include scripts/evaluate_matching.py
+recursive-include tests/fixtures/matching_evaluation *.json *.md

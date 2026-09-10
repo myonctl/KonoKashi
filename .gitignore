@@ -45,6 +45,7 @@ id_ed25519
 /screenshots/drafts/
 /tmp/
 /scratch/
+/.matching-evaluation-private/
 *.lrc.tmp
 *.audio.tmp
 
