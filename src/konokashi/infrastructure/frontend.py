@@ -31,6 +31,29 @@ from konokashi.infrastructure.romanization.title_aliases import (
 from konokashi.infrastructure.storage.bootstrap import StorageRepositories
 
 
+def create_lyrics_resolver(
+    storage: StorageRepositories,
+    provider: LyricsProviderPort,
+    *,
+    documents: ProviderLyricDocumentBuilder | None = None,
+) -> LyricsResolver:
+    """Assemble the one canonical resolver configuration for every frontend."""
+
+    document_builder = documents or ProviderLyricDocumentBuilder()
+    return LyricsResolver(
+        local_sources=(
+            LocalSidecarLyricsProvider(),
+            EmbeddedLyricsProvider(),
+        ),
+        provider=provider,
+        provider_documents=document_builder,
+        lyrics=storage.lyrics,
+        matches=storage.lyrics_matches,
+        provider_cache=storage.provider_cache,
+        title_aliases=OfflineTitleAliasProvider().aliases,
+    )
+
+
 def create_frontend_session(
     storage: StorageRepositories,
     provider: LyricsProviderPort,
@@ -47,18 +70,7 @@ def create_frontend_session(
                 storage.track_overrides,
             )
         ),
-        LyricsResolver(
-            local_sources=(
-                LocalSidecarLyricsProvider(),
-                EmbeddedLyricsProvider(),
-            ),
-            provider=provider,
-            provider_documents=documents,
-            lyrics=storage.lyrics,
-            matches=storage.lyrics_matches,
-            provider_cache=storage.provider_cache,
-            title_aliases=OfflineTitleAliasProvider().aliases,
-        ),
+        create_lyrics_resolver(storage, provider, documents=documents),
         RepresentationService(
             OfflineRomanizationProvider(),
             storage.representations,

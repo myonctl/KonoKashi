@@ -18,7 +18,14 @@ class Lifecycle:
     def start(self):
         QTimer.singleShot(20, lambda: os.kill(os.getpid(), signal.SIGINT))
 
-def factory(application, window, database_path):
+def factory(
+    application,
+    window,
+    database_path,
+    config_path,
+    player_override,
+    lyrics_offset_us,
+):
     return Lifecycle()
 
 raise SystemExit(run_desktop(["konokashi"], coordinator_factory=factory))

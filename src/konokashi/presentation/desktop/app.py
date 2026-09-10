@@ -24,7 +24,8 @@ class DesktopLifecycle(Protocol):
 
 
 DesktopCoordinatorFactory = Callable[
-    [QApplication, MainWindow, Path | None], DesktopLifecycle
+    [QApplication, MainWindow, Path | None, Path | None, str | None, int],
+    DesktopLifecycle,
 ]
 
 
@@ -32,8 +33,18 @@ def _create_coordinator(
     application: QApplication,
     window: MainWindow,
     database_path: Path | None,
+    config_path: Path | None,
+    player_override: str | None,
+    lyrics_offset_us: int,
 ) -> DesktopLifecycle:
-    return DesktopCoordinator(application, window, database_path=database_path)
+    return DesktopCoordinator(
+        application,
+        window,
+        database_path=database_path,
+        config_path=config_path,
+        player_override=player_override,
+        lyrics_offset_us=lyrics_offset_us,
+    )
 
 
 def run_desktop(
@@ -41,6 +52,8 @@ def run_desktop(
     *,
     database_path: Path | None = None,
     config_path: Path | None = None,
+    player_override: str | None = None,
+    lyrics_offset_us: int = 0,
     coordinator_factory: DesktopCoordinatorFactory = _create_coordinator,
 ) -> int:
     """Launch the normal resizable Desktop MVP and return its Qt exit code."""
@@ -59,16 +72,14 @@ def run_desktop(
     window = MainWindow()
     window.show()
     try:
-        coordinator: DesktopLifecycle
-        if config_path is not None and coordinator_factory is _create_coordinator:
-            coordinator = DesktopCoordinator(
-                application,
-                window,
-                database_path=database_path,
-                config_path=config_path,
-            )
-        else:
-            coordinator = coordinator_factory(application, window, database_path)
+        coordinator = coordinator_factory(
+            application,
+            window,
+            database_path,
+            config_path,
+            player_override,
+            lyrics_offset_us,
+        )
         coordinator.start()
     except (ImportError, RuntimeError) as error:
         from konokashi.application.desktop_state import DesktopStateController

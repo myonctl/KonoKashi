@@ -99,12 +99,14 @@ class LrclibLyricsProvider:
     def search(self, query: LyricsQuery) -> LyricsProviderResult:
         """Use field-based search only with a title and real musical artist."""
 
-        if not query.title.strip() or not query.artist_name.strip():
+        if not query.title.strip() or (
+            not query.broad and not query.artist_name.strip()
+        ):
             return LyricsProviderResult(
                 LyricsProviderStatus.NO_RESULT,
                 diagnostics=(
-                    "LRCLIB search skipped; resolved title and musical artist "
-                    "are required",
+                    "LRCLIB search skipped; a title is required and field-based "
+                    "search also requires a musical artist",
                 ),
             )
         if query.broad:
@@ -112,7 +114,7 @@ class LrclibLyricsProvider:
             # localized title plus artist. The application still scores every
             # result and requires independent artist, phonetic, and duration
             # evidence before accepting it.
-            params = {"q": f"{query.title} {query.artist_name}"}
+            params = {"q": f"{query.title} {query.artist_name}".strip()}
         else:
             params = {"track_name": query.title, "artist_name": query.artist_name}
         if query.album and query.album.strip():
@@ -303,15 +305,15 @@ def _candidate(value: object) -> LyricsProviderCandidate:
     if not instrumental and plain_lyrics is None and synced_lyrics is None:
         raise ValueError("record has neither lyrics nor instrumental state")
     return LyricsProviderCandidate(
-        "LRCLIB",
-        record_id,
-        track_name,
-        artist_name,
-        album_name,
-        duration_ms,
-        instrumental,
-        plain_lyrics,
-        synced_lyrics,
+        provider="LRCLIB",
+        record_id=record_id,
+        track_name=track_name,
+        artist_name=artist_name,
+        album_name=album_name,
+        duration_ms=duration_ms,
+        instrumental=instrumental,
+        plain_lyrics=plain_lyrics,
+        synced_lyrics=synced_lyrics,
     )
 
 

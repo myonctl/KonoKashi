@@ -60,7 +60,9 @@ class FrontendLyricsBundle:
 class FrontendSessionPort(Protocol):
     """Presentation-facing use cases shared by desktop and future TUI adapters."""
 
-    def select_track(self, players: PlayerListResult) -> PlayerSelectionResult:
+    def select_track(
+        self, players: PlayerListResult, *, player_override: str | None = None
+    ) -> PlayerSelectionResult:
         """Select one current track from provider-neutral player observations."""
 
     def load_track(
@@ -179,10 +181,16 @@ class FrontendSessionService:
         self._cancel_inflight = cancel_inflight or (lambda: None)
         self._youtube_metadata = youtube_metadata
 
-    def select_track(self, players: PlayerListResult) -> PlayerSelectionResult:
+    def select_track(
+        self, players: PlayerListResult, *, player_override: str | None = None
+    ) -> PlayerSelectionResult:
         """Select from a captured player list using durable shared policy."""
 
-        return self._selection.select(players, self._settings.get_player_selection())
+        return self._selection.select(
+            players,
+            self._settings.get_player_selection(),
+            player_override=player_override,
+        )
 
     def load_track(
         self,

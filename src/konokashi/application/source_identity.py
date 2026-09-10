@@ -13,6 +13,8 @@ from konokashi.domain.identity import (
     YouTubeIdentity,
 )
 from konokashi.domain.models import PlayerSnapshot
+from konokashi.domain.normalization import comparison_key
+from konokashi.domain.tracks import ResolvedTrack
 
 _YOUTUBE_HOSTS = {
     "youtube.com",
@@ -173,3 +175,28 @@ class SourceIdentityResolver:
             tuple(evidence),
             tuple(warnings),
         )
+
+
+def same_playback_recording(left: ResolvedTrack, right: ResolvedTrack) -> bool:
+    """Decide whether two observations belong to one active-player recording.
+
+    Stable source identities remain authoritative when available. Generic MPRIS
+    identities are deliberately weaker: a reused track ID or stream URL cannot
+    hide a definite title or artist change. Missing-to-present metadata and
+    unrelated metadata enrichment remain updates to the same recording.
+    """
+
+    if left.raw_snapshot.service_name != right.raw_snapshot.service_name:
+        return False
+    if left.source_identity != right.source_identity:
+        return False
+    if not isinstance(left.source_identity, GenericMprisIdentity):
+        return True
+
+    left_title = comparison_key(left.candidate.title or "")
+    right_title = comparison_key(right.candidate.title or "")
+    if left_title and right_title and left_title != right_title:
+        return False
+    left_artists = tuple(comparison_key(value) for value in left.candidate.artists)
+    right_artists = tuple(comparison_key(value) for value in right.candidate.artists)
+    return not (left_artists and right_artists and left_artists != right_artists)

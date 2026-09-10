@@ -21,6 +21,7 @@ from konokashi.application.frontend_session import (
     FrontendLyricsBundle,
     FrontendSessionPort,
 )
+from konokashi.application.lyric_timing import effective_lyric_timing
 from konokashi.application.lyrics_sync import LyricTimelineCache, synchronize
 from konokashi.application.playback_clock import PlaybackClock
 from konokashi.application.player_selectors import stable_player_suggestions
@@ -44,6 +45,7 @@ from konokashi.application.settings_service import (
     SettingsReloadResult,
     SettingsSubscription,
 )
+from konokashi.application.source_identity import same_playback_recording
 from konokashi.application.sync_session import PlaybackSyncSession
 from konokashi.application.sync_state import (
     SnapshotSubscription,
@@ -62,7 +64,6 @@ from konokashi.domain.models import (
 from konokashi.domain.representations import RepresentationDisplaySettings
 from konokashi.domain.synchronization import (
     AudioOutputLatency,
-    LyricTimingCalibration,
     PositionObservation,
     PresentationLatency,
     SynchronizationCalibration,
@@ -231,12 +232,16 @@ class DesktopCoordinator(QObject):
         database_path: Path | None = None,
         config_path: Path | None = None,
         runtime: MprisRuntimePort | None = None,
+        player_override: str | None = None,
+        lyrics_offset_us: int = 0,
     ) -> None:
         super().__init__(application)
         self._application = application
         self._window = window
         self._database_path = database_path
         self._config_path = config_path
+        self._player_override = player_override
+        self._lyrics_offset_us = lyrics_offset_us
         self._runtime: MprisRuntimePort = runtime or create_qt_mpris_runtime()
         self._desktop_runtime: DesktopMprisRuntimePort = self._runtime.desktop
         self._controller = DesktopStateController()
@@ -512,7 +517,9 @@ class DesktopCoordinator(QObject):
                 return
 
             def select() -> PlayerSelectionResult:
-                return frontend.select_track(players)
+                return frontend.select_track(
+                    players, player_override=self._player_override
+                )
 
             def selected(result: object | None, error: BaseException | None) -> None:
                 if serial != self._selection_serial or self._closed:
@@ -542,9 +549,7 @@ class DesktopCoordinator(QObject):
                 if (
                     session is not None
                     and current_track is not None
-                    and selected_track.source_identity == current_track.source_identity
-                    and selected_track.raw_snapshot.service_name
-                    == current_track.raw_snapshot.service_name
+                    and same_playback_recording(current_track, selected_track)
                 ):
                     # Selection-affecting events can still resolve to the current
                     # source. Refresh its raw playback context without flashing a
@@ -557,6 +562,8 @@ class DesktopCoordinator(QObject):
                     self._sync_tick()
                     return
                 self._begin_track(selected_track)
+                for warning in result.warnings:
+                    self._window.render_state(self._controller.add_diagnostic(warning))
 
             self._start_job(select, selected)
 
@@ -638,10 +645,9 @@ class DesktopCoordinator(QObject):
                     "audio output latency is unavailable for automatic compensation",
                 ),
             ),
-            LyricTimingCalibration(
-                0 if timing is None else timing.lyrics_display_delay_us,
-                source="durable per-document display delay",
-                limitations=("provider lyric timestamp error is unmeasured",),
+            effective_lyric_timing(
+                timing,
+                invocation_offset_us=self._lyrics_offset_us,
             ),
             PresentationLatency(0, None, "desktop-widgets"),
         )

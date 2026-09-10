@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import subprocess
 from pathlib import Path
 
 REPOSITORY_ROOT = Path(__file__).parents[1]
@@ -52,13 +53,15 @@ def test_license_is_canonical_polyform_noncommercial_1_0_0() -> None:
 
 
 def test_maintainer_only_documents_are_not_in_public_tree() -> None:
-    present = [
-        relative_path
-        for relative_path in MAINTAINER_ONLY_PATHS
-        if (REPOSITORY_ROOT / relative_path).exists()
-    ]
+    tracked = subprocess.run(
+        ["git", "ls-files", "--", *MAINTAINER_ONLY_PATHS],
+        cwd=REPOSITORY_ROOT,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.splitlines()
 
-    assert present == []
+    assert tracked == []
     ignore = (REPOSITORY_ROOT / ".gitignore").read_text(encoding="utf-8")
     assert "/.maintainer-private/" in ignore
     assert "/docs/" in ignore

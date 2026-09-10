@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
@@ -24,13 +25,16 @@ class _CliProvider:
     def __init__(self, result: LyricsProviderResult) -> None:
         self.result = result
         self.calls = 0
+        self.queries: list[LyricsQuery] = []
 
     def exact(self, _query: LyricsQuery) -> LyricsProviderResult:
         self.calls += 1
+        self.queries.append(_query)
         return self.result
 
     def search(self, _query: LyricsQuery) -> LyricsProviderResult:
         self.calls += 1
+        self.queries.append(_query)
         return self.result
 
     def parse_cached(self, payload: bytes, *, search: bool) -> LyricsProviderResult:
@@ -199,3 +203,77 @@ def test_no_selectable_player_is_controlled(
 
     assert exit_code == 1
     assert "No selectable MPRIS track" in capsys.readouterr().out
+
+
+def test_manual_search_is_mpris_independent_and_renders_truthful_candidate_data(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    provider = _CliProvider(_provider_result())
+
+    exit_code = cli.main(
+        [
+            "lyrics",
+            "search",
+            "Every Single Day",
+            "--artist",
+            "S3RL ft. JessKah",
+            "--duration",
+            "221.4",
+        ],
+        runtime_factory=lambda: (_ for _ in ()).throw(
+            AssertionError("manual search must not initialize MPRIS")
+        ),
+        lyrics_provider_factory=lambda: provider,
+        database_path=tmp_path / "manual-search.sqlite3",
+    )
+    output = capsys.readouterr().out
+
+    assert exit_code == 0
+    assert "S3RL ft. JessKah — Every Single Day" in output
+    assert "duration: 221400 ms" in output
+    assert "source: LRCLIB #4242" in output
+    assert "lyrics: synced" in output
+    assert "overall High; text High; timing High" in output
+    assert "evidence:" in output
+    assert provider.queries
+    assert all(query.strategy == "manual-search" for query in provider.queries)
+
+
+def test_manual_search_json_has_stable_schema_and_title_only_query(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    provider = _CliProvider(_provider_result())
+
+    exit_code = cli.main(
+        ["lyrics", "search", "Android Girl", "--json"],
+        lyrics_provider_factory=lambda: provider,
+        database_path=tmp_path / "manual-search-json.sqlite3",
+    )
+    payload = json.loads(capsys.readouterr().out)
+
+    assert exit_code == 0
+    assert payload["schema_version"] == 1
+    assert payload["query"] == {
+        "title": "Android Girl",
+        "artists": [],
+        "album": None,
+        "duration_ms": None,
+    }
+    assert payload["candidates"][0]["title"] == "Every Single Day"
+    assert payload["candidates"][0]["artist"] == "S3RL ft. JessKah"
+    assert payload["candidates"][0]["confidence"] == {
+        "overall": "Low",
+        "text": "Low",
+        "timing": "Low",
+    }
+    assert provider.queries == [
+        LyricsQuery(
+            "Android Girl",
+            (),
+            None,
+            None,
+            broad=True,
+            strategy="manual-search",
+            provenance=(("title", "manual-search"),),
+        )
+    ]

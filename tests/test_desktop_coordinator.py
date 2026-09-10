@@ -6,6 +6,7 @@ import os
 import subprocess
 import sys
 from collections.abc import Callable
+from dataclasses import replace
 from pathlib import Path
 from threading import Event
 
@@ -40,7 +41,11 @@ from konokashi.domain.models import (
     PlayerWatchStart,
 )
 from konokashi.domain.representations import RepresentationDisplaySettings
-from konokashi.domain.synchronization import PlaybackState, PositionObservation
+from konokashi.domain.synchronization import (
+    LyricDocumentTiming,
+    PlaybackState,
+    PositionObservation,
+)
 from konokashi.domain.tracks import (
     PlayerAssessment,
     PlayerSelectionResult,
@@ -165,12 +170,20 @@ class _Frontend:
         self.review_options: list[dict[str, object]] = []
         self.correction_calls: list[tuple[str, object]] = []
 
-    def select_track(self, players: PlayerListResult) -> PlayerSelectionResult:
+    def select_track(
+        self, players: PlayerListResult, *, player_override: str | None = None
+    ) -> PlayerSelectionResult:
         del players
+        self.player_override = player_override
         if self.selected is None:
             return PlayerSelectionResult(None)
         return PlayerSelectionResult(
-            PlayerAssessment(self.selected, ("selected",), (1,))
+            PlayerAssessment(self.selected, ("selected",), (1,)),
+            warnings=(
+                ()
+                if player_override is None
+                else (f"temporary player override active: {player_override}",)
+            ),
         )
 
     def load_track(self, track: ResolvedTrack) -> FrontendLyricsBundle:
@@ -257,11 +270,18 @@ class _Frontend:
 class _ImmediateCoordinator(DesktopCoordinator):
     """Run application jobs inline and omit clock sampling for wiring tests."""
 
-    def __init__(self, application: QApplication, window: MainWindow) -> None:
+    def __init__(
+        self, application: QApplication, window: MainWindow, **options: object
+    ) -> None:
         self.runtime = _Runtime()
         self.sync_ticks = 0
         self.started_bundles: list[FrontendLyricsBundle] = []
-        super().__init__(application, window, runtime=self.runtime)  # type: ignore[arg-type]
+        super().__init__(
+            application,
+            window,
+            runtime=self.runtime,  # type: ignore[arg-type]
+            **options,
+        )
 
     def _start_job(
         self,
@@ -309,6 +329,46 @@ class _DeferredCoordinator(_ImmediateCoordinator):
     def complete_next(self) -> None:
         callback, result, error = self.pending.pop(0)
         callback(result, error)
+
+    def complete(self, index: int) -> None:
+        callback, result, error = self.pending.pop(index)
+        callback(result, error)
+
+
+class _ControlledCoordinator(_ImmediateCoordinator):
+    """Start selected application jobs only when the test releases them."""
+
+    def __init__(self, application: QApplication, window: MainWindow) -> None:
+        self.pending_work: list[
+            tuple[
+                Callable[[], object],
+                Callable[[object | None, BaseException | None], None],
+            ]
+        ] = []
+        super().__init__(application, window)
+
+    def _start_job(
+        self,
+        function: Callable[[], object],
+        callback: Callable[[object | None, BaseException | None], None],
+    ) -> None:
+        self.pending_work.append((function, callback))
+
+    def complete(self, index: int) -> None:
+        function, callback = self.pending_work.pop(index)
+        try:
+            result = function()
+        except Exception as error:
+            callback(None, error)
+        else:
+            callback(result, None)
+
+
+class _CalibrationCoordinator(DesktopCoordinator):
+    """Use production timing composition without starting MPRIS sampling."""
+
+    def _sync_tick(self) -> None:
+        pass
 
 
 def test_settings_update_uses_canonical_service_and_applies_live_selection(
@@ -752,6 +812,25 @@ def test_selection_change_loads_new_source_without_old_lyric_flash(
     window.close()
 
 
+def test_temporary_player_override_reaches_shared_selection_and_diagnostics(
+    qt_app: QApplication,
+) -> None:
+    window = MainWindow()
+    coordinator = _ImmediateCoordinator(qt_app, window, player_override="strawberry")
+    track = _track("xa4WrgqI7q0", "Track A")
+    frontend = _Frontend(track)
+    coordinator._frontend = frontend
+
+    coordinator._refresh_selection()
+
+    assert frontend.player_override == "strawberry"
+    assert "temporary player override active: strawberry" in (
+        coordinator.controller.state.diagnostics
+    )
+    coordinator.close()
+    window.close()
+
+
 @pytest.mark.parametrize(
     "kind",
     (PlayerEventKind.METADATA_CHANGED, PlayerEventKind.PLAYER_DISAPPEARED),
@@ -840,6 +919,99 @@ def test_player_event_rejects_selection_result_captured_before_the_event(
     assert coordinator.controller.state.title == "Current B"
     assert coordinator.controller.state.state.value == "no-result"
     assert frontend.load_calls == [track_b]
+    coordinator.close()
+    window.close()
+
+
+def test_rapid_track_loads_accept_only_latest_generation(
+    qt_app: QApplication,
+) -> None:
+    window = MainWindow()
+    coordinator = _ControlledCoordinator(qt_app, window)
+    track_a = _track("xa4WrgqI7q0", "Track A")
+    track_b = _track("kFqGyp60d8s", "Track B")
+    track_c = _track("4fndeDfaWCg", "Track C")
+    frontend = _Frontend(track_a)
+    coordinator._frontend = frontend
+
+    coordinator._begin_track(track_a)
+    coordinator._begin_track(track_b)
+    coordinator._begin_track(track_c)
+    assert coordinator.controller.state.title == "Track C"
+    assert len(coordinator.pending_work) == 3
+
+    coordinator.complete(2)  # C finishes before the deliberately delayed A and B.
+    assert coordinator.controller.state.title == "Track C"
+    assert coordinator.controller.state.state.value == "no-result"
+    assert coordinator._bundle is not None
+    assert coordinator._bundle.track is track_c
+    coordinator.complete(1)  # B's late result is discarded.
+    assert coordinator.controller.state.title == "Track C"
+    assert coordinator.controller.state.state.value == "no-result"
+    coordinator.complete(0)  # A finishes last and is also discarded.
+
+    assert coordinator.controller.state.title == "Track C"
+    assert coordinator.controller.state.state.value == "no-result"
+    assert coordinator._bundle is not None
+    assert coordinator._bundle.track is track_c
+    assert frontend.cancellations == 3
+    assert frontend.correction_calls == []
+    coordinator.close()
+    window.close()
+
+
+def test_temporary_timing_offset_composes_once_and_survives_session_events(
+    qt_app: QApplication,
+) -> None:
+    window = MainWindow()
+    coordinator = _CalibrationCoordinator(
+        qt_app,
+        window,
+        runtime=_Runtime(),  # type: ignore[arg-type]
+        lyrics_offset_us=350_000,
+    )
+    track_a = _track("xa4WrgqI7q0", "Track A")
+    frontend = _Frontend(track_a)
+    bundle_a = replace(
+        frontend.load_track(track_a),
+        document_timing=LyricDocumentTiming("document-a", 125_000),
+    )
+
+    coordinator._start_playback_session(bundle_a)
+    assert coordinator._calibration.lyrics.shift_us == 475_000
+    assert "temporary invocation" in coordinator._calibration.lyrics.source
+    coordinator._on_player_event(
+        PlayerEvent(
+            PlayerEventKind.SEEKED,
+            track_a.raw_snapshot.service_name,
+            position_us=5_000_000,
+        )
+    )
+    coordinator._on_player_event(
+        PlayerEvent(
+            PlayerEventKind.PLAYBACK_STATUS_CHANGED,
+            track_a.raw_snapshot.service_name,
+            playback_status="Paused",
+        )
+    )
+    assert coordinator._calibration.lyrics.shift_us == 475_000
+
+    track_b = _track("kFqGyp60d8s", "Track B")
+    bundle_b = replace(
+        frontend.load_track(track_b),
+        document_timing=LyricDocumentTiming("document-b", -50_000),
+    )
+    coordinator._start_playback_session(bundle_b)
+    assert coordinator._calibration.lyrics.shift_us == 300_000
+
+    restarted = _CalibrationCoordinator(
+        qt_app,
+        window,
+        runtime=_Runtime(),  # type: ignore[arg-type]
+    )
+    restarted._start_playback_session(bundle_a)
+    assert restarted._calibration.lyrics.shift_us == 125_000
+    restarted.close()
     coordinator.close()
     window.close()
 

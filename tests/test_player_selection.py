@@ -415,3 +415,46 @@ def test_strawberry_and_youtube_tracks_are_never_cross_source_duplicates() -> No
 
     assert result.suppressed == ()
     assert len(result.alternatives) == 1
+
+
+def test_temporary_override_selects_existing_player_over_persistent_preference() -> (
+    None
+):
+    service = selection_service()
+    players = player_list(snapshot("strawberry"), snapshot("vlc"))
+    config = PlayerSelectionConfig(
+        preferred_players=("vlc",), ignored_players=("strawberry",)
+    )
+
+    overridden = service.select(players, config, player_override="family:strawberry")
+    normal_next_launch = service.select(players, config)
+
+    assert selected_name(overridden) == "strawberry"
+    assert overridden.warnings[0] == (
+        "temporary player override active: family:strawberry"
+    )
+    assert selected_name(normal_next_launch) == "vlc"
+    assert config == PlayerSelectionConfig(
+        preferred_players=("vlc",), ignored_players=("strawberry",)
+    )
+
+
+def test_temporary_override_uses_normalized_service_family_names() -> None:
+    result = selection_service().select(
+        player_list(snapshot("org.mpris.MediaPlayer2.firefox.instance_42")),
+        player_override="firefox",
+    )
+
+    assert selected_name(result) == "firefox.instance_42"
+
+
+def test_unavailable_temporary_override_returns_actionable_diagnostic() -> None:
+    result = selection_service().select(
+        player_list(snapshot("vlc")), player_override="strawberry"
+    )
+
+    assert result.selected is None
+    assert result.unavailable_diagnostics == (
+        "temporary player override 'strawberry' did not match any available "
+        "MPRIS player",
+    )

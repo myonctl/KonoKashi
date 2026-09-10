@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import time
 from collections.abc import Callable, Sequence
-from dataclasses import replace
+from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime, timedelta
 from hashlib import sha256
 
@@ -48,6 +48,27 @@ _CONFIDENCE_RANK = {
 }
 _RESULTS_CACHE_TTL = timedelta(days=7)
 _NO_RESULT_CACHE_TTL = timedelta(hours=12)
+
+
+@dataclass(frozen=True, slots=True)
+class LyricsSearchRequest:
+    """Structured user evidence for read-only provider candidate inspection."""
+
+    title: str
+    artists: tuple[str, ...] = field(default_factory=tuple)
+    album: str | None = None
+    duration_ms: int | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class LyricsSearchResult:
+    """Provider-neutral manual search output with canonical match assessments."""
+
+    request: LyricsSearchRequest
+    alternatives: tuple[LyricsAlternative, ...] = field(default_factory=tuple)
+    diagnostics: tuple[str, ...] = field(default_factory=tuple)
+    cache_hit: bool = False
+    network_used: bool = False
 
 
 class LyricsResolver:
@@ -341,52 +362,14 @@ class LyricsResolver:
                 ),
             )
         query = queries[0]
-        diagnostics: list[str] = []
-        assessments: list[CandidateMatchAssessment] = []
-        cache_hit = False
-        network_used = False
-        if query.album is not None and query.duration_ms is not None:
-            exact, cached, network = self._provider_result(
-                query, search=False, offline=offline, refresh=refresh
+        assessments, diagnostics, cache_hit, network_used = (
+            self._search_provider_candidates(
+                queries,
+                offline=offline,
+                refresh=refresh,
+                exact_skip_context="alternative",
             )
-            cache_hit |= cached
-            network_used |= network
-            diagnostics.extend(exact.diagnostics)
-            if exact.status is LyricsProviderStatus.RESULTS:
-                assessments.extend(
-                    self._assess(query, candidate) for candidate in exact.candidates
-                )
-            elif exact.status is not LyricsProviderStatus.NO_RESULT:
-                diagnostics.append(f"exact lookup ended as {exact.status.value}")
-        else:
-            diagnostics.append(
-                "exact alternative lookup skipped because album or duration is missing"
-            )
-        for strategy, search_query, assessment_query in _candidate_search_plan(queries):
-            diagnostics.append(
-                f"provider strategy: {strategy} "
-                f"[interpretation: {assessment_query.strategy}]"
-            )
-            if offline:
-                search, cached, network = self._provider_result(
-                    search_query, search=True, offline=True, refresh=False
-                )
-            else:
-                if network_used:
-                    self._sleeper(0.2)
-                search, cached, network = self._provider_result(
-                    search_query, search=True, offline=False, refresh=refresh
-                )
-            network_used |= network
-            cache_hit |= cached
-            diagnostics.extend(search.diagnostics)
-            if search.status is LyricsProviderStatus.RESULTS:
-                assessments.extend(
-                    self._assess(assessment_query, candidate)
-                    for candidate in search.candidates
-                )
-            elif search.status is not LyricsProviderStatus.NO_RESULT:
-                diagnostics.append(f"{strategy} lookup ended as {search.status.value}")
+        )
 
         current_match = self._matches.get(track.source_identity)
         current_document_id = (
@@ -430,6 +413,136 @@ class LyricsResolver:
             query.title,
             query.artists,
         )
+
+    def search(
+        self,
+        request: LyricsSearchRequest,
+        *,
+        offline: bool = False,
+        refresh: bool = False,
+    ) -> LyricsSearchResult:
+        """Inspect candidates through the same provider cache and scoring policy."""
+
+        title = request.title.strip()
+        artists = tuple(value.strip() for value in request.artists if value.strip())
+        album = None if request.album is None else request.album.strip() or None
+        cleaned = LyricsSearchRequest(title, artists, album, request.duration_ms)
+        if not title:
+            return LyricsSearchResult(
+                cleaned, diagnostics=("manual lyric search requires a title",)
+            )
+        credit = parse_artist_credits(artists)
+        provenance = [("title", "manual-search")]
+        if artists:
+            provenance.append(("artists", "manual-search"))
+        if album:
+            provenance.append(("album", "manual-search"))
+        if request.duration_ms is not None:
+            provenance.append(("duration", "manual-search"))
+        query = LyricsQuery(
+            title=title,
+            artists=artists,
+            album=album,
+            duration_ms=request.duration_ms,
+            broad=not artists,
+            main_artists=credit.main_artists,
+            contributors=credit.contributors,
+            strategy="manual-search",
+            provenance=tuple(provenance),
+        )
+        queries = (query,)
+        assessments, diagnostics, cache_hit, network_used = (
+            self._search_provider_candidates(
+                queries,
+                offline=offline,
+                refresh=refresh,
+                exact_skip_context="manual search",
+                search_plan=(
+                    (("broad title query", query, query),) if not artists else None
+                ),
+            )
+        )
+        alternatives = tuple(
+            LyricsAlternative(
+                document_id=self._provider_documents.document_id(assessment.candidate),
+                candidate=assessment.candidate,
+                confidence=assessment.confidence,
+                evidence=assessment.evidence,
+                text_confidence=assessment.text_confidence,
+                timing_confidence=assessment.timing_confidence,
+                strategy=assessment.query_strategy,
+            )
+            for assessment in _ordered(_deduplicate_assessments(assessments))
+        )
+        return LyricsSearchResult(
+            cleaned,
+            alternatives,
+            tuple(diagnostics),
+            cache_hit,
+            network_used,
+        )
+
+    def _search_provider_candidates(
+        self,
+        queries: Sequence[LyricsQuery],
+        *,
+        offline: bool,
+        refresh: bool,
+        exact_skip_context: str,
+        search_plan: Sequence[tuple[str, LyricsQuery, LyricsQuery]] | None = None,
+    ) -> tuple[list[CandidateMatchAssessment], list[str], bool, bool]:
+        """Run the shared exact/search/cache path without selecting a winner."""
+
+        query = queries[0]
+        diagnostics: list[str] = []
+        assessments: list[CandidateMatchAssessment] = []
+        cache_hit = False
+        network_used = False
+        if query.album is not None and query.duration_ms is not None and query.artists:
+            exact, cached, network = self._provider_result(
+                query, search=False, offline=offline, refresh=refresh
+            )
+            cache_hit |= cached
+            network_used |= network
+            diagnostics.extend(exact.diagnostics)
+            if exact.status is LyricsProviderStatus.RESULTS:
+                assessments.extend(
+                    self._assess(query, candidate) for candidate in exact.candidates
+                )
+            elif exact.status is not LyricsProviderStatus.NO_RESULT:
+                diagnostics.append(f"exact lookup ended as {exact.status.value}")
+        else:
+            diagnostics.append(
+                f"exact {exact_skip_context} lookup skipped because artist, album, "
+                "or duration is missing"
+            )
+        plan = _candidate_search_plan(queries) if search_plan is None else search_plan
+        for strategy, search_query, assessment_query in plan:
+            diagnostics.append(
+                f"provider strategy: {strategy} "
+                f"[interpretation: {assessment_query.strategy}]"
+            )
+            if offline:
+                search, cached, network = self._provider_result(
+                    search_query, search=True, offline=True, refresh=False
+                )
+            else:
+                if network_used:
+                    self._sleeper(0.2)
+                search, cached, network = self._provider_result(
+                    search_query, search=True, offline=False, refresh=refresh
+                )
+            network_used |= network
+            cache_hit |= cached
+            diagnostics.extend(search.diagnostics)
+            if search.status is LyricsProviderStatus.RESULTS:
+                assessments.extend(
+                    self._assess(assessment_query, candidate)
+                    for candidate in search.candidates
+                )
+            elif search.status is not LyricsProviderStatus.NO_RESULT:
+                diagnostics.append(f"{strategy} lookup ended as {search.status.value}")
+        return assessments, diagnostics, cache_hit, network_used
 
     def _provider_result(
         self,

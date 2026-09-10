@@ -55,8 +55,11 @@ class _Selection:
         self.track = track
         self.config = None
 
-    def select(self, players, config):  # type: ignore[no-untyped-def]
+    def select(  # type: ignore[no-untyped-def]
+        self, players, config, *, player_override=None
+    ):
         self.config = config
+        self.player_override = player_override
         return PlayerSelectionResult(PlayerAssessment(self.track, ("selected",), (1,)))
 
 
@@ -121,11 +124,16 @@ class _Settings:
         from konokashi.domain.tracks import PlayerSelectionConfig
 
         self.player = PlayerSelectionConfig(preferred_players=("strawberry",))
+        self.player_writes = []
         self.display = RepresentationDisplaySettings(True, True, False)
         self.interactions = DesktopInteractionSettings()
 
     def get_player_selection(self):  # type: ignore[no-untyped-def]
         return self.player
+
+    def put_player_selection(self, value):  # type: ignore[no-untyped-def]
+        self.player_writes.append(value)
+        self.player = value
 
     def get_representation_display(self):  # type: ignore[no-untyped-def]
         return self.display
@@ -161,10 +169,12 @@ def test_frontend_session_combines_existing_services_without_adapter_values() ->
         lambda: cancellations.append("cancelled"),
     )
 
-    selected = service.select_track(PlayerListResult())
+    selected = service.select_track(PlayerListResult(), player_override="strawberry")
     assert selected.selected is not None
     assert selected.selected.track is track
     assert selection.config == settings.player
+    assert selection.player_override == "strawberry"
+    assert settings.player_writes == []
 
     bundle = service.load_track(track)
     assert bundle.track is track

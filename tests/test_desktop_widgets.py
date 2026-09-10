@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import os
 from dataclasses import replace
+from datetime import UTC, datetime
+from pathlib import Path
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
@@ -26,6 +28,7 @@ from konokashi.application.desktop_state import (
     DesktopViewState,
 )
 from konokashi.application.review_corrections import (
+    ReviewCorrectionService,
     ReviewCorrectionSnapshot,
     TrackAuditEvidence,
     TranslationReviewLine,
@@ -45,9 +48,12 @@ from konokashi.domain.lyrics import (
     ApprovalState,
     ContentProvenance,
     LyricsAlternative,
+    LyricsAlternativeResult,
     LyricsMatchConfidence,
     LyricsMatchDecision,
     LyricsProviderCandidate,
+    LyricsResolutionResult,
+    LyricsResolutionStatus,
     RepresentationKind,
 )
 from konokashi.domain.representations import (
@@ -56,6 +62,10 @@ from konokashi.domain.representations import (
     RepresentationLayerStatus,
 )
 from konokashi.domain.synchronization import ClockHealth, PlaybackState
+from konokashi.infrastructure.lyrics.provider_documents import (
+    ProviderLyricDocumentBuilder,
+)
+from konokashi.infrastructure.storage.bootstrap import open_storage
 from konokashi.presentation.desktop.app import run_desktop
 from konokashi.presentation.desktop.library_review_dialog import LibraryReviewDialog
 from konokashi.presentation.desktop.main_window import (
@@ -67,6 +77,8 @@ from konokashi.presentation.desktop.review_dialog import (
     ReviewCorrectionDialog,
 )
 from konokashi.presentation.desktop.settings_window import SettingsWindow
+from tests.stage2_helpers import resolver as track_resolver
+from tests.stage2_helpers import snapshot as player_snapshot
 
 
 @pytest.fixture(scope="module")
@@ -269,9 +281,19 @@ def test_desktop_entry_point_launches_and_shuts_down_cleanly(
         def start(self) -> None:
             QTimer.singleShot(0, qt_app.quit)
 
-    def factory(application, window, database_path):  # type: ignore[no-untyped-def]
+    def factory(  # type: ignore[no-untyped-def]
+        application,
+        window,
+        database_path,
+        config_path,
+        player_override,
+        lyrics_offset_us,
+    ):
         assert application is qt_app
         assert database_path is None
+        assert config_path is None
+        assert player_override is None
+        assert lyrics_offset_us == 0
         captured.append(window)
         return Lifecycle()
 
@@ -750,6 +772,81 @@ def test_review_dialog_exposes_bounded_audit_and_explicit_actions(
     assert reject_action.kind is CorrectionActionKind.REJECT_ALTERNATIVE
     assert reject_action.alternative is not None
     assert reject_action.alternative.candidate.record_id == "42"
+
+
+def test_review_maps_recording_and_provider_title_artist_semantics_end_to_end(
+    qt_app: QApplication,
+    tmp_path: Path,
+) -> None:
+    raw = player_snapshot(
+        "strawberry",
+        title="Moonlit Circuit",
+        artists=("Aoi Test Artist", "Second Test Artist"),
+        url="file:///music/moonlit-circuit.flac",
+    )
+    resolver, _overrides = track_resolver()
+    track = resolver.resolve(raw)
+    source_before = track.source_identity
+    provider_candidate = LyricsProviderCandidate(
+        provider="LRCLIB",
+        record_id="moonlit-42",
+        track_name="Moonlit Circuit",
+        artist_name="Aoi Test Artist & Second Test Artist",
+        album_name="Synthetic Album",
+        duration_ms=180_000,
+        instrumental=False,
+        plain_lyrics="Synthetic lyric",
+        synced_lyrics="[00:01.00]Synthetic lyric",
+    )
+    builder = ProviderLyricDocumentBuilder()
+    document, diagnostics = builder.build(
+        provider_candidate, datetime(2026, 9, 10, tzinfo=UTC)
+    )
+    assert document is not None
+    assert diagnostics == ()
+    storage = open_storage(tmp_path / "review-mapping.sqlite3")
+    service = ReviewCorrectionService(
+        track_overrides=storage.track_overrides,
+        lyrics=storage.lyrics,
+        matches=storage.lyrics_matches,
+        provider_documents=builder,
+        timing=storage.timing_calibrations,
+    )
+    alternative = LyricsAlternative(
+        document_id=builder.document_id(provider_candidate),
+        candidate=provider_candidate,
+        confidence=LyricsMatchConfidence.HIGH,
+        evidence=("synthetic exact semantics",),
+    )
+    review = service.snapshot(
+        track,
+        LyricsResolutionResult(
+            source_identity=track.source_identity,
+            status=LyricsResolutionStatus.FOUND_TIMED,
+            document=document,
+        ),
+        LyricsAlternativeResult(track.source_identity, (alternative,)),
+    )
+
+    dialog = ReviewCorrectionDialog(review)
+
+    assert dialog.title_edit.text() == "Moonlit Circuit"
+    assert dialog.artists_edit.text() == ("Aoi Test Artist; Second Test Artist")
+    assert "Aoi Test Artist & Second Test Artist — Moonlit Circuit" in (
+        dialog.alternatives.itemText(0)
+    )
+    assert "Artist: Aoi Test Artist & Second Test Artist" in (
+        dialog.alternative_details.text()
+    )
+    assert "Title: Moonlit Circuit" in dialog.alternative_details.text()
+    assert track.raw_snapshot.metadata.title == "Moonlit Circuit"
+    assert track.raw_snapshot.metadata.artists == (
+        "Aoi Test Artist",
+        "Second Test Artist",
+    )
+    assert track.source_identity == source_before
+    assert storage.lyrics_matches.get(track.source_identity) is None
+    dialog.close()
 
 
 def test_review_dialog_track_and_delay_requests_are_typed(

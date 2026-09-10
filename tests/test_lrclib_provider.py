@@ -153,6 +153,21 @@ def test_broad_search_uses_bounded_artist_catalogue_query() -> None:
     assert dict(requests[0].url.params) == {"q": "Android Girl DECO*27"}
 
 
+def test_broad_manual_search_accepts_title_without_inventing_artist() -> None:
+    requests: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(200, json=[])
+
+    result = _provider(handler).search(
+        LyricsQuery("Android Girl", (), None, None, broad=True)
+    )
+
+    assert result.status is LyricsProviderStatus.NO_RESULT
+    assert dict(requests[0].url.params) == {"q": "Android Girl"}
+
+
 @pytest.mark.parametrize(
     ("overrides", "instrumental", "plain", "synced"),
     [

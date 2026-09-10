@@ -21,23 +21,47 @@ def test_version_output(capsys: pytest.CaptureFixture[str]) -> None:
 def test_desktop_command_dispatches_to_the_qt_entry_point(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    observed: list[tuple[list[str], object]] = []
+    observed: list[tuple[list[str], object, object, object, object]] = []
 
-    def launch(argv: list[str], *, database_path: Path | None) -> int:
-        observed.append((argv, database_path))
+    def launch(
+        argv: list[str],
+        *,
+        database_path: Path | None,
+        config_path: Path | None,
+        player_override: str | None,
+        lyrics_offset_us: int,
+    ) -> int:
+        observed.append(
+            (argv, database_path, config_path, player_override, lyrics_offset_us)
+        )
         return 23
 
     monkeypatch.setattr(desktop_app, "run_desktop", launch)
 
-    assert cli.main(["desktop"], database_path=tmp_path / "desktop.sqlite3") == 23
-    assert observed == [(["konokashi"], tmp_path / "desktop.sqlite3")]
+    assert (
+        cli.main(
+            ["desktop", "--player", "strawberry", "--offset", "+350ms"],
+            database_path=tmp_path / "desktop.sqlite3",
+        )
+        == 23
+    )
+    assert observed == [
+        (
+            ["konokashi"],
+            tmp_path / "desktop.sqlite3",
+            None,
+            "strawberry",
+            350_000,
+        )
+    ]
 
 
 def test_desktop_startup_failure_is_controlled(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    def fail(_argv: list[str], *, database_path: Path | None) -> int:
+    def fail(_argv: list[str], **options: object) -> int:
+        database_path = options["database_path"]
         raise RuntimeError(f"controlled {database_path}")
 
     monkeypatch.setattr(desktop_app, "run_desktop", fail)

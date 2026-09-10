@@ -140,10 +140,36 @@ class PlayerSelectionService:
         self,
         result: PlayerListResult,
         config: PlayerSelectionConfig | None = None,
+        *,
+        player_override: str | None = None,
     ) -> PlayerSelectionResult:
-        """Apply ignored-player, duplicate, and deterministic ranking policy."""
+        """Apply one temporary override, then durable and automatic policy."""
 
         config = config or PlayerSelectionConfig()
+        override = None if player_override is None else player_override.strip()
+        if player_override is not None and not override:
+            return PlayerSelectionResult(
+                unavailable_diagnostics=("temporary player override is empty",)
+            )
+        if override is not None:
+            matching = tuple(
+                inspection
+                for inspection in result.players
+                if inspection.snapshot is not None
+                and player_selector_matches(inspection.snapshot, override)
+            )
+            if not matching:
+                return PlayerSelectionResult(
+                    unavailable_diagnostics=(
+                        f"temporary player override {override!r} did not match any "
+                        "available MPRIS player",
+                    ),
+                    warnings=((result.error,) if result.error else ()),
+                )
+            result = PlayerListResult(matching, result.error)
+            # An explicit per-process choice outranks both durable preference and
+            # durable ignore lists without changing either persisted value.
+            config = PlayerSelectionConfig(preferred_players=(override,))
         unavailable: list[str] = []
         assessments: list[PlayerAssessment] = []
         for inspection in result.players:
@@ -206,9 +232,10 @@ class PlayerSelectionService:
                 )
 
         if not retained:
-            result_warnings = (result.error,) if result.error else ()
+            unavailable_warnings = (result.error,) if result.error else ()
             return PlayerSelectionResult(
-                unavailable_diagnostics=tuple(unavailable), warnings=result_warnings
+                unavailable_diagnostics=tuple(unavailable),
+                warnings=unavailable_warnings,
             )
 
         selected = _winner(retained)
@@ -235,6 +262,9 @@ class PlayerSelectionService:
                 "selection rank tied; case-insensitive service name was the final "
                 "tie-break"
             )
+        result_warnings = list(warnings)
+        if override is not None:
+            result_warnings.insert(0, f"temporary player override active: {override}")
         return PlayerSelectionResult(
             selected=selected,
             alternatives=alternatives,
@@ -247,5 +277,5 @@ class PlayerSelectionService:
                 )
             ),
             unavailable_diagnostics=tuple(unavailable),
-            warnings=tuple(warnings),
+            warnings=tuple(result_warnings),
         )

@@ -6,7 +6,11 @@ from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
-from konokashi.application.resolve_lyrics import LyricsResolver, provider_cache_key
+from konokashi.application.resolve_lyrics import (
+    LyricsResolver,
+    LyricsSearchRequest,
+    provider_cache_key,
+)
 from konokashi.domain.identity import LocalFileIdentity, YouTubeIdentity
 from konokashi.domain.lyrics import (
     ApprovalState,
@@ -1242,3 +1246,47 @@ def test_manual_alternative_search_is_bounded_and_does_not_mutate_track(
     assert len(provider.search_queries) == 2
     assert track.raw_snapshot.metadata.title == "Raw title"
     assert track.candidate.title == "Raw title"
+
+
+def test_manual_search_reuses_cache_scoring_and_supports_title_only(
+    tmp_path: Path,
+) -> None:
+    provider = _FakeProvider(
+        search=LyricsProviderResult(
+            LyricsProviderStatus.RESULTS,
+            (
+                _candidate(
+                    "native-title",
+                    title="アンドロイドガール",
+                    artist="DECO*27",
+                    album="Android Girl",
+                    duration_ms=215_441,
+                ),
+            ),
+            raw_payload=b"manual-native-title",
+        )
+    )
+    resolver = _resolver(tmp_path / "manual-title-only.sqlite3", provider)
+
+    result = resolver.search(LyricsSearchRequest("Android Girl"))
+    cached = resolver.search(LyricsSearchRequest("Android Girl"), offline=True)
+
+    assert len(result.alternatives) == 1
+    candidate = result.alternatives[0]
+    assert candidate.candidate.track_name == "アンドロイドガール"
+    assert candidate.candidate.artist_name == "DECO*27"
+    assert candidate.confidence is LyricsMatchConfidence.LOW
+    assert candidate.text_confidence is LyricsMatchConfidence.LOW
+    assert provider.search_queries == [
+        LyricsQuery(
+            "Android Girl",
+            (),
+            None,
+            None,
+            broad=True,
+            strategy="manual-search",
+            provenance=(("title", "manual-search"),),
+        )
+    ]
+    assert cached.cache_hit is True
+    assert cached.network_used is False

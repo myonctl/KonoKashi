@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import signal
 import sys
@@ -30,8 +31,9 @@ from konokashi.domain.tracks import PlayerSelectionConfig
 from konokashi.infrastructure.diagnostics import collect_local_diagnostics
 
 if TYPE_CHECKING:
+    from konokashi.application.resolve_lyrics import LyricsSearchResult
     from konokashi.application.settings_service import CanonicalSettingsService
-    from konokashi.domain.lyrics import LyricDocument
+    from konokashi.domain.lyrics import LyricDocument, LyricsProviderCandidate
     from konokashi.domain.representations import EffectiveRepresentationLine
     from konokashi.domain.tracks import ResolvedTrack
     from konokashi.infrastructure.storage.bootstrap import StorageRepositories
@@ -154,6 +156,23 @@ def _probe_duration(value: str) -> int:
     return seconds
 
 
+def _search_duration(value: str) -> int:
+    """Parse a manual-search duration in decimal seconds to integer milliseconds."""
+
+    normalized = value.strip()
+    if normalized.lower().endswith("s"):
+        normalized = normalized[:-1].strip()
+    try:
+        seconds = Decimal(normalized)
+    except InvalidOperation as error:
+        raise argparse.ArgumentTypeError("duration must be decimal seconds") from error
+    if not seconds.is_finite() or seconds <= 0:
+        raise argparse.ArgumentTypeError("duration must be positive and finite")
+    if seconds > Decimal(7 * 24 * 60 * 60):
+        raise argparse.ArgumentTypeError("duration cannot exceed 604800 seconds")
+    return int((seconds * 1_000).to_integral_value(rounding=ROUND_HALF_UP))
+
+
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="konokashi",
@@ -169,9 +188,27 @@ def _parser() -> argparse.ArgumentParser:
         "doctor",
         help="check local platform and desktop prerequisites",
     )
-    subparsers.add_parser(
+    desktop = subparsers.add_parser(
         "desktop",
         help="open the PySide6 synchronized-lyrics desktop application",
+    )
+    desktop.add_argument(
+        "--player",
+        metavar="PLAYER",
+        help=(
+            "temporarily select this MPRIS player for this invocation; bare names "
+            "match service families"
+        ),
+    )
+    desktop.add_argument(
+        "--offset",
+        type=_signed_milliseconds,
+        default=0,
+        metavar="[+|-]Nms",
+        help=(
+            "temporary lyric display delay; positive values show transitions later "
+            "and do not change saved timing"
+        ),
     )
     subparsers.add_parser(
         "settings",
@@ -376,7 +413,7 @@ def _parser() -> argparse.ArgumentParser:
     )
     library_review.add_argument("--limit", type=int, default=100)
     lyrics = subparsers.add_parser(
-        "lyrics", help="resolve lyrics for the currently selected MPRIS recording"
+        "lyrics", help="resolve current lyrics or inspect provider candidates"
     )
     lyrics_commands = lyrics.add_subparsers(dest="lyrics_command", required=True)
     lyrics_current = lyrics_commands.add_parser(
@@ -396,6 +433,34 @@ def _parser() -> argparse.ArgumentParser:
         "--full",
         action="store_true",
         help="explicitly print all lyric lines instead of a three-line preview",
+    )
+    lyrics_search = lyrics_commands.add_parser(
+        "search", help="inspect lyric candidates without requiring current playback"
+    )
+    lyrics_search.add_argument("title", help="title or provider-native title query")
+    lyrics_search.add_argument(
+        "--artist",
+        action="append",
+        default=[],
+        help="musical artist evidence (repeatable)",
+    )
+    lyrics_search.add_argument("--album", help="optional album evidence")
+    lyrics_search.add_argument(
+        "--duration",
+        type=_search_duration,
+        metavar="SECONDS",
+        help="optional recording duration in decimal seconds",
+    )
+    lyrics_search.add_argument(
+        "--offline", action="store_true", help="use only provider cache entries"
+    )
+    lyrics_search.add_argument(
+        "--refresh",
+        action="store_true",
+        help="re-query the provider while retaining normal cache behavior",
+    )
+    lyrics_search.add_argument(
+        "--json", action="store_true", help="emit stable machine-readable JSON"
     )
     romanize = lyrics_commands.add_parser(
         "romanize", help="generate and persist offline representations"
@@ -1098,6 +1163,12 @@ def _run_lyrics(
     if offline and refresh:
         print("--offline and --refresh cannot be used together.", file=sys.stderr)
         return 2
+    if arguments.lyrics_command == "search":
+        return _run_lyrics_search(
+            arguments,
+            provider_factory,
+            database_path,
+        )
     try:
         runtime = runtime_factory()
     except (ImportError, RuntimeError) as error:
@@ -1105,18 +1176,11 @@ def _run_lyrics(
         return 1
 
     from konokashi.application.lyrics_diagnostics import render_lyrics_resolution
-    from konokashi.application.resolve_lyrics import LyricsResolver
     from konokashi.application.resolve_track import TrackResolver
     from konokashi.application.select_player import PlayerSelectionService
     from konokashi.application.source_identity import SourceIdentityResolver
     from konokashi.domain.lyrics import LyricsResolutionStatus
-    from konokashi.infrastructure.lyrics.embedded import EmbeddedLyricsProvider
-    from konokashi.infrastructure.lyrics.local_sidecar import (
-        LocalSidecarLyricsProvider,
-    )
-    from konokashi.infrastructure.lyrics.provider_documents import (
-        ProviderLyricDocumentBuilder,
-    )
+    from konokashi.infrastructure.frontend import create_lyrics_resolver
     from konokashi.infrastructure.metadata.local_paths import (
         FilesystemLocalPathCanonicalizer,
     )
@@ -1138,14 +1202,7 @@ def _run_lyrics(
                 print(f"  - {diagnostic}")
             return 1
         provider = provider_factory()
-        result = LyricsResolver(
-            local_sources=(LocalSidecarLyricsProvider(), EmbeddedLyricsProvider()),
-            provider=provider,
-            provider_documents=ProviderLyricDocumentBuilder(),
-            lyrics=storage.lyrics,
-            matches=storage.lyrics_matches,
-            provider_cache=storage.provider_cache,
-        ).resolve(
+        result = create_lyrics_resolver(storage, provider).resolve(
             selection.selected.track,
             offline=offline,
             refresh=refresh,
@@ -1305,6 +1362,131 @@ def _run_lyrics(
         LyricsResolutionStatus.INVALID_PROVIDER_RESPONSE,
     }
     return int(result.status in failure_states)
+
+
+def _run_lyrics_search(
+    arguments: argparse.Namespace,
+    provider_factory: LyricsProviderFactory,
+    database_path: Path | None,
+) -> int:
+    """Render read-only manual search over the canonical lyrics resolver."""
+
+    from konokashi.application.resolve_lyrics import LyricsSearchRequest
+    from konokashi.infrastructure.frontend import create_lyrics_resolver
+    from konokashi.infrastructure.storage.bootstrap import open_storage
+    from konokashi.infrastructure.storage.errors import StorageError
+
+    try:
+        storage = open_storage(database_path)
+        resolver = create_lyrics_resolver(storage, provider_factory())
+        result = resolver.search(
+            LyricsSearchRequest(
+                title=arguments.title,
+                artists=tuple(arguments.artist),
+                album=arguments.album,
+                duration_ms=arguments.duration,
+            ),
+            offline=bool(arguments.offline),
+            refresh=bool(arguments.refresh),
+        )
+    except (ImportError, RuntimeError) as error:
+        print(f"Unable to initialize lyrics provider: {error}", file=sys.stderr)
+        return 1
+    except StorageError as error:
+        print(f"Unable to use KonoKashi storage: {error}", file=sys.stderr)
+        return 1
+
+    if arguments.json:
+        print(
+            json.dumps(_lyrics_search_json(result), ensure_ascii=False, sort_keys=True)
+        )
+    else:
+        print(_render_lyrics_search(result))
+    return 0 if result.alternatives else 1
+
+
+def _lyrics_kind(candidate: LyricsProviderCandidate) -> str:
+    if candidate.instrumental:
+        return "instrumental"
+    if candidate.synced_lyrics is not None:
+        return "synced"
+    return "plain"
+
+
+def _lyrics_search_json(result: LyricsSearchResult) -> dict[str, object]:
+    return {
+        "schema_version": 1,
+        "query": {
+            "title": result.request.title,
+            "artists": list(result.request.artists),
+            "album": result.request.album,
+            "duration_ms": result.request.duration_ms,
+        },
+        "cache_hit": result.cache_hit,
+        "network_used": result.network_used,
+        "candidates": [
+            {
+                "title": item.candidate.track_name,
+                "artist": item.candidate.artist_name,
+                "album": item.candidate.album_name,
+                "duration_ms": item.candidate.duration_ms,
+                "provider": item.candidate.provider,
+                "record_id": item.candidate.record_id,
+                "lyrics_kind": _lyrics_kind(item.candidate),
+                "confidence": {
+                    "overall": item.confidence.value,
+                    "text": item.text_confidence.value,
+                    "timing": item.timing_confidence.value,
+                },
+                "strategy": item.strategy,
+                "evidence": list(item.evidence),
+            }
+            for item in result.alternatives
+        ],
+        "diagnostics": list(result.diagnostics),
+    }
+
+
+def _render_lyrics_search(result: LyricsSearchResult) -> str:
+    artists = ", ".join(result.request.artists) or "<not supplied>"
+    lines = [
+        "KonoKashi lyric candidate search",
+        f"title: {result.request.title}",
+        f"artists: {artists}",
+        f"album: {result.request.album or '<not supplied>'}",
+        (
+            "duration: <not supplied>"
+            if result.request.duration_ms is None
+            else f"duration: {result.request.duration_ms} ms"
+        ),
+        f"cache hit: {'yes' if result.cache_hit else 'no'}",
+        f"network used: {'yes' if result.network_used else 'no'}",
+        f"candidates: {len(result.alternatives)}",
+    ]
+    for index, item in enumerate(result.alternatives, start=1):
+        candidate = item.candidate
+        lines.extend(
+            (
+                f"[{index}] {candidate.artist_name} — {candidate.track_name}",
+                f"  album: {candidate.album_name or '<unknown>'}",
+                (
+                    "  duration: <unknown>"
+                    if candidate.duration_ms is None
+                    else f"  duration: {candidate.duration_ms} ms"
+                ),
+                f"  source: {candidate.provider} #{candidate.record_id}",
+                f"  lyrics: {_lyrics_kind(candidate)}",
+                "  confidence: "
+                f"overall {item.confidence.value}; text {item.text_confidence.value}; "
+                f"timing {item.timing_confidence.value}",
+                f"  strategy: {item.strategy}",
+                "  evidence: " + ("; ".join(item.evidence) or "none"),
+            )
+        )
+    if result.diagnostics:
+        lines.append("diagnostics:")
+        lines.extend(f"  - {value}" for value in result.diagnostics)
+    return "\n".join(lines)
 
 
 def _sync_session_id(track: ResolvedTrack) -> str:
@@ -2099,10 +2281,12 @@ def main(
         try:
             from konokashi.presentation.desktop.app import run_desktop
 
-            if config_path is None:
-                return run_desktop(["konokashi"], database_path=database_path)
             return run_desktop(
-                ["konokashi"], database_path=database_path, config_path=config_path
+                ["konokashi"],
+                database_path=database_path,
+                config_path=config_path,
+                player_override=arguments.player,
+                lyrics_offset_us=arguments.offset,
             )
         except (ImportError, OSError, RuntimeError) as error:
             print(
