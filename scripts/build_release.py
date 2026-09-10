@@ -30,7 +30,7 @@ REQUIRED_SDIST_SUFFIXES = (
     "LICENSE",
     "README.md",
     "pyproject.toml",
-    "docs/images/konokashi-beta-lyrics.png",
+    "docs/images/konokashi-demo.gif",
     f"src/konokashi/resources/{APP_ID}.desktop.in",
     f"src/konokashi/resources/{APP_ID}.metainfo.xml",
     f"src/konokashi/resources/{APP_ID}.svg",

@@ -85,15 +85,15 @@ def test_public_docs_do_not_embed_maintainer_home_path() -> None:
     assert offending == []
 
 
-def test_documented_screenshot_is_bounded_and_sanitized() -> None:
-    screenshot = REPOSITORY_ROOT / "docs/images/konokashi-beta-lyrics.png"
-    content = screenshot.read_bytes()
+def test_readme_demo_is_bounded_animated_and_sanitized() -> None:
+    demo = REPOSITORY_ROOT / "docs/images/konokashi-demo.gif"
+    content = demo.read_bytes()
 
-    assert content.startswith(b"\x89PNG\r\n\x1a\n")
-    assert len(content) < 500_000
+    assert content.startswith((b"GIF87a", b"GIF89a"))
+    assert len(content) < 1_500_000
+    assert content.count(b"\x21\xf9\x04") >= 24
     assert b"/home/" not in content
     assert b"myon" not in content.lower()
-    assert b"windowTitle" not in content
 
 
 def test_sanitized_mpris_evidence_fixtures_are_preserved() -> None:
@@ -138,7 +138,8 @@ def test_readme_is_product_first_and_honest_about_license() -> None:
 
     assert content.startswith("# KonoKashi\n")
     assert "usable and under active development" in content
-    assert "## Installation from source" in content
+    assert "## Try it" in content
+    assert "docs/images/konokashi-demo.gif" in content
     assert "source-available under the PolyForm Noncommercial License 1.0.0" in prose
     assert "OSI Open Source" in prose
     assert "## What's next" in content
