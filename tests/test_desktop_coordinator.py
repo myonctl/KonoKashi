@@ -31,6 +31,7 @@ from konokashi.application.settings_service import (
     SettingsChange,
 )
 from konokashi.application.sync_session import PlaybackSyncSession
+from konokashi.domain.identity import GenericMprisIdentity
 from konokashi.domain.library import LibraryScanSummary
 from konokashi.domain.lyrics import LyricsResolutionResult, LyricsResolutionStatus
 from konokashi.domain.models import (
@@ -808,6 +809,92 @@ def test_selection_change_loads_new_source_without_old_lyric_flash(
     assert coordinator.controller.state.active == ()
     assert coordinator.controller.state.state.value == "no-result"
     assert frontend.load_calls == [track_b]
+    coordinator.close()
+    window.close()
+
+
+def _generic_recording(
+    title: str,
+    *,
+    artists: tuple[str, ...] = ("Artist",),
+) -> ResolvedTrack:
+    track = _track("xa4WrgqI7q0", title)
+    return replace(
+        track,
+        source_identity=GenericMprisIdentity(
+            track.raw_snapshot.service_name,
+            "/reused/track/1",
+            "https://radio.example/current",
+        ),
+        candidate=replace(track.candidate, title=title, artists=artists),
+        raw_snapshot=replace(
+            track.raw_snapshot,
+            metadata=replace(
+                track.raw_snapshot.metadata,
+                title=title,
+                artists=artists,
+                url="https://radio.example/current",
+                track_id="/reused/track/1",
+            ),
+        ),
+    )
+
+
+def test_reused_generic_track_id_with_new_metadata_starts_new_load(
+    qt_app: QApplication,
+) -> None:
+    window = MainWindow()
+    coordinator = _ImmediateCoordinator(qt_app, window)
+    track_a = _generic_recording("Track A")
+    track_b = _generic_recording("Track B", artists=("Different Artist",))
+    assert track_a.source_identity == track_b.source_identity
+    _install_timed_source(coordinator, window, track_a)
+    frontend = _Frontend(track_b)
+    coordinator._frontend = frontend
+
+    coordinator._refresh_selection()
+
+    assert coordinator.controller.state.title == "Track B"
+    assert coordinator.controller.state.active == ()
+    assert frontend.load_calls == [track_b]
+    coordinator.close()
+    window.close()
+
+
+def test_same_generic_recording_metadata_enrichment_refreshes_without_reload(
+    qt_app: QApplication,
+) -> None:
+    window = MainWindow()
+    coordinator = _ImmediateCoordinator(qt_app, window)
+    track = _generic_recording("Track A")
+    session = _install_timed_source(coordinator, window, track)
+    updated = replace(
+        track,
+        candidate=replace(
+            track.candidate,
+            album="New album evidence",
+            duration_us=181_000_000,
+        ),
+        raw_snapshot=replace(
+            track.raw_snapshot,
+            playback_status="Paused",
+            metadata=replace(
+                track.raw_snapshot.metadata,
+                album="New album evidence",
+                duration_us=181_000_000,
+                art_url="https://images.example/cover.jpg",
+            ),
+        ),
+    )
+    frontend = _Frontend(updated)
+    coordinator._frontend = frontend
+
+    coordinator._refresh_selection()
+
+    assert coordinator._track is updated
+    assert coordinator._playback_session is session
+    assert session.snapshot is updated.raw_snapshot
+    assert frontend.load_calls == []
     coordinator.close()
     window.close()
 
