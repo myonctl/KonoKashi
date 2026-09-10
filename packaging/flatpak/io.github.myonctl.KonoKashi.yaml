@@ -47,6 +47,11 @@ modules:
         url: https://github.com/polm/fugashi.git
         commit: 1576b66a2bf8173da50e1930791f0dcb96111590
   - python3-dependencies.json
+  - name: portal-parent-bridge
+    buildsystem: cmake-ninja
+    sources:
+      - type: dir
+        path: portal-parent-bridge
   - name: konokashi
     buildsystem: simple
     build-commands:

@@ -70,6 +70,12 @@ from konokashi.application.settings import (
     SettingStringFormat,
     SettingType,
 )
+from konokashi.infrastructure.desktop_portal import (
+    DesktopPortalError,
+    PortalDirectoryRequest,
+    is_flatpak_session,
+    portal_parent_identifier,
+)
 from konokashi.presentation.desktop.settings_input import SettingsWheelGuard
 
 
@@ -192,6 +198,7 @@ class OrderedStringListEditor(QWidget):
         self._ordered = ordered
         self._library_paths = library_paths
         self._editing_row: int | None = None
+        self._portal_request: PortalDirectoryRequest | None = None
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
 
@@ -312,7 +319,7 @@ class OrderedStringListEditor(QWidget):
         self.add_button.setEnabled(enabled)
         self.cancel_button.setEnabled(enabled)
         self.suggestions.setEnabled(enabled)
-        self.folder_button.setEnabled(enabled)
+        self.folder_button.setEnabled(enabled and self._portal_request is None)
         self.manual_toggle.setEnabled(enabled)
         self._update_actions(enabled)
 
@@ -377,6 +384,9 @@ class OrderedStringListEditor(QWidget):
         return None
 
     def _choose_folder(self) -> None:
+        if is_flatpak_session():
+            self._choose_folder_with_portal()
+            return
         selected = QFileDialog.getExistingDirectory(
             self,
             "Add music library folder",
@@ -384,6 +394,38 @@ class OrderedStringListEditor(QWidget):
             QFileDialog.Option.ShowDirsOnly,
         )
         if selected:
+            self._editing_row = None
+            self._commit_value(selected)
+
+    def _choose_folder_with_portal(self) -> None:
+        if self._portal_request is not None:
+            return
+        self.validation_label.clear()
+        self.folder_button.setEnabled(False)
+        request = PortalDirectoryRequest(self)
+        self._portal_request = request
+        request.finished.connect(self._portal_folder_finished)
+        try:
+            parent_window = portal_parent_identifier(self.window().windowHandle())
+        except DesktopPortalError as error:
+            self._portal_folder_finished(None, error)
+            return
+        request.start(parent_window=parent_window)
+
+    def _portal_folder_finished(
+        self,
+        selected: object,
+        error: object,
+    ) -> None:
+        request = self._portal_request
+        self._portal_request = None
+        self.folder_button.setEnabled(self.items.isEnabled())
+        if request is not None:
+            request.deleteLater()
+        if isinstance(error, DesktopPortalError):
+            self.validation_label.setText(str(error))
+            return
+        if isinstance(selected, str) and selected:
             self._editing_row = None
             self._commit_value(selected)
 

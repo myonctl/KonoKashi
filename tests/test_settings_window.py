@@ -8,7 +8,7 @@ from pathlib import Path
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 import pytest
-from PySide6.QtCore import QPoint, QPointF, Qt, QTimer, QUrl
+from PySide6.QtCore import QObject, QPoint, QPointF, Qt, QTimer, QUrl, Signal
 from PySide6.QtGui import QColor, QPalette, QWheelEvent
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import (
@@ -33,6 +33,7 @@ from konokashi.application.settings import (
     SettingType,
     validate_settings_values,
 )
+from konokashi.infrastructure.desktop_portal import DesktopPortalError
 from konokashi.presentation.desktop.settings_input import SettingsWheelGuard
 from konokashi.presentation.desktop.settings_window import (
     AnimationSpeedEditor,
@@ -918,6 +919,75 @@ def test_library_folder_chooser_cancel_unicode_duplicate_and_overlap_feedback(
     editor.add_button.click()
     assert "absolute folder path" in editor.validation_label.text()
     assert len(changes) == 2
+    window.close()
+
+
+def test_flatpak_folder_chooser_is_async_and_surfaces_portal_failures(
+    qt_app: QApplication,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    requests: list[object] = []
+
+    class FakePortalRequest(QObject):
+        finished = Signal(object, object)
+
+        def __init__(self, parent: QObject) -> None:
+            super().__init__(parent)
+            self.started = False
+            requests.append(self)
+
+        def start(self, *, parent_window: str = "") -> None:
+            self.started = True
+            self.parent_window = parent_window
+
+    monkeypatch.setattr(
+        "konokashi.presentation.desktop.settings_window.is_flatpak_session",
+        lambda: True,
+    )
+    monkeypatch.setattr(
+        "konokashi.presentation.desktop.settings_window.PortalDirectoryRequest",
+        FakePortalRequest,
+    )
+    monkeypatch.setattr(
+        "konokashi.presentation.desktop.settings_window.portal_parent_identifier",
+        lambda _window: "wayland:settings-test-parent",
+    )
+    window = _window(qt_app, tmp_path / "config.toml")
+    editor = window.rows["library.roots"].editor
+    assert isinstance(editor, OrderedStringListEditor)
+    changes: list[tuple[str, object]] = []
+    window.change_requested.connect(lambda key, value: changes.append((key, value)))
+
+    editor.folder_button.click()
+    first = requests[-1]
+    assert isinstance(first, FakePortalRequest)
+    assert first.started
+    assert first.parent_window == "wayland:settings-test-parent"
+    assert not editor.folder_button.isEnabled()
+    assert editor.value() == ()
+    first.finished.emit(None, None)
+    assert editor.folder_button.isEnabled()
+    assert changes == []
+
+    editor.folder_button.click()
+    second = requests[-1]
+    assert isinstance(second, FakePortalRequest)
+    second.finished.emit(None, DesktopPortalError("portal unavailable"))
+    assert editor.validation_label.text() == "portal unavailable"
+    assert editor.folder_button.isEnabled()
+    assert changes == []
+
+    editor.folder_button.click()
+    third = requests[-1]
+    assert isinstance(third, FakePortalRequest)
+    editor.set_editing_enabled(False)
+    third.finished.emit("/run/user/1000/doc/example/音楽", None)
+    assert editor.value() == ("/run/user/1000/doc/example/音楽",)
+    assert not editor.folder_button.isEnabled()
+    assert changes == [
+        ("library.roots", ("/run/user/1000/doc/example/音楽",)),
+    ]
     window.close()
 
 

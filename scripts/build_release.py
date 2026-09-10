@@ -23,6 +23,7 @@ APP_ID = "io.github.myonctl.KonoKashi"
 REQUIRED_PYTHON_BOUNDS = frozenset({">=3.11", "<3.15"})
 REQUIRED_WHEEL_SUFFIXES = (
     "konokashi/cli.py",
+    "konokashi/infrastructure/desktop_portal.py",
     "konokashi/presentation/tui/settings_app.py",
     f"konokashi/resources/{APP_ID}.desktop.in",
     f"konokashi/resources/{APP_ID}.metainfo.xml",
@@ -35,6 +36,7 @@ REQUIRED_SDIST_SUFFIXES = (
     "assets/readme/konokashi-demo.gif",
     "scripts/__init__.py",
     "scripts/evaluate_matching.py",
+    "src/konokashi/infrastructure/desktop_portal.py",
     "tests/fixtures/matching_evaluation/synthetic_cases.json",
     "tests/fixtures/matching_evaluation/README.md",
     f"src/konokashi/resources/{APP_ID}.desktop.in",

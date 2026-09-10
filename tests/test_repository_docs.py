@@ -248,6 +248,8 @@ def test_flatpak_manifest_uses_narrow_runtime_permissions() -> None:
     assert "--filesystem=host" not in manifest
     assert "--socket=session-bus" not in manifest
     assert "type: archive" in manifest
+    assert "name: portal-parent-bridge" in manifest
+    assert "path: portal-parent-bridge" in manifest
     assert (
         "https://github.com/myonctl/KonoKashi/releases/download/"
         "v0.1.0-beta.1/konokashi-0.1.0b1.tar.gz"
@@ -259,9 +261,17 @@ def test_flatpak_manifest_uses_narrow_runtime_permissions() -> None:
     candidate_notes = (REPOSITORY_ROOT / "packaging/flatpak/README.md").read_text(
         encoding="utf-8"
     )
-    assert "native directory-only dialog" in candidate_notes
+    assert "asynchronous directory chooser" in candidate_notes
+    assert "outside Flatpak it retains" in candidate_notes
     assert "desktop portal" in candidate_notes
+    assert "Qt6::GuiPrivate" in candidate_notes
+    assert "runtime, SDK, and PySide BaseApp branches aligned" in candidate_notes
     assert "Do not add `--filesystem=home`" in candidate_notes
+    assert "python scripts/prepare_flatpak.py" in candidate_notes
+    assert "changes no tracked file" in candidate_notes
+    bridge = REPOSITORY_ROOT / "packaging/flatpak/portal-parent-bridge"
+    assert (bridge / "CMakeLists.txt").is_file()
+    assert (bridge / "portal_parent.cpp").is_file()
 
 
 def test_personal_audio_device_name_is_not_a_regression_fixture() -> None:

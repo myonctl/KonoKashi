@@ -10,6 +10,9 @@ All notable user-visible changes are recorded here.
   interpreter is exercised by the CI quality gate.
 - Security guidance now points to the repository's enabled private
   vulnerability-reporting workflow.
+- Flatpak folder selection now uses the asynchronous XDG desktop portal with a
+  correctly exported X11 or Wayland parent window, without broadening filesystem
+  or session-bus permissions.
 
 ## 0.1.0-beta.1 — 2026-09-10
 

@@ -34,7 +34,9 @@ jobs:
       - name: Ruff format
         run: python -m ruff format --check .
       - name: Mypy
-        run: python -m mypy src scripts/build_release.py scripts/evaluate_matching.py
+        run: >-
+          python -m mypy src scripts/build_release.py scripts/evaluate_matching.py
+          scripts/prepare_flatpak.py
       - name: Tests
         run: python -m pytest
       - name: Installed CLI smoke checks
