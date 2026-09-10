@@ -1,12 +1,10 @@
 # Changelog
 
-All notable user-visible changes are recorded here. KonoKashi has no public
-release yet.
+All notable user-visible changes are recorded here.
 
 ## Unreleased
 
-The current local candidate identifies itself as `0.1.0-beta.1`
-(`0.1.0b1` in Python package metadata). It has not been published or tagged.
+## 0.1.0-beta.1 — 2026-09-10
 
 ### Added
 

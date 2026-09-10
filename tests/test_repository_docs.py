@@ -10,28 +10,19 @@ REPOSITORY_ROOT = Path(__file__).parents[1]
 
 PUBLIC_DOCUMENTS = (
     "README.md",
-    "AGENTS.md",
     "BACKLOG.md",
     "CHANGELOG.md",
     "CONTRIBUTING.md",
     "SECURITY.md",
-    "docs/PRODUCT_SPEC.md",
-    "docs/ARCHITECTURE.md",
-    "docs/ROADMAP.md",
-    "docs/TESTING.md",
-    "docs/DEPENDENCIES.md",
-    "docs/RELEASE.md",
-    "docs/REFERENCES.md",
-    "docs/MULTILINGUAL_SUPPORT.md",
 )
 
 MAINTAINER_ONLY_PATHS = (
+    "AGENTS.md",
     "AGENT_TODO.md",
     "CODEX_MASTER_PROMPT.md",
     "PLAN_MANIFEST.json",
     "PROJECT_STATE.md",
-    "docs/MANUAL_TEST_LOG.md",
-    "docs/STAGE_15_COMPLETION.md",
+    "docs",
 )
 
 REQUIRED_GITHUB_FILES = (
@@ -68,9 +59,10 @@ def test_maintainer_only_documents_are_not_in_public_tree() -> None:
     ]
 
     assert present == []
-    assert "/.maintainer-private/" in (REPOSITORY_ROOT / ".gitignore").read_text(
-        encoding="utf-8"
-    )
+    ignore = (REPOSITORY_ROOT / ".gitignore").read_text(encoding="utf-8")
+    assert "/.maintainer-private/" in ignore
+    assert "/docs/" in ignore
+    assert "/AGENTS.md" in ignore
 
 
 def test_public_docs_do_not_embed_maintainer_home_path() -> None:
@@ -86,7 +78,7 @@ def test_public_docs_do_not_embed_maintainer_home_path() -> None:
 
 
 def test_readme_demo_is_bounded_animated_and_sanitized() -> None:
-    demo = REPOSITORY_ROOT / "docs/images/konokashi-demo.gif"
+    demo = REPOSITORY_ROOT / "assets/readme/konokashi-demo.gif"
     content = demo.read_bytes()
 
     assert content.startswith((b"GIF87a", b"GIF89a"))
@@ -139,7 +131,7 @@ def test_readme_is_product_first_and_honest_about_license() -> None:
     assert content.startswith("# KonoKashi\n")
     assert "usable and under active development" in content
     assert "## Try it" in content
-    assert "docs/images/konokashi-demo.gif" in content
+    assert "assets/readme/konokashi-demo.gif" in content
     assert "source-available under the PolyForm Noncommercial License 1.0.0" in prose
     assert "OSI Open Source" in prose
     assert "## What's next" in content
@@ -170,7 +162,7 @@ def test_appstream_metadata_matches_the_desktop_identity() -> None:
     assert "<metadata_license>CC0-1.0</metadata_license>" in metadata
     assert "<project_license>PolyForm-Noncommercial-1.0.0</project_license>" in metadata
     assert '<release version="0.1.0-beta.1"' in metadata
-    assert "no public release was created" in metadata
+    assert "First public beta of KonoKashi" in metadata
 
 
 def test_beta_version_is_consistent_across_release_candidates() -> None:
@@ -228,51 +220,3 @@ def test_personal_audio_device_name_is_not_a_regression_fixture() -> None:
 
     assert "MOMENTUM" not in content
     assert "Synthetic Wireless Sink" in content
-
-
-def test_accepted_cross_cutting_architecture_is_durable() -> None:
-    native = (
-        REPOSITORY_ROOT / "docs/adr/0013-python-first-hybrid-architecture.md"
-    ).read_text(encoding="utf-8")
-    settings = (
-        REPOSITORY_ROOT / "docs/adr/0014-frontend-neutral-settings-and-themes.md"
-    ).read_text(encoding="utf-8")
-    product = (REPOSITORY_ROOT / "docs/PRODUCT_SPEC.md").read_text(encoding="utf-8")
-    native = " ".join(native.split())
-    settings = " ".join(settings.split())
-    product = " ".join(product.split())
-
-    assert all(
-        phrase in native
-        for phrase in (
-            "Python-first",
-            "PyO3",
-            "maturin",
-            "Retain PySide6",
-            "Qt Quick/QML",
-            "Textual",
-            "Do not create `konokashid` now",
-        )
-    )
-    assert all(
-        phrase in settings
-        for phrase in (
-            "one canonical typed, versioned, validated settings schema/service",
-            "`konokashi settings`",
-            "human-edited XDG configuration files",
-            "last-known-good runtime state",
-            "hot reload",
-            "declarative data only",
-            "must never execute Python, shell, `eval`, plugins, or commands",
-            "Machine-readable snapshot/event output",
-        )
-    )
-    assert all(
-        phrase in product
-        for phrase in (
-            "`konokashi tui`",
-            "`konokashi settings`",
-            "`konokashi follow --json`",
-            "wallpaper/desktop-overlay modes",
-        )
-    )

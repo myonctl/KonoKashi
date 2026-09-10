@@ -27,8 +27,8 @@ may require ICU development headers, `pkg-config`, and a C++ compiler.
 - Open or reference an issue before a large behavioral or architectural change.
 - Keep the pull request focused; roadmap entries are context, not blanket
   authorization to implement adjacent features.
-- Preserve the boundaries in `docs/ARCHITECTURE.md` and the privacy rules in
-  `AGENTS.md`.
+- Preserve the existing application/domain boundaries and local-first privacy
+  model; discuss significant architecture changes before implementing them.
 - Add a regression test for every bug fix and proportionate tests for behavior
   changes.
 - Use synthetic or deliberately sanitized fixtures. Never submit credentials,
@@ -36,8 +36,8 @@ may require ICU development headers, `pkg-config`, and a C++ compiler.
   unrelated diagnostic data.
 - Update user documentation when installation, configuration, behavior, or known
   limitations change.
-- Discuss a new runtime dependency before adding it and document the decision in
-  `docs/DEPENDENCIES.md`.
+- Discuss a new runtime dependency before adding it and explain its purpose,
+  licensing, runtime impact, and replacement path in the pull request.
 
 ## Quality gate
 

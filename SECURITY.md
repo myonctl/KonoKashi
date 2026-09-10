@@ -2,8 +2,8 @@
 
 ## Supported versions
 
-KonoKashi has no public release yet. Security fixes target the current `main`
-branch until a versioned support policy is published.
+Security fixes target the current `main` branch and latest public beta until a
+versioned support policy is published.
 
 ## Reporting a vulnerability
 

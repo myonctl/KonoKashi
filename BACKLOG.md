@@ -18,4 +18,4 @@ authorization.
 - Investigate secure remote display/KonoKashi Web as a separate product boundary.
 - Replace the temporary icon after a deliberate identity and trademark review.
 
-See `docs/ROADMAP.md` for release priorities and current product boundaries.
+Priorities are refined through focused issues as public-beta feedback arrives.

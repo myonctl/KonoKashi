@@ -17,6 +17,9 @@ dist/
 id_rsa
 id_ed25519
 
+/docs/
+/AGENTS.md
+
 # Maintainer-only notes and local release-readiness evidence
 /.maintainer-private/
 /.release-readiness-work/

@@ -6,7 +6,7 @@
 ![Linux](https://img.shields.io/badge/platform-Linux-FCC624)
 ![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-3776AB)
 
-![KonoKashi advancing through synchronized Japanese, romanized, and English lyric layers](docs/images/konokashi-demo.gif)
+![KonoKashi advancing through synchronized Japanese, romanized, and English lyric layers](assets/readme/konokashi-demo.gif)
 
 _The real desktop renderer, driven by a copyright-safe synthetic lyric fixture._
 
@@ -44,10 +44,9 @@ local-first, deeply customizable, and source-available.
 - **Multiple controls:** native PySide6 desktop, graphical settings, a terminal
   settings interface, CLI diagnostics, and one canonical TOML configuration.
 
-The exact limits of local Japanese, Mandarin, Korean, Cyrillic, Greek, Arabic,
-and Thai conversion are documented in the
-[multilingual support matrix](docs/MULTILINGUAL_SUPPORT.md). Romanization is a
-reading aid, not a promise of perfect sung pronunciation.
+Local reading support covers Japanese and Mandarin with language-aware limits,
+plus generic transliteration for Korean, Cyrillic, Greek, Arabic, and Thai.
+Romanization is a reading aid, not a promise of perfect sung pronunciation.
 
 ## What the demo shows
 
@@ -112,9 +111,8 @@ fall back through Qt/fontconfig without replacing the configured choice.
 
 ## Current status
 
-KonoKashi is usable and under active development. The current source tree is the
-**0.1.0-beta.1** candidate for the first public beta; no public release or tag
-exists yet.
+KonoKashi is usable and under active development. **0.1.0-beta.1** is the first
+public beta.
 
 Linux is the only supported host today. Real-world verification has focused on
 Artix Linux with KDE Plasma, Strawberry, and Plasma Browser Integration. Other
@@ -133,7 +131,7 @@ karaoke mode, word-level timing, and Windows support are future work.
 - Explore deeper themes, compact/overlay layouts, and a full lyrics TUI.
 - Stabilize release packaging before any AUR or Flathub submission.
 
-See the concise [public roadmap](docs/ROADMAP.md) for longer-term direction.
+See the concise [backlog](BACKLOG.md) for longer-term direction.
 
 ## License
 
