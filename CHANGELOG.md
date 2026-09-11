@@ -16,6 +16,10 @@ All notable user-visible changes are recorded here.
 - Independent reading and translation identities through synchronized frontend
   state, with compact active-line captions for romaji, pinyin, Korean readings,
   generic transliteration, and provider/imported/user/generated provenance.
+- Normal, compact, desktop-overlay, and fullscreen lyric modes over one shared
+  renderer, with screen targeting and explicit overlay move/resize/exit controls.
+- Safety-gated click-through overlay behavior with system-tray unlock and quit
+  routes; environments without a tray retain an interactive overlay.
 
 ### Changed
 
@@ -30,6 +34,8 @@ All notable user-visible changes are recorded here.
   stable while seeking, pausing, changing playback rate, or refreshing metadata.
 - Fresh profiles show available aligned translations by default to complete the
   original/reading/translation hierarchy; explicit existing choices are kept.
+- Wayland overlay behavior is described as a portable Qt top-most fallback;
+  above-fullscreen layer-shell placement is not claimed when unavailable.
 
 ## 0.1.0-beta.1 — 2026-09-10
 

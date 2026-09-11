@@ -420,6 +420,7 @@ def test_desktop_entry_point_launches_and_shuts_down_cleanly(
     assert qt_app.applicationName() == "KonoKashi"
     assert qt_app.organizationName() == "KonoKashi"
     assert qt_app.desktopFileName() == "io.github.myonctl.KonoKashi"
+    assert not qt_app.windowIcon().isNull()
     assert len(captured) == 1
     assert captured[0].state.state is DesktopLyricsState.WAITING
     captured[0].close()

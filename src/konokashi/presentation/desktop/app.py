@@ -5,10 +5,12 @@ from __future__ import annotations
 import signal
 import sys
 from collections.abc import Callable, Sequence
+from importlib.resources import files
 from pathlib import Path
 from typing import Protocol
 
 from PySide6.QtCore import QCoreApplication
+from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import QApplication
 
 from konokashi import APPLICATION_ID
@@ -27,6 +29,10 @@ DesktopCoordinatorFactory = Callable[
     [QApplication, MainWindow, Path | None, Path | None, str | None, int],
     DesktopLifecycle,
 ]
+
+
+def _application_icon() -> QIcon:
+    return QIcon(str(files("konokashi").joinpath("resources", f"{APPLICATION_ID}.svg")))
 
 
 def _create_coordinator(
@@ -69,6 +75,7 @@ def run_desktop(
     application.setApplicationName("KonoKashi")
     application.setOrganizationName("KonoKashi")
     application.setDesktopFileName(APPLICATION_ID)
+    application.setWindowIcon(_application_icon())
     window = MainWindow()
     window.show()
     try:

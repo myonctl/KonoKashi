@@ -46,6 +46,8 @@ local-first, deeply customizable, and source-available.
   adjust whole-document timing, and maintain local per-line translations.
 - **Multiple controls:** native PySide6 desktop, graphical settings, a terminal
   settings interface, CLI diagnostics, and one canonical TOML configuration.
+- **Four desktop modes:** normal window, compact companion, lyric-only desktop
+  overlay, and focused fullscreen, all using the same synchronized renderer.
 
 Local reading support covers Japanese and Mandarin with language-aware limits,
 Korean romanization, and generic transliteration for Cyrillic, Greek, Arabic,
@@ -128,6 +130,13 @@ visibility, colors, background opacity, spacing, alignment, lyric scale, smooth
 motion, and progress styling remain independently adjustable. Unavailable fonts
 fall back through Qt/fontconfig without replacing the configured choice.
 
+Use **View → Window mode** or `Ctrl+Alt+1` through `Ctrl+Alt+3` to switch among
+normal, compact, and overlay modes; `F11` opens fullscreen lyrics. `Esc` always
+leaves an interactive overlay or fullscreen. The unlocked overlay has explicit
+drag, resize, and exit controls. Click-through is offered only when a system tray
+is available, so **Unlock lyrics overlay**, screen/mode selection, and **Quit**
+remain reachable outside the window.
+
 ## Current status
 
 KonoKashi is usable and under active development. **0.1.0-beta.1** is the first
@@ -143,11 +152,18 @@ provider, imported, local, or user-approved text; KonoKashi does not silently
 send lyrics to a machine-translation service. A full lyrics TUI, web frontend,
 additional rich-timing provider formats, and Windows support are future work.
 
+The current overlay uses Qt's portable top-most window support. On Wayland this
+is a graceful normal-window fallback and a compositor may still place fullscreen
+applications above it. Native layer-shell placement and optional compositor blur
+are not shipped yet; KonoKashi does not claim them based on KDE-only behavior.
+
 ## What's next
 
 - Refine the Linux desktop experience through public-beta feedback.
 - Expand lyric-text and per-line timing correction while preserving originals.
-- Explore deeper themes, compact/overlay layouts, and a full lyrics TUI.
+- Add an optional, replaceable Wayland layer-shell backend after its native
+  dependency and cross-compositor packaging path are validated.
+- Explore deeper themes and a full lyrics TUI.
 - Stabilize release packaging before any AUR or Flathub submission.
 
 See the concise [backlog](BACKLOG.md) for longer-term direction.

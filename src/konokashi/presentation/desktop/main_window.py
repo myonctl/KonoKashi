@@ -25,8 +25,10 @@ from PySide6.QtGui import (
     QColor,
     QFont,
     QFontMetrics,
+    QGuiApplication,
     QHideEvent,
     QKeySequence,
+    QMouseEvent,
     QPainter,
     QPaintEvent,
     QPalette,
@@ -44,12 +46,15 @@ from PySide6.QtWidgets import (
     QGraphicsOpacityEffect,
     QHBoxLayout,
     QLabel,
+    QMenu,
     QMessageBox,
     QPlainTextEdit,
     QPushButton,
     QScrollArea,
+    QSizeGrip,
     QSizePolicy,
     QStackedWidget,
+    QSystemTrayIcon,
     QVBoxLayout,
     QWidget,
 )
@@ -78,7 +83,10 @@ from konokashi.presentation.desktop.review_dialog import (
     CorrectionActionRequest,
     ReviewCorrectionDialog,
 )
-from konokashi.presentation.desktop.window_surface import DesktopWindowSurface
+from konokashi.presentation.desktop.window_surface import (
+    DesktopWindowMode,
+    DesktopWindowSurface,
+)
 from konokashi.presentation.desktop.workspace import DesktopWorkspace, PanelId
 
 # Contract inventory: every public appearance key must terminate in a concrete
@@ -183,6 +191,19 @@ def _plain_label(text: str = "") -> QLabel:
     label.setTextFormat(Qt.TextFormat.PlainText)
     label.setTextInteractionFlags(Qt.TextInteractionFlag.NoTextInteraction)
     return label
+
+
+class _OverlayDragHandle(QLabel):
+    """Explicit compositor-owned drag affordance for a frameless overlay."""
+
+    move_requested = Signal()
+
+    def mousePressEvent(self, event: QMouseEvent) -> None:
+        if event.button() is Qt.MouseButton.LeftButton:
+            self.move_requested.emit()
+            event.accept()
+            return
+        super().mousePressEvent(event)
 
 
 def _qt_alignment(value: TextAlignment) -> Qt.AlignmentFlag:
@@ -1201,6 +1222,7 @@ class MainWindow(DesktopWindowSurface):
         *,
         interaction_settings: DesktopInteractionSettings | None = None,
         appearance: AppearanceProfile | None = None,
+        overlay_recovery_available: bool | None = None,
     ) -> None:
         super().__init__(parent)
         self._settings = settings or RepresentationDisplaySettings()
@@ -1229,6 +1251,35 @@ class MainWindow(DesktopWindowSurface):
         root.setAccessibleName("KonoKashi main view")
         layout = root.panel_layout
         self._root_layout = layout
+
+        self.overlay_controls = QWidget()
+        overlay_controls_layout = QHBoxLayout(self.overlay_controls)
+        overlay_controls_layout.setContentsMargins(0, 0, 0, 0)
+        self.overlay_drag_handle = _OverlayDragHandle(
+            "Overlay unlocked — drag here to move"
+        )
+        self.overlay_drag_handle.setAccessibleName("Move lyrics overlay")
+        self.overlay_drag_handle.setToolTip(
+            "Drag to ask the compositor to move this overlay"
+        )
+        self.overlay_drag_handle.setCursor(Qt.CursorShape.SizeAllCursor)
+        self.overlay_drag_handle.move_requested.connect(self.start_overlay_move)
+        self.overlay_lock_button = QPushButton("Enable click-through")
+        self.overlay_lock_button.setAccessibleName("Enable click-through overlay")
+        self.overlay_lock_button.clicked.connect(lambda: self.set_overlay_locked(True))
+        self.overlay_exit_button = QPushButton("Exit overlay")
+        self.overlay_exit_button.setAccessibleName("Return to normal window")
+        self.overlay_exit_button.clicked.connect(
+            lambda: self.set_window_mode(DesktopWindowMode.NORMAL)
+        )
+        self.overlay_size_grip = QSizeGrip(self.overlay_controls)
+        self.overlay_size_grip.setAccessibleName("Resize lyrics overlay")
+        overlay_controls_layout.addWidget(self.overlay_drag_handle, 1)
+        overlay_controls_layout.addWidget(self.overlay_lock_button)
+        overlay_controls_layout.addWidget(self.overlay_exit_button)
+        overlay_controls_layout.addWidget(self.overlay_size_grip)
+        self.overlay_controls.setVisible(False)
+        layout.addWidget(self.overlay_controls)
 
         metadata_panel = QWidget()
         header = QBoxLayout(QBoxLayout.Direction.LeftToRight, metadata_panel)
@@ -1387,6 +1438,12 @@ class MainWindow(DesktopWindowSurface):
         self.scan_action.triggered.connect(self._toggle_library_scan)
         self.quit_action = QAction("&Quit", self)
         self.quit_action.triggered.connect(self.close)
+        self.restore_window_action = QAction("Exit transient window mode", self)
+        self.restore_window_action.setShortcut(QKeySequence("Escape"))
+        self.restore_window_action.setShortcutContext(Qt.ShortcutContext.WindowShortcut)
+        self.restore_window_action.triggered.connect(self.restore_from_transient_mode)
+        self.restore_window_action.setEnabled(False)
+        self.addAction(self.restore_window_action)
         self.application_menu = ApplicationMenu(
             self.settings_action,
             self.review_action,
@@ -1397,7 +1454,44 @@ class MainWindow(DesktopWindowSurface):
         )
         self.application_menu.setting_requested.connect(self.setting_requested)
         self.application_menu.about_requested.connect(self._about)
+        self.application_menu.window_mode_requested.connect(self.set_window_mode)
+        self.application_menu.overlay_lock_requested.connect(self.set_overlay_locked)
+        self.application_menu.screen_requested.connect(self._move_to_screen)
         self.setMenuBar(self.application_menu)
+
+        actual_tray_available = QSystemTrayIcon.isSystemTrayAvailable()
+        self._probe_overlay_recovery = overlay_recovery_available is None
+        recovery_available = (
+            actual_tray_available
+            if overlay_recovery_available is None
+            else overlay_recovery_available
+        )
+        self.set_overlay_recovery_available(recovery_available)
+        self.tray_menu = QMenu(self)
+        self.tray_show_action = self.tray_menu.addAction("Show KonoKashi")
+        self.tray_show_action.triggered.connect(self._show_from_tray)
+        self.tray_menu.addSeparator()
+        for mode in DesktopWindowMode:
+            self.tray_menu.addAction(self.application_menu.mode_actions[mode])
+        self.tray_menu.addAction(self.application_menu.overlay_lock_action)
+        self.tray_menu.addMenu(self.application_menu.screen_menu)
+        self.tray_menu.addSeparator()
+        self.tray_menu.addAction(self.quit_action)
+        self.tray_icon = QSystemTrayIcon(self.windowIcon(), self)
+        self.tray_icon.setToolTip("KonoKashi lyrics")
+        self.tray_icon.setContextMenu(self.tray_menu)
+        self.tray_icon.activated.connect(self._tray_activated)
+        self.tray_icon.setVisible(actual_tray_available)
+        self._overlay_safety_timer = QTimer(self)
+        self._overlay_safety_timer.setInterval(1_000)
+        self._overlay_safety_timer.timeout.connect(self._verify_overlay_recovery)
+
+        self.window_mode_changed.connect(self._window_mode_changed)
+        self.overlay_lock_changed.connect(self._overlay_lock_changed)
+        gui_application = cast(QGuiApplication | None, QGuiApplication.instance())
+        if gui_application is not None:
+            gui_application.screenAdded.connect(self._screen_topology_changed)
+            gui_application.screenRemoved.connect(self._screen_topology_changed)
 
         self.setCentralWidget(root)
         self._apply_responsive_typography(
@@ -1405,6 +1499,106 @@ class MainWindow(DesktopWindowSurface):
         )
         self.set_appearance_profile(self._appearance)
         self.render_state(self._state)
+        self._project_window_controls()
+
+    def _window_mode_changed(self, value: object) -> None:
+        if not isinstance(value, DesktopWindowMode):
+            return
+        if value is DesktopWindowMode.NORMAL:
+            self.setMinimumSize(420, 420)
+            self.setWindowTitle("KonoKashi")
+        elif value is DesktopWindowMode.COMPACT:
+            self.setMinimumSize(380, 280)
+            if value not in self._mode_geometries:
+                self.resize(560, 420)
+            self.setWindowTitle("KonoKashi — Compact lyrics")
+        elif value is DesktopWindowMode.OVERLAY:
+            self.setMinimumSize(420, 180)
+            if value not in self._mode_geometries:
+                self.resize(760, 360)
+            self.setWindowTitle("KonoKashi — Lyrics overlay")
+        else:
+            self.setMinimumSize(420, 420)
+            self.setWindowTitle("KonoKashi — Fullscreen lyrics")
+        self.application_menu.setVisible(
+            value in {DesktopWindowMode.NORMAL, DesktopWindowMode.COMPACT}
+        )
+        self.restore_window_action.setEnabled(
+            value in {DesktopWindowMode.OVERLAY, DesktopWindowMode.FULLSCREEN}
+        )
+        self._apply_visibility()
+        self._project_window_controls()
+        self._pending_typography_size = self.size()
+        self._finish_resize_typography()
+
+    def _overlay_lock_changed(self, _locked: bool) -> None:
+        if _locked and self._probe_overlay_recovery:
+            self._overlay_safety_timer.start()
+        else:
+            self._overlay_safety_timer.stop()
+        self._apply_visibility()
+        self._project_window_controls()
+
+    def _verify_overlay_recovery(self) -> None:
+        """Fail open if the tray escape route disappears while click-through."""
+
+        available = QSystemTrayIcon.isSystemTrayAvailable()
+        self.tray_icon.setVisible(available)
+        self.set_overlay_recovery_available(available)
+        self._project_window_controls()
+
+    def _project_window_controls(self) -> None:
+        overlay = self.window_mode is DesktopWindowMode.OVERLAY
+        unlocked_overlay = overlay and not self.overlay_locked
+        self.overlay_controls.setVisible(unlocked_overlay)
+        self.overlay_lock_button.setEnabled(self.overlay_recovery_available)
+        self.overlay_lock_button.setText(
+            "Enable click-through"
+            if self.overlay_recovery_available
+            else "Click-through unavailable"
+        )
+        self.overlay_lock_button.setAccessibleName(self.overlay_lock_button.text())
+        self.overlay_lock_button.setToolTip(
+            "Pointer input will pass through; unlock from the system tray"
+            if self.overlay_recovery_available
+            else "A system tray is required so the overlay can always be unlocked"
+        )
+        self.application_menu.project_window_state(
+            self.window_mode,
+            overlay_locked=self.overlay_locked,
+            recovery_available=self.overlay_recovery_available,
+            screen_names=self.screen_names,
+            current_screen=self.current_screen_index,
+            backend_description=self.overlay_backend_description,
+        )
+        if self.overlay_locked:
+            self.tray_show_action.setText("Unlock lyrics overlay")
+        elif not self.isVisible():
+            self.tray_show_action.setText("Show KonoKashi")
+        else:
+            self.tray_show_action.setText("Raise KonoKashi")
+
+    def _move_to_screen(self, index: int) -> None:
+        self.move_to_screen(index)
+        self._project_window_controls()
+
+    def _screen_topology_changed(self, _screen: object) -> None:
+        self._project_window_controls()
+
+    def _show_from_tray(self) -> None:
+        if self.overlay_locked:
+            self.set_overlay_locked(False)
+        self.show()
+        self.raise_()
+        self.activateWindow()
+        self._project_window_controls()
+
+    def _tray_activated(self, reason: QSystemTrayIcon.ActivationReason) -> None:
+        if reason in {
+            QSystemTrayIcon.ActivationReason.Trigger,
+            QSystemTrayIcon.ActivationReason.DoubleClick,
+        }:
+            self._show_from_tray()
 
     def resizeEvent(self, event: QResizeEvent) -> None:
         """Scale lyric presentation with logical window area, not device pixels."""
@@ -1814,35 +2008,45 @@ class MainWindow(DesktopWindowSurface):
 
         visibility = self._appearance.visibility
         state = self._state
-        self.title_label.setVisible(visibility.title)
-        self.artist_label.setVisible(visibility.artist and bool(state.artists))
-        self.album_label.setVisible(visibility.album and bool(state.album))
-        self._actions_widget.setVisible(visibility.chrome)
+        mode = self.window_mode
+        lyric_only = mode is DesktopWindowMode.OVERLAY
+        focused = mode is DesktopWindowMode.FULLSCREEN
+        compact = mode is DesktopWindowMode.COMPACT
+        show_metadata = not lyric_only
+        show_title = show_metadata and visibility.title
+        show_artist = show_metadata and visibility.artist and bool(state.artists)
+        show_album = (
+            show_metadata and not compact and visibility.album and bool(state.album)
+        )
+        show_actions = mode is DesktopWindowMode.NORMAL and visibility.chrome
+        self.title_label.setVisible(show_title)
+        self.artist_label.setVisible(show_artist)
+        self.album_label.setVisible(show_album)
+        self._actions_widget.setVisible(show_actions)
         self._header_rule.setVisible(
-            visibility.chrome
-            or visibility.title
-            or visibility.artist
-            or visibility.album
+            show_actions or show_title or show_artist or show_album
         )
-        self._metadata_widget.setVisible(
-            visibility.title
-            or (visibility.artist and bool(state.artists))
-            or (visibility.album and bool(state.album))
-        )
+        self._metadata_widget.setVisible(show_title or show_artist or show_album)
+        show_context = visibility.inactive_context and not compact
+        self.previous_band.setVisible(show_context and bool(self.previous_band.text()))
+        self.next_band.setVisible(show_context and bool(self.next_band.text()))
         self.status_label.setVisible(visibility.auxiliary_status)
         self.static_status_label.setVisible(visibility.auxiliary_status)
         self.playback_label.setVisible(visibility.playback_status)
         self.progress.setVisible(
-            visibility.progress and state.progress_fraction is not None
+            not lyric_only
+            and visibility.progress
+            and state.progress_fraction is not None
         )
-        self.time_label.setVisible(visibility.timestamps)
+        self.time_label.setVisible(not lyric_only and visibility.timestamps)
         has_playback = (
             state.player is not None
             or state.playback_state is not PlaybackState.UNKNOWN
             or state.position_us is not None
         )
         self.playback_widget.setVisible(
-            has_playback
+            not lyric_only
+            and has_playback
             and (
                 visibility.playback_status
                 or visibility.progress
@@ -1850,7 +2054,11 @@ class MainWindow(DesktopWindowSurface):
             )
         )
         self.source_label.setVisible(
-            visibility.source and bool(_normal_status_parts(state))
+            not lyric_only
+            and not focused
+            and not compact
+            and visibility.source
+            and bool(_normal_status_parts(state))
         )
 
     def _open_settings(self) -> None:

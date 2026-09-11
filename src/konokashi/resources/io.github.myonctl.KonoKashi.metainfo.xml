@@ -15,7 +15,8 @@
       Original-script lyrics remain authoritative. Aligned romanization or
       transliteration can appear beneath the original, with translation kept
       as a separate optional layer. Settings and user-approved corrections are
-      stored locally.
+      stored locally. Normal, compact, lyric-overlay, and fullscreen modes reuse
+      the same synchronized renderer.
     </p>
   </description>
   <launchable type="desktop-id">io.github.myonctl.KonoKashi.desktop</launchable>
