@@ -224,6 +224,40 @@ def test_beta_version_is_consistent_across_release_candidates() -> None:
     )
 
 
+def test_aur_dependency_graph_has_separate_candidates_for_real_gaps() -> None:
+    aur_root = REPOSITORY_ROOT / "packaging/aur"
+    package = (aur_root / "PKGBUILD").read_text(encoding="utf-8")
+    srcinfo = (aur_root / ".SRCINFO").read_text(encoding="utf-8")
+    cutlet = (aur_root / "dependencies/python-cutlet/PKGBUILD").read_text(
+        encoding="utf-8"
+    )
+    jaconv = (aur_root / "dependencies/python-jaconv/PKGBUILD").read_text(
+        encoding="utf-8"
+    )
+    unidic = (aur_root / "dependencies/python-unidic-lite/PKGBUILD").read_text(
+        encoding="utf-8"
+    )
+
+    assert "'pypinyin>=0.55'" in package
+    assert "python-pypinyin" not in package
+    assert "depends = pypinyin>=0.55" in srcinfo
+    assert "depends = python-pypinyin" not in srcinfo
+
+    assert "pkgname=python-cutlet" in cutlet
+    assert "pkgver=0.5.2" in cutlet
+    for dependency in (
+        "'python-fugashi>=1.5.2'",
+        "'python-jaconv>=0.5.0'",
+        "'python-mojimoji>=0.0.13'",
+    ):
+        assert dependency in cutlet
+    assert "pkgname=python-jaconv" in jaconv
+    assert "pkgver=0.5.0" in jaconv
+    assert "pkgname=python-unidic-lite" in unidic
+    assert "license=('MIT' 'BSD-3-Clause')" in unidic
+    assert "pip install" not in unidic
+
+
 def test_release_copy_excludes_maintainer_and_flatpak_worktrees() -> None:
     build_script = (REPOSITORY_ROOT / "scripts/build_release.py").read_text(
         encoding="utf-8"

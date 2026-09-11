@@ -18,7 +18,7 @@ pkgbase = konokashi
 	depends = python-fugashi>=1.5.2
 	depends = python-httpx>=0.28.1
 	depends = python-mutagen>=1.47
-	depends = python-pypinyin>=0.55
+	depends = pypinyin>=0.55
 	depends = python-pyicu>=2.16.2
 	depends = python-textual>=8.2.8
 	depends = python-tomlkit>=0.15.1

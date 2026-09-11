@@ -18,10 +18,15 @@ own payload is architecture independent (`any`); x86_64 dependency resolution an
 installation must pass before submission. No provides/conflicts or VCS variant
 is necessary for the sole package name.
 
-The 2026-09-10 dependency review found AUR `python-cutlet` at 0.5.0-2, older
-than the required 0.5.2, and no AUR packages named `python-pypinyin` or
-`python-jaconv`. The latter is also a dependency of `python-cutlet`. Resolve
-those packages before submission or claiming a normal installation works.
+The 2026-09-11 dependency review found that official Arch provides `pypinyin`
+0.55.0 (the package name does not have a `python-` prefix) and all other direct
+repository dependencies at the required versions. AUR provides current
+`python-fugashi`, `python-mojimoji`, and `python-unidic-lite` recipes. The two
+remaining gaps are AUR `python-cutlet` at 0.5.0-2, older than the required
+0.5.2, and the absent `python-jaconv` package required by cutlet. Validated,
+separate package-base candidates live under `dependencies/`. That directory
+also contains a corrected `python-unidic-lite` maintainer-update candidate;
+see its README for the dependency order and submission boundary.
 
 For local validation, place the matching source archive beside a copy of the
 recipe in a temporary build directory, then run `makepkg --verifysource`,
@@ -39,16 +44,19 @@ Pacman removal should leave XDG configuration, database, cache, and music intact
 ## Local results
 
 The public immutable source verifies against its pinned SHA-256. Generated
-`.SRCINFO` comparison and shell syntax pass. A normal makepkg/clean-chroot build
-remains blocked by the unresolved runtime dependency graph above; a `--nodeps`
-build is not proof of a resolvable or installable AUR package.
+`.SRCINFO` comparison and shell syntax pass. On 2026-09-11 the complete package
+chain was built with checks enabled in a disposable official Arch 2026.09.01
+bootstrap, then KonoKashi was installed through pacman with normal dependency
+resolution. The installed CLI/import/romanization smoke passed, and package
+removal preserved synthetic XDG configuration, database, and cache files. No
+`--nodeps` or `--nocheck` option was used.
 
-Signed distribution namcap 3.6.0 tooling was extracted into a temporary directory
-for analysis. The PKGBUILD check passed. Package analysis prompted the addition
-of `hicolor-icon-theme`; after rebuilding it reported no errors and 355 Python
-dependency warnings in the incomplete host environment. Reassess these warnings
-with the complete Arch dependency graph before submission. Namcap's successful
-exit code alone does not establish a clean result.
+Official Arch namcap 3.6.0 reports no findings for the three companion
+PKGBUILDs or their package archives, and no findings for the KonoKashi
+PKGBUILD. Its KonoKashi package scan reports no errors; its warnings are false
+positives for imports within the same `konokashi` package plus the dynamically
+loaded `python-fugashi` and `python-unidic-lite` dependencies. Both dynamic
+imports were exercised after the normal package install.
 
 Sources reviewed: [Arch Python packaging](https://wiki.archlinux.org/title/Python_package_guidelines),
 [AUR submission guidelines](https://wiki.archlinux.org/title/AUR_submission_guidelines),

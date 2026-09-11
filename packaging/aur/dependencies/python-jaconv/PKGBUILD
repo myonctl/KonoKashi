@@ -1,0 +1,30 @@
+# Companion dependency candidate for KonoKashi. See ../README.md.
+# Maintainer: myonctl <158342900+myonctl@users.noreply.github.com>
+pkgname=python-jaconv
+pkgver=0.5.0
+pkgrel=1
+pkgdesc='Japanese character converter for hiragana, katakana, hankaku, and zenkaku'
+arch=('any')
+url='https://github.com/ikegami-yukino/jaconv'
+license=('MIT')
+depends=('python')
+makedepends=('python-build' 'python-installer' 'python-setuptools' 'python-wheel')
+checkdepends=('python-pytest')
+source=("jaconv-$pkgver.tar.gz::https://files.pythonhosted.org/packages/91/0e/9fffaacda59bdfa479372c71d18d72968d2af5a36a5a2086b02a60124b98/jaconv-$pkgver.tar.gz")
+sha256sums=('53f6f968276846716f0f37100a6d5c7308cfa1e0c714eb41287d5bb09345c40f')
+
+build() {
+  cd "jaconv-$pkgver"
+  python -m build --wheel --no-isolation
+}
+
+check() {
+  cd "jaconv-$pkgver"
+  PYTHONPATH=. python -m pytest test_jaconv.py
+}
+
+package() {
+  cd "jaconv-$pkgver"
+  python -m installer --destdir="$pkgdir" --prefix=/usr dist/*.whl
+  install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+}

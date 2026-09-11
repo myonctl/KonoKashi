@@ -1,5 +1,5 @@
 # Public-release packaging candidate. See README.md before submitting.
-# Maintainer: myonctl
+# Maintainer: myonctl <158342900+myonctl@users.noreply.github.com>
 pkgname=konokashi
 pkgver=0.1.0beta1
 pkgrel=1
@@ -17,7 +17,7 @@ depends=(
   'python-fugashi>=1.5.2'
   'python-httpx>=0.28.1'
   'python-mutagen>=1.47'
-  'python-pypinyin>=0.55'
+  'pypinyin>=0.55'
   'python-pyicu>=2.16.2'
   'python-textual>=8.2.8'
   'python-tomlkit>=0.15.1'

@@ -1,0 +1,22 @@
+pkgbase = python-cutlet
+	pkgdesc = Romaji converter
+	pkgver = 0.5.2
+	pkgrel = 1
+	url = https://github.com/polm/cutlet
+	arch = any
+	license = MIT
+	checkdepends = python-hypothesis
+	checkdepends = python-pytest
+	checkdepends = python-unidic-lite
+	makedepends = python-build
+	makedepends = python-installer
+	makedepends = python-setuptools-scm
+	makedepends = python-wheel
+	depends = python
+	depends = python-fugashi>=1.5.2
+	depends = python-jaconv>=0.5.0
+	depends = python-mojimoji>=0.0.13
+	source = cutlet-0.5.2.tar.gz::https://files.pythonhosted.org/packages/0c/db/03c700e115107f8d75b44c4648535935188f11923cf884c1cd90401afdff/cutlet-0.5.2.tar.gz
+	sha256sums = 700b9b241ff2702d01b85431743e6401ca31eb18ab08b4508ee8dada368de529
+
+pkgname = python-cutlet

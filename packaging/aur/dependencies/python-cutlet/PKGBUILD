@@ -1,0 +1,35 @@
+# Companion dependency candidate for KonoKashi. See ../README.md.
+# Maintainer: myonctl <158342900+myonctl@users.noreply.github.com>
+pkgname=python-cutlet
+pkgver=0.5.2
+pkgrel=1
+pkgdesc='Romaji converter'
+arch=('any')
+url='https://github.com/polm/cutlet'
+license=('MIT')
+depends=(
+  'python'
+  'python-fugashi>=1.5.2'
+  'python-jaconv>=0.5.0'
+  'python-mojimoji>=0.0.13'
+)
+makedepends=('python-build' 'python-installer' 'python-setuptools-scm' 'python-wheel')
+checkdepends=('python-hypothesis' 'python-pytest' 'python-unidic-lite')
+source=("cutlet-$pkgver.tar.gz::https://files.pythonhosted.org/packages/0c/db/03c700e115107f8d75b44c4648535935188f11923cf884c1cd90401afdff/cutlet-$pkgver.tar.gz")
+sha256sums=('700b9b241ff2702d01b85431743e6401ca31eb18ab08b4508ee8dada368de529')
+
+build() {
+  cd "cutlet-$pkgver"
+  python -m build --wheel --no-isolation
+}
+
+check() {
+  cd "cutlet-$pkgver"
+  PYTHONPATH=. python -m pytest cutlet/test
+}
+
+package() {
+  cd "cutlet-$pkgver"
+  python -m installer --destdir="$pkgdir" --prefix=/usr dist/*.whl
+  install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+}

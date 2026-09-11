@@ -1,0 +1,17 @@
+pkgbase = python-unidic-lite
+	pkgdesc = Small UniDic dictionary package for Python
+	pkgver = 1.0.8
+	pkgrel = 1
+	url = https://github.com/polm/unidic-lite
+	arch = any
+	license = MIT
+	license = BSD-3-Clause
+	makedepends = python-build
+	makedepends = python-installer
+	makedepends = python-setuptools
+	makedepends = python-wheel
+	depends = python
+	source = unidic-lite-1.0.8.tar.gz::https://files.pythonhosted.org/packages/55/2b/8cf7514cb57d028abcef625afa847d60ff1ffbf0049c36b78faa7c35046f/unidic-lite-1.0.8.tar.gz
+	sha256sums = db9d4572d9fdd4d00a97949d4b0741ec480ee05a7e7e2e32f547500dae27b245
+
+pkgname = python-unidic-lite
