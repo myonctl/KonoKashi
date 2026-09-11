@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import time
 from collections.abc import Callable, Sequence
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime, timedelta
 from hashlib import sha256
@@ -48,6 +49,7 @@ _CONFIDENCE_RANK = {
 }
 _RESULTS_CACHE_TTL = timedelta(days=7)
 _NO_RESULT_CACHE_TTL = timedelta(hours=12)
+_MAX_PARALLEL_PROVIDERS = 4
 
 
 @dataclass(frozen=True, slots=True)
@@ -78,24 +80,44 @@ class LyricsResolver:
         self,
         *,
         local_sources: Sequence[LocalLyricsProviderPort],
-        provider: LyricsProviderPort,
+        provider: LyricsProviderPort | Sequence[LyricsProviderPort],
         provider_documents: LyricsCandidateDocumentPort,
         lyrics: LyricsRepositoryPort,
         matches: LyricsMatchRepositoryPort,
         provider_cache: ProviderCacheRepositoryPort,
         now: Callable[[], datetime] | None = None,
         sleeper: Callable[[float], None] = time.sleep,
+        monotonic: Callable[[], float] = time.monotonic,
         title_aliases: Callable[[str], tuple[str, ...]] | None = None,
     ) -> None:
         self._local_sources = tuple(local_sources)
-        self._provider = provider
+        self._providers = (
+            tuple(provider) if isinstance(provider, Sequence) else (provider,)
+        )
+        names = tuple(item.name for item in self._providers)
+        if any(not name.strip() for name in names):
+            raise ValueError("lyrics provider names must not be blank")
+        if len(set(names)) != len(names):
+            raise ValueError("lyrics provider names must be unique")
+        self._provider_priority = {
+            name: position for position, name in enumerate(names)
+        }
         self._provider_documents = provider_documents
         self._lyrics = lyrics
         self._matches = matches
         self._provider_cache = provider_cache
         self._now = now or (lambda: datetime.now(UTC))
         self._sleeper = sleeper
+        self._monotonic = monotonic
         self._title_aliases = title_aliases or (lambda _title: ())
+
+    def cancel_inflight(self) -> None:
+        """Cancel every provider request that exposes the optional cancellation API."""
+
+        for provider in self._providers:
+            cancellation = getattr(provider, "cancel_inflight", None)
+            if callable(cancellation):
+                cancellation()
 
     def _assess(
         self, query: LyricsQuery, candidate: LyricsProviderCandidate
@@ -216,35 +238,26 @@ class LyricsResolver:
 
         query = queries[0]
         all_assessments: list[CandidateMatchAssessment] = []
+        provider_outcomes: list[LyricsProviderResult] = []
         network_used = False
         cache_hit = False
 
         exact_possible = query.album is not None and query.duration_ms is not None
         if exact_possible:
-            exact, exact_cached, exact_network = self._provider_result(
+            for exact, exact_cached, exact_network in self._provider_results(
                 query, search=False, offline=offline, refresh=refresh
-            )
-            cache_hit |= exact_cached
-            network_used |= exact_network
-            diagnostics.extend(exact.diagnostics)
-            terminal = self._provider_terminal_status(exact)
-            if terminal is not None:
-                return self._fallback_or_state(
-                    track,
-                    automatic_fallback,
-                    terminal,
-                    tuple(diagnostics),
-                    network_used=network_used,
-                    cache_hit=cache_hit,
-                    retry_after=exact.retry_after_seconds,
-                )
-            if exact.status is LyricsProviderStatus.RESULTS:
-                all_assessments.extend(
-                    self._assess(query, candidate)
-                    for candidate in exact.candidates
-                    if self._provider_documents.document_id(candidate)
-                    not in rejected_document_ids
-                )
+            ):
+                provider_outcomes.append(exact)
+                cache_hit |= exact_cached
+                network_used |= exact_network
+                diagnostics.extend(exact.diagnostics)
+                if exact.status is LyricsProviderStatus.RESULTS:
+                    all_assessments.extend(
+                        self._assess(query, candidate)
+                        for candidate in exact.candidates
+                        if self._provider_documents.document_id(candidate)
+                        not in rejected_document_ids
+                    )
         else:
             missing = []
             if query.album is None:
@@ -252,7 +265,7 @@ class LyricsResolver:
             if query.duration_ms is None:
                 missing.append("duration")
             diagnostics.append(
-                "exact LRCLIB lookup skipped; missing " + ", ".join(missing)
+                "exact provider lookup skipped; missing " + ", ".join(missing)
             )
 
         for strategy, search_query, assessment_query in _candidate_search_plan(queries):
@@ -260,41 +273,31 @@ class LyricsResolver:
                 f"provider strategy: {strategy} "
                 f"[interpretation: {assessment_query.strategy}]"
             )
-            if offline:
-                search, search_cached, search_network = self._provider_result(
-                    search_query, search=True, offline=True, refresh=False
-                )
-            else:
-                if network_used:
-                    self._sleeper(0.2)
-                search, search_cached, search_network = self._provider_result(
-                    search_query, search=True, offline=False, refresh=refresh
-                )
-            network_used |= search_network
-            cache_hit |= search_cached
-            diagnostics.extend(search.diagnostics)
+            if not offline and network_used:
+                self._sleeper(0.2)
+            strategy_candidates = 0
+            for search, search_cached, search_network in self._provider_results(
+                search_query,
+                search=True,
+                offline=offline,
+                refresh=False if offline else refresh,
+            ):
+                provider_outcomes.append(search)
+                network_used |= search_network
+                cache_hit |= search_cached
+                diagnostics.extend(search.diagnostics)
+                strategy_candidates += len(search.candidates)
+                if search.status is LyricsProviderStatus.RESULTS:
+                    all_assessments.extend(
+                        self._assess(assessment_query, candidate)
+                        for candidate in search.candidates
+                        if self._provider_documents.document_id(candidate)
+                        not in rejected_document_ids
+                    )
             diagnostics.append(
                 f"provider strategy {strategy!r} returned "
-                f"{len(search.candidates)} candidates"
+                f"{strategy_candidates} candidates"
             )
-            terminal = self._provider_terminal_status(search)
-            if terminal is not None:
-                return self._fallback_or_state(
-                    track,
-                    automatic_fallback,
-                    terminal,
-                    tuple(diagnostics),
-                    network_used=network_used,
-                    cache_hit=cache_hit,
-                    retry_after=search.retry_after_seconds,
-                )
-            if search.status is LyricsProviderStatus.RESULTS:
-                all_assessments.extend(
-                    self._assess(assessment_query, candidate)
-                    for candidate in search.candidates
-                    if self._provider_documents.document_id(candidate)
-                    not in rejected_document_ids
-                )
         assessments = _deduplicate_assessments(all_assessments)
         accepted = self._unique_high(assessments)
         if accepted is not None:
@@ -307,9 +310,9 @@ class LyricsResolver:
             )
         if assessments:
             diagnostics.extend(
-                _assessment_diagnostic(item) for item in _ordered(assessments)
+                _assessment_diagnostic(item) for item in self._ordered(assessments)
             )
-            ordered = tuple(item.candidate for item in _ordered(assessments))
+            ordered = tuple(item.candidate for item in self._ordered(assessments))
             diagnostics.append(
                 "provider candidates did not meet the unique High-confidence policy"
             )
@@ -321,6 +324,17 @@ class LyricsResolver:
                 alternatives=ordered,
                 network_used=network_used,
                 cache_hit=cache_hit,
+            )
+        terminal, retry_after = self._provider_terminal_state(provider_outcomes)
+        if terminal is not None and not offline:
+            return self._fallback_or_state(
+                track,
+                automatic_fallback,
+                terminal,
+                tuple(diagnostics),
+                network_used=network_used,
+                cache_hit=cache_hit,
+                retry_after=retry_after,
             )
         if invalid_local_seen:
             final_status = LyricsResolutionStatus.INVALID_LOCAL_LYRICS
@@ -402,7 +416,7 @@ class LyricsResolver:
                 timing_confidence=assessment.timing_confidence,
                 strategy=assessment.query_strategy,
             )
-            for assessment in _ordered(_deduplicate_assessments(assessments))
+            for assessment in self._ordered(_deduplicate_assessments(assessments))
         )
         return LyricsAlternativeResult(
             track.source_identity,
@@ -472,7 +486,7 @@ class LyricsResolver:
                 timing_confidence=assessment.timing_confidence,
                 strategy=assessment.query_strategy,
             )
-            for assessment in _ordered(_deduplicate_assessments(assessments))
+            for assessment in self._ordered(_deduplicate_assessments(assessments))
         )
         return LyricsSearchResult(
             cleaned,
@@ -499,18 +513,18 @@ class LyricsResolver:
         cache_hit = False
         network_used = False
         if query.album is not None and query.duration_ms is not None and query.artists:
-            exact, cached, network = self._provider_result(
+            for exact, cached, network in self._provider_results(
                 query, search=False, offline=offline, refresh=refresh
-            )
-            cache_hit |= cached
-            network_used |= network
-            diagnostics.extend(exact.diagnostics)
-            if exact.status is LyricsProviderStatus.RESULTS:
-                assessments.extend(
-                    self._assess(query, candidate) for candidate in exact.candidates
-                )
-            elif exact.status is not LyricsProviderStatus.NO_RESULT:
-                diagnostics.append(f"exact lookup ended as {exact.status.value}")
+            ):
+                cache_hit |= cached
+                network_used |= network
+                diagnostics.extend(exact.diagnostics)
+                if exact.status is LyricsProviderStatus.RESULTS:
+                    assessments.extend(
+                        self._assess(query, candidate) for candidate in exact.candidates
+                    )
+                elif exact.status is not LyricsProviderStatus.NO_RESULT:
+                    diagnostics.append(f"exact lookup ended as {exact.status.value}")
         else:
             diagnostics.append(
                 f"exact {exact_skip_context} lookup skipped because artist, album, "
@@ -522,67 +536,126 @@ class LyricsResolver:
                 f"provider strategy: {strategy} "
                 f"[interpretation: {assessment_query.strategy}]"
             )
-            if offline:
-                search, cached, network = self._provider_result(
-                    search_query, search=True, offline=True, refresh=False
-                )
-            else:
-                if network_used:
-                    self._sleeper(0.2)
-                search, cached, network = self._provider_result(
-                    search_query, search=True, offline=False, refresh=refresh
-                )
-            network_used |= network
-            cache_hit |= cached
-            diagnostics.extend(search.diagnostics)
-            if search.status is LyricsProviderStatus.RESULTS:
-                assessments.extend(
-                    self._assess(assessment_query, candidate)
-                    for candidate in search.candidates
-                )
-            elif search.status is not LyricsProviderStatus.NO_RESULT:
-                diagnostics.append(f"{strategy} lookup ended as {search.status.value}")
+            if not offline and network_used:
+                self._sleeper(0.2)
+            for search, cached, network in self._provider_results(
+                search_query,
+                search=True,
+                offline=offline,
+                refresh=False if offline else refresh,
+            ):
+                network_used |= network
+                cache_hit |= cached
+                diagnostics.extend(search.diagnostics)
+                if search.status is LyricsProviderStatus.RESULTS:
+                    assessments.extend(
+                        self._assess(assessment_query, candidate)
+                        for candidate in search.candidates
+                    )
+                elif search.status is not LyricsProviderStatus.NO_RESULT:
+                    diagnostics.append(
+                        f"{strategy} lookup ended as {search.status.value}"
+                    )
         return assessments, diagnostics, cache_hit, network_used
 
-    def _provider_result(
+    def _provider_results(
         self,
         query: LyricsQuery,
         *,
         search: bool,
         offline: bool,
         refresh: bool,
+    ) -> tuple[tuple[LyricsProviderResult, bool, bool], ...]:
+        """Query configured sources concurrently while preserving preference order."""
+
+        if not self._providers:
+            return ()
+
+        def load(
+            provider: LyricsProviderPort,
+        ) -> tuple[LyricsProviderResult, bool, bool]:
+            return self._provider_result(
+                provider,
+                query,
+                search=search,
+                offline=offline,
+                refresh=refresh,
+            )
+
+        if len(self._providers) == 1:
+            return (load(self._providers[0]),)
+        with ThreadPoolExecutor(
+            max_workers=min(len(self._providers), _MAX_PARALLEL_PROVIDERS),
+            thread_name_prefix="konokashi-lyrics",
+        ) as executor:
+            return tuple(executor.map(load, self._providers))
+
+    def _provider_result(
+        self,
+        provider: LyricsProviderPort,
+        query: LyricsQuery,
+        *,
+        search: bool,
+        offline: bool,
+        refresh: bool,
     ) -> tuple[LyricsProviderResult, bool, bool]:
-        cache_key = provider_cache_key(self._provider.name, query, search=search)
+        started = self._monotonic()
+        cache_key = provider_cache_key(provider.name, query, search=search)
         if not refresh:
-            cached = self._provider_cache.get(self._provider.name, cache_key)
+            cached = self._provider_cache.get(provider.name, cache_key)
             if cached is not None:
                 current = cached.expires_at is None or cached.expires_at > self._now()
-                parsed = self._provider.parse_cached(cached.payload, search=search)
+                parsed = self._validated_provider_result(
+                    provider, provider.parse_cached(cached.payload, search=search)
+                )
                 if current:
-                    return parsed, True, False
+                    return (
+                        self._observed(provider.name, parsed, started, "cache hit"),
+                        True,
+                        False,
+                    )
                 if offline and parsed.status is LyricsProviderStatus.RESULTS:
                     return (
-                        replace(
-                            parsed,
-                            diagnostics=(
-                                *parsed.diagnostics,
-                                "offline mode: using explicitly stale positive "
-                                "provider-cache fallback",
+                        self._observed(
+                            provider.name,
+                            replace(
+                                parsed,
+                                diagnostics=(
+                                    *parsed.diagnostics,
+                                    "offline mode: using explicitly stale positive "
+                                    "provider-cache fallback",
+                                ),
                             ),
+                            started,
+                            "stale cache hit",
                         ),
                         True,
                         False,
                     )
         if offline:
             return (
-                LyricsProviderResult(
-                    LyricsProviderStatus.NO_RESULT,
-                    diagnostics=("offline mode: no matching provider cache entry",),
+                self._observed(
+                    provider.name,
+                    LyricsProviderResult(
+                        LyricsProviderStatus.NO_RESULT,
+                        diagnostics=("offline mode: no matching provider cache entry",),
+                    ),
+                    started,
+                    "offline cache miss",
                 ),
                 False,
                 False,
             )
-        result = self._provider.search(query) if search else self._provider.exact(query)
+        try:
+            result = provider.search(query) if search else provider.exact(query)
+        except Exception as error:
+            result = LyricsProviderResult(
+                LyricsProviderStatus.UNAVAILABLE,
+                diagnostics=(
+                    f"{provider.name} adapter failed as {error.__class__.__name__}",
+                ),
+            )
+        result = self._validated_provider_result(provider, result)
         if result.raw_payload is not None and result.status in {
             LyricsProviderStatus.RESULTS,
             LyricsProviderStatus.NO_RESULT,
@@ -595,14 +668,52 @@ class LyricsResolver:
             retrieved_at = self._now()
             self._provider_cache.put(
                 ProviderCacheEntry(
-                    self._provider.name,
+                    provider.name,
                     cache_key,
                     result.raw_payload,
                     retrieved_at,
                     retrieved_at + ttl,
                 )
             )
-        return result, False, True
+        return self._observed(provider.name, result, started, "queried"), False, True
+
+    @staticmethod
+    def _validated_provider_result(
+        provider: LyricsProviderPort, result: LyricsProviderResult
+    ) -> LyricsProviderResult:
+        if (
+            result.status is LyricsProviderStatus.RESULTS and not result.candidates
+        ) or (result.status is not LyricsProviderStatus.RESULTS and result.candidates):
+            return LyricsProviderResult(
+                LyricsProviderStatus.INVALID_RESPONSE,
+                diagnostics=(
+                    f"{provider.name} returned an inconsistent result status",
+                ),
+            )
+        if result.status is LyricsProviderStatus.RESULTS and any(
+            candidate.provider != provider.name for candidate in result.candidates
+        ):
+            return LyricsProviderResult(
+                LyricsProviderStatus.INVALID_RESPONSE,
+                diagnostics=(
+                    f"{provider.name} returned a candidate with mismatched provenance",
+                ),
+            )
+        return result
+
+    def _observed(
+        self,
+        provider_name: str,
+        result: LyricsProviderResult,
+        started: float,
+        operation: str,
+    ) -> LyricsProviderResult:
+        elapsed_ms = max(0, round((self._monotonic() - started) * 1000))
+        observation = (
+            f"provider {provider_name}: {operation} in {elapsed_ms} ms; "
+            f"status={result.status.value}; results={len(result.candidates)}"
+        )
+        return replace(result, diagnostics=(observation, *result.diagnostics))
 
     def _accept_provider(
         self,
@@ -637,7 +748,7 @@ class LyricsResolver:
                 "accepted lyric text but discarded synchronized timing because "
                 "recording timing confidence was insufficient"
             )
-            candidate = replace(candidate, synced_lyrics=None)
+            candidate = replace(candidate, synced_lyrics=None, parsed_lyrics=None)
         document, document_diagnostics = self._provider_documents.build(
             candidate, self._now()
         )
@@ -692,11 +803,11 @@ class LyricsResolver:
                 ),
             )
 
-    @staticmethod
     def _unique_high(
+        self,
         assessments: Sequence[CandidateMatchAssessment],
     ) -> CandidateMatchAssessment | None:
-        high = _ordered(
+        high = self._ordered(
             [
                 assessment
                 for assessment in _deduplicate_assessments(assessments)
@@ -715,19 +826,53 @@ class LyricsResolver:
                 for other in high[1:]
             ):
                 return high[0]
+            if all(
+                _same_recording_fields(high[0], other)
+                and _same_lyric_content(high[0], other)
+                for other in high[1:]
+            ) and len({item.candidate.provider for item in high}) == len(high):
+                return high[0]
         return None
 
+    def _ordered(
+        self, assessments: Sequence[CandidateMatchAssessment]
+    ) -> list[CandidateMatchAssessment]:
+        return sorted(
+            assessments,
+            key=lambda item: (
+                *_assessment_sort_key(item)[:-1],
+                self._provider_priority.get(
+                    item.candidate.provider, len(self._provider_priority)
+                ),
+                (
+                    _CONFIDENCE_RANK[item.candidate.provider_confidence]
+                    if item.candidate.provider_confidence is not None
+                    else _CONFIDENCE_RANK[LyricsMatchConfidence.LOW] + 1
+                ),
+                item.candidate.record_id,
+            ),
+        )
+
     @staticmethod
-    def _provider_terminal_status(
-        result: LyricsProviderResult,
-    ) -> LyricsResolutionStatus | None:
-        if result.status is LyricsProviderStatus.RATE_LIMITED:
-            return LyricsResolutionStatus.RATE_LIMITED
-        if result.status is LyricsProviderStatus.UNAVAILABLE:
-            return LyricsResolutionStatus.PROVIDER_UNAVAILABLE
-        if result.status is LyricsProviderStatus.INVALID_RESPONSE:
-            return LyricsResolutionStatus.INVALID_PROVIDER_RESPONSE
-        return None
+    def _provider_terminal_state(
+        results: Sequence[LyricsProviderResult],
+    ) -> tuple[LyricsResolutionStatus | None, int | None]:
+        statuses = {result.status for result in results}
+        if not statuses:
+            return None, None
+        if LyricsProviderStatus.RATE_LIMITED in statuses:
+            retries = tuple(
+                result.retry_after_seconds
+                for result in results
+                if result.status is LyricsProviderStatus.RATE_LIMITED
+                and result.retry_after_seconds is not None
+            )
+            return LyricsResolutionStatus.RATE_LIMITED, min(retries, default=None)
+        if LyricsProviderStatus.UNAVAILABLE in statuses:
+            return LyricsResolutionStatus.PROVIDER_UNAVAILABLE, None
+        if LyricsProviderStatus.INVALID_RESPONSE in statuses:
+            return LyricsResolutionStatus.INVALID_PROVIDER_RESPONSE, None
+        return None, None
 
     def _fallback_or_state(
         self,
@@ -939,12 +1084,6 @@ def _candidate_search_plan(
     return tuple(plan)
 
 
-def _ordered(
-    assessments: Sequence[CandidateMatchAssessment],
-) -> list[CandidateMatchAssessment]:
-    return sorted(assessments, key=_assessment_sort_key)
-
-
 def _assessment_sort_key(
     item: CandidateMatchAssessment,
 ) -> tuple[int, int, int, int, str]:
@@ -970,6 +1109,25 @@ def _same_recording_fields(
         and first.candidate.artist_name == second.candidate.artist_name
         and first.candidate.album_name == second.candidate.album_name
         and first.candidate.duration_ms == second.candidate.duration_ms
+    )
+
+
+def _same_lyric_content(
+    first: CandidateMatchAssessment,
+    second: CandidateMatchAssessment,
+) -> bool:
+    def normalized(value: str | None) -> str | None:
+        if value is None:
+            return None
+        lines = value.replace("\r\n", "\n").split("\n")
+        return "\n".join(line.rstrip() for line in lines)
+
+    return (
+        normalized(first.candidate.synced_lyrics)
+        == normalized(second.candidate.synced_lyrics)
+        and normalized(first.candidate.plain_lyrics)
+        == normalized(second.candidate.plain_lyrics)
+        and first.candidate.instrumental == second.candidate.instrumental
     )
 
 

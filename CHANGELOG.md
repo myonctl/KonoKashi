@@ -20,6 +20,12 @@ All notable user-visible changes are recorded here.
   renderer, with screen targeting and explicit overlay move/resize/exit controls.
 - Safety-gated click-through overlay behavior with system-tray unlock and quit
   routes; environments without a tray retain an interactive overlay.
+- Read-only Unison lyric retrieval alongside LRCLIB, with explicit ODbL
+  attribution, provider confidence, independent caching, bounded response
+  hydration, and rich media-clock TTML word timing.
+- Configurable provider preference and bounded parallel lookup with isolated
+  failure, cancellation, privacy-safe duration/result diagnostics, and
+  conservative conflict handling instead of first-response selection.
 
 ### Changed
 

@@ -77,7 +77,7 @@ from konokashi.infrastructure.configuration.bootstrap import open_settings
 from konokashi.infrastructure.configuration.paths import default_config_path
 from konokashi.infrastructure.configuration.qt_watcher import QtSettingsWatcher
 from konokashi.infrastructure.frontend import create_frontend_session
-from konokashi.infrastructure.lyrics.lrclib import LrclibLyricsProvider
+from konokashi.infrastructure.lyrics.providers import create_lyrics_providers
 from konokashi.infrastructure.mpris.backend import MprisBackendError
 from konokashi.infrastructure.mpris.qt_dbus_client import create_qt_mpris_runtime
 from konokashi.infrastructure.storage.bootstrap import open_storage
@@ -362,7 +362,11 @@ class DesktopCoordinator(QObject):
     def _initialize_services(self) -> _InitializedServices:
         storage = open_storage(self._database_path)
         canonical = open_settings(storage, config_path=self._config_path)
-        frontend = create_frontend_session(storage, LrclibLyricsProvider(), canonical)
+        frontend = create_frontend_session(
+            storage,
+            create_lyrics_providers(canonical.current.lyrics_sources.providers),
+            canonical,
+        )
         return _InitializedServices(
             frontend,
             canonical,
@@ -1178,7 +1182,10 @@ class DesktopCoordinator(QObject):
             )
             settings = canonical.get_library()
             downloader = (
-                LibraryLyricsDownloader(storage, LrclibLyricsProvider())
+                LibraryLyricsDownloader(
+                    storage,
+                    create_lyrics_providers(canonical.current.lyrics_sources.providers),
+                )
                 if settings.automatic_downloads
                 else None
             )

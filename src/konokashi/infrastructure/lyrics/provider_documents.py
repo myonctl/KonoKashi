@@ -45,8 +45,13 @@ class ProviderLyricDocumentBuilder:
                 (),
             )
         diagnostics: list[str] = []
-        parsed = None
-        if candidate.synced_lyrics is not None:
+        parsed = candidate.parsed_lyrics
+        if parsed is not None:
+            diagnostics.extend(parsed.diagnostics)
+            if parsed.status is LyricsTextParseStatus.INVALID:
+                diagnostics.append("provider structured lyrics were invalid")
+                parsed = None
+        elif candidate.synced_lyrics is not None:
             parsed = parse_lyrics_text(
                 candidate.synced_lyrics, duration_ms=candidate.duration_ms
             )
@@ -75,6 +80,8 @@ class ProviderLyricDocumentBuilder:
                 source_title=candidate.track_name,
                 source_artist=candidate.artist_name,
                 source_album=candidate.album_name,
+                language=candidate.language,
+                script=candidate.script,
             ),
             tuple(dict.fromkeys(diagnostics)),
         )

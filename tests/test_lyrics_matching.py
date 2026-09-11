@@ -67,6 +67,30 @@ def test_feat_notation_normalizes_without_using_uploader_as_artist() -> None:
     assert assess_candidate(query, uploader).confidence is LyricsMatchConfidence.LOW
 
 
+def test_provider_duration_filter_is_explicit_independent_evidence() -> None:
+    query = LyricsQuery(
+        "Elevate (Radio Edit)", ("Little Sis Nora & S3RL",), "Elevate", 183_771
+    )
+    candidate = LyricsProviderCandidate(
+        "Unison",
+        "1",
+        "Elevate (Radio Edit)",
+        "Little Sis Nora & S3RL",
+        "Elevate",
+        None,
+        False,
+        "plain",
+        None,
+        provider_duration_matched=True,
+    )
+
+    assessment = assess_candidate(query, candidate)
+
+    assert assessment.confidence is LyricsMatchConfidence.HIGH
+    assert assessment.duration_difference_ms == 0
+    assert any("duration filter" in item for item in assessment.evidence)
+
+
 @pytest.mark.parametrize(
     "provider_title",
     [

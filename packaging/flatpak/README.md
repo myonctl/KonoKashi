@@ -23,7 +23,8 @@ the Python dependency manifest.
 
 ## Permissions
 
-- `--share=network`: query LRCLIB when local lyrics and cache miss, and contact
+- `--share=network`: query configured LRCLIB/Unison sources when local lyrics and
+  cache miss, and contact
   YouTube only after the user selects **Use YouTube metadata** for the current
   confirmed public video.
 - `--socket=wayland` and `--socket=fallback-x11`: display the Qt desktop UI.
@@ -44,7 +45,7 @@ The sandbox cannot use a host `yt-dlp` executable. The manifest therefore pins
 the official 2026.08.19 Unix zipapp and its SHA-256 in `/app/bin`. KonoKashi
 invokes it with user configuration ignored, without cookies, authentication,
 playlist traversal, or media download. If that module is removed or unavailable,
-ordinary MPRIS and LRCLIB resolution remains usable.
+ordinary MPRIS and configured provider resolution remains usable.
 
 The desktop's **Add folder…** action explicitly calls the XDG desktop portal's
 asynchronous directory chooser in a Flatpak session; outside Flatpak it retains

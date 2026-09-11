@@ -141,6 +141,10 @@ def assess_candidate(
         duration_difference = abs(query.duration_ms - candidate.duration_ms)
         evidence.append(f"duration differs by {duration_difference} ms")
         duration_compatible = duration_difference <= 2_000
+    elif query.duration_ms is not None and candidate.provider_duration_matched:
+        duration_difference = 0
+        duration_compatible = True
+        evidence.append("provider confirmed its bounded recording-duration filter")
     else:
         evidence.append("duration comparison is unavailable")
     duration_near = duration_difference is not None and duration_difference <= 5_000
@@ -291,6 +295,19 @@ def assess_candidate(
     if query.source_confidence == "Low" and confidence is LyricsMatchConfidence.HIGH:
         evidence.append("low-confidence recording metadata prevents automatic match")
         confidence = LyricsMatchConfidence.MEDIUM
+    if candidate.provider_confidence is not None:
+        evidence.append(
+            "provider reports "
+            f"{candidate.provider_confidence.value} community confidence"
+        )
+        if (
+            candidate.provider_confidence is LyricsMatchConfidence.LOW
+            and confidence is LyricsMatchConfidence.HIGH
+        ):
+            evidence.append(
+                "low provider confidence prevents automatic match without review"
+            )
+            confidence = LyricsMatchConfidence.MEDIUM
     return CandidateMatchAssessment(
         candidate,
         confidence,

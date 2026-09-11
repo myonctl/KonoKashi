@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
+
 from konokashi.application.frontend_session import FrontendSessionService
 from konokashi.application.ports import LyricsProviderPort, SettingsRepositoryPort
 from konokashi.application.representations import RepresentationService
@@ -33,7 +35,7 @@ from konokashi.infrastructure.storage.bootstrap import StorageRepositories
 
 def create_lyrics_resolver(
     storage: StorageRepositories,
-    provider: LyricsProviderPort,
+    provider: LyricsProviderPort | Sequence[LyricsProviderPort],
     *,
     documents: ProviderLyricDocumentBuilder | None = None,
 ) -> LyricsResolver:
@@ -56,13 +58,13 @@ def create_lyrics_resolver(
 
 def create_frontend_session(
     storage: StorageRepositories,
-    provider: LyricsProviderPort,
+    provider: LyricsProviderPort | Sequence[LyricsProviderPort],
     settings: SettingsRepositoryPort | None = None,
 ) -> FrontendSessionService:
     """Assemble shared application services for desktop and future frontends."""
 
-    cancellation = getattr(provider, "cancel_inflight", None)
     documents = ProviderLyricDocumentBuilder()
+    lyrics_resolver = create_lyrics_resolver(storage, provider, documents=documents)
     return FrontendSessionService(
         PlayerSelectionService(
             TrackResolver(
@@ -70,7 +72,7 @@ def create_frontend_session(
                 storage.track_overrides,
             )
         ),
-        create_lyrics_resolver(storage, provider, documents=documents),
+        lyrics_resolver,
         RepresentationService(
             OfflineRomanizationProvider(),
             storage.representations,
@@ -85,6 +87,6 @@ def create_frontend_session(
             provider_documents=documents,
             timing=storage.timing_calibrations,
         ),
-        cancellation if callable(cancellation) else None,
+        lyrics_resolver.cancel_inflight,
         YtDlpYouTubeMetadataEnricher(storage.provider_cache),
     )

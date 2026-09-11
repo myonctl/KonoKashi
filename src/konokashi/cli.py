@@ -39,7 +39,8 @@ if TYPE_CHECKING:
     from konokashi.infrastructure.storage.bootstrap import StorageRepositories
 
 RuntimeFactory: TypeAlias = Callable[[], MprisRuntimePort]
-LyricsProviderFactory: TypeAlias = Callable[[], LyricsProviderPort]
+LyricsProviderSource: TypeAlias = LyricsProviderPort | Sequence[LyricsProviderPort]
+LyricsProviderFactory: TypeAlias = Callable[[], LyricsProviderSource]
 AudioLatencyProbeFactory: TypeAlias = Callable[[], AudioLatencyProbePort]
 
 
@@ -83,12 +84,24 @@ def _create_runtime() -> MprisRuntimePort:
     return create_qt_mpris_runtime()
 
 
-def _create_lyrics_provider() -> LyricsProviderPort:
-    """Construct the network adapter lazily so offline diagnostics remain testable."""
+def _create_lyrics_provider() -> LyricsProviderSource:
+    """Construct network adapters lazily so offline diagnostics remain testable."""
 
-    from konokashi.infrastructure.lyrics.lrclib import LrclibLyricsProvider
+    from konokashi.infrastructure.lyrics.providers import create_lyrics_providers
 
-    return LrclibLyricsProvider()
+    return create_lyrics_providers()
+
+
+def _configured_lyrics_providers(
+    source: LyricsProviderSource,
+    settings: CanonicalSettingsService,
+) -> tuple[LyricsProviderPort, ...]:
+    """Apply canonical preference to product adapters while retaining injections."""
+
+    from konokashi.infrastructure.lyrics.providers import order_lyrics_providers
+
+    providers = tuple(source) if isinstance(source, Sequence) else (source,)
+    return order_lyrics_providers(providers, settings.current.lyrics_sources.providers)
 
 
 def _create_audio_latency_probe() -> AudioLatencyProbePort:
@@ -1121,7 +1134,10 @@ def _run_library(
         settings = canonical.get_library()
         downloader = None
         if settings.automatic_downloads:
-            downloader = LibraryLyricsDownloader(storage, provider_factory())
+            downloader = LibraryLyricsDownloader(
+                storage,
+                _configured_lyrics_providers(provider_factory(), canonical),
+            )
         service = LibraryScanService(
             MusicDirectoryFilesystem(),
             MutagenLibraryMetadataReader(),
@@ -1168,6 +1184,7 @@ def _run_lyrics(
             arguments,
             provider_factory,
             database_path,
+            config_path,
         )
     try:
         runtime = runtime_factory()
@@ -1201,7 +1218,7 @@ def _run_lyrics(
             for diagnostic in selection.unavailable_diagnostics:
                 print(f"  - {diagnostic}")
             return 1
-        provider = provider_factory()
+        provider = _configured_lyrics_providers(provider_factory(), canonical)
         result = create_lyrics_resolver(storage, provider).resolve(
             selection.selected.track,
             offline=offline,
@@ -1368,6 +1385,7 @@ def _run_lyrics_search(
     arguments: argparse.Namespace,
     provider_factory: LyricsProviderFactory,
     database_path: Path | None,
+    config_path: Path | None,
 ) -> int:
     """Render read-only manual search over the canonical lyrics resolver."""
 
@@ -1378,7 +1396,11 @@ def _run_lyrics_search(
 
     try:
         storage = open_storage(database_path)
-        resolver = create_lyrics_resolver(storage, provider_factory())
+        canonical = _open_canonical_settings(storage, config_path)
+        resolver = create_lyrics_resolver(
+            storage,
+            _configured_lyrics_providers(provider_factory(), canonical),
+        )
         result = resolver.search(
             LyricsSearchRequest(
                 title=arguments.title,
@@ -1557,7 +1579,7 @@ def _select_sync_track_without_storage(
 def _resolve_sync_document(
     track: ResolvedTrack,
     storage: StorageRepositories,
-    provider: LyricsProviderPort,
+    provider: LyricsProviderSource,
     *,
     offline: bool,
     refresh: bool = False,
@@ -1658,16 +1680,15 @@ def _run_sync_delay(
     try:
         runtime = runtime_factory()
         storage = open_storage(database_path)
-        selection_config = _open_canonical_settings(
-            storage, config_path
-        ).get_player_selection()
+        canonical = _open_canonical_settings(storage, config_path)
+        selection_config = canonical.get_player_selection()
         track = _select_sync_track(runtime, storage, selection_config)
         if track is None:
             return 1
         document = _resolve_sync_document(
             track,
             storage,
-            provider_factory(),
+            _configured_lyrics_providers(provider_factory(), canonical),
             offline=bool(arguments.offline),
         )
         if document is None:
@@ -1977,10 +1998,9 @@ def _run_sync(
     try:
         runtime = runtime_factory()
         storage = open_storage(database_path)
-        provider = provider_factory()
-        selection_config = _open_canonical_settings(
-            storage, config_path
-        ).get_player_selection()
+        canonical = _open_canonical_settings(storage, config_path)
+        provider = _configured_lyrics_providers(provider_factory(), canonical)
+        selection_config = canonical.get_player_selection()
     except (ImportError, RuntimeError) as error:
         print(f"Unable to initialize synchronization: {error}", file=sys.stderr)
         return 1

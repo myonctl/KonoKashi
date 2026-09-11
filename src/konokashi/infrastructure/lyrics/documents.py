@@ -39,6 +39,8 @@ def build_lyric_document(
     source_title: str | None = None,
     source_artist: str | None = None,
     source_album: str | None = None,
+    language: str | None = None,
+    script: str | None = None,
 ) -> LyricDocument:
     """Build one original representation while preserving raw normalized text."""
 
@@ -75,6 +77,8 @@ def build_lyric_document(
         source_title=source_title,
         source_artist=source_artist,
         source_album=source_album,
+        language=language,
+        script=script,
     )
 
 

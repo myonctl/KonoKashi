@@ -277,6 +277,11 @@ class LyricsProviderCandidate:
     instrumental: bool
     plain_lyrics: str | None
     synced_lyrics: str | None
+    provider_confidence: LyricsMatchConfidence | None = None
+    parsed_lyrics: ParsedLyricsText | None = None
+    language: str | None = None
+    script: str | None = None
+    provider_duration_matched: bool = False
 
 
 class LyricsProviderStatus(Enum):

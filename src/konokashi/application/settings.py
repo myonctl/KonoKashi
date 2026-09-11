@@ -30,6 +30,13 @@ class DesktopInteractionSettings:
     allow_lyric_selection: bool = False
 
 
+@dataclass(frozen=True, slots=True)
+class LyricsSourceSettings:
+    """Ordered online sources; order breaks ties but never bypasses matching."""
+
+    providers: tuple[str, ...] = ("LRCLIB", "Unison")
+
+
 class SettingType(Enum):
     """Primitive configuration types supported by the Stage 11 schema."""
 
@@ -217,6 +224,19 @@ SETTINGS_SCHEMA: tuple[SettingDefinition, ...] = (
         "Show translation",
         SettingCategory.LYRICS,
         "Show an available aligned translated lyric representation.",
+    ),
+    SettingDefinition(
+        "lyrics.sources.preferred",
+        SettingType.STRING_LIST,
+        ("LRCLIB", "Unison"),
+        SettingScope.GLOBAL,
+        ReloadBehavior.RESTART,
+        "Online lyric sources",
+        SettingCategory.LYRICS,
+        "Query these read-only sources in this preference order. Preference only "
+        "breaks ties after KonoKashi's conservative match scoring; an empty list "
+        "disables online lookup.",
+        choices=("LRCLIB", "Unison"),
     ),
     SettingDefinition(
         "desktop.lyrics.selectable",
@@ -764,6 +784,12 @@ class SettingsSnapshot:
         )
 
     @property
+    def lyrics_sources(self) -> LyricsSourceSettings:
+        return LyricsSourceSettings(
+            cast(tuple[str, ...], self.get("lyrics.sources.preferred"))
+        )
+
+    @property
     def desktop_interaction(self) -> DesktopInteractionSettings:
         return DesktopInteractionSettings(
             cast(bool, self.get("desktop.lyrics.selectable"))
@@ -941,6 +967,10 @@ def _validate_value(definition: SettingDefinition, value: object) -> str | None:
         keys = tuple(item.strip().casefold() for item in strings)
         if len(set(keys)) != len(keys):
             return "Collection entries must not contain duplicates."
+        if definition.choices and any(
+            item not in definition.choices for item in strings
+        ):
+            return "Expected only: " + ", ".join(definition.choices) + "."
     if type(value) is int:
         if definition.minimum is not None and value < definition.minimum:
             return f"Expected an integer of at least {definition.minimum}, got {value}."

@@ -14,7 +14,9 @@ authorization.
   overlay.
 - Support per-track display choices and per-layer typography.
 - Improve selected-stream PipeWire latency evidence without capturing audio.
-- Add more lyrics providers only after legal, privacy, and quality review.
+- Add another lyrics provider only after the same legal, privacy, and quality
+  review used for the read-only Unison integration; provider count alone is not
+  a goal.
 - Investigate secure remote display/KonoKashi Web as a separate product boundary.
 - Replace the temporary icon after a deliberate identity and trademark review.
 

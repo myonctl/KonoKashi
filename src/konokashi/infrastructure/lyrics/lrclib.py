@@ -124,6 +124,11 @@ class LrclibLyricsProvider:
     def parse_cached(self, payload: bytes, *, search: bool) -> LyricsProviderResult:
         """Parse adapter-owned raw bytes without performing any network access."""
 
+        if len(payload) > MAX_PROVIDER_RESPONSE_BYTES:
+            return LyricsProviderResult(
+                LyricsProviderStatus.INVALID_RESPONSE,
+                diagnostics=("cached LRCLIB response exceeded the safe size limit",),
+            )
         if not payload:
             return LyricsProviderResult(
                 LyricsProviderStatus.NO_RESULT,
@@ -170,10 +175,10 @@ class LrclibLyricsProvider:
                 LyricsProviderStatus.UNAVAILABLE,
                 diagnostics=("LRCLIB request timed out",),
             )
-        except httpx.TransportError as error:
+        except httpx.TransportError:
             return LyricsProviderResult(
                 LyricsProviderStatus.UNAVAILABLE,
-                diagnostics=(f"LRCLIB network request failed: {error}",),
+                diagnostics=("LRCLIB network request failed",),
             )
         finally:
             with self._active_clients_lock:

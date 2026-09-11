@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from pathlib import Path
 
 from konokashi.application.ports import LyricsProviderPort
@@ -23,7 +24,9 @@ class LibraryLyricsDownloader:
     """Adapt high-confidence scanned metadata to the existing resolver policy."""
 
     def __init__(
-        self, storage: StorageRepositories, provider: LyricsProviderPort
+        self,
+        storage: StorageRepositories,
+        provider: LyricsProviderPort | Sequence[LyricsProviderPort],
     ) -> None:
         self._resolver = LyricsResolver(
             local_sources=(LocalSidecarLyricsProvider(), EmbeddedLyricsProvider()),

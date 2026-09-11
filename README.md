@@ -23,7 +23,7 @@ local-first, deeply customizable, and source-available.
 - **Follow whatever is playing.** Detect Strawberry and browser playback through
   Linux MPRIS instead of tying lyrics to one music service.
 - **Prefer what is yours.** Reuse approved lyrics, local sidecars, embedded
-  lyrics, and durable cached matches before making a live LRCLIB request.
+  lyrics, and durable cached matches before making a live provider request.
 - **Stay in control.** Review uncertain matches and retain corrections locally;
   low-confidence results are not silently approved.
 - **Make it fit your desktop.** Tune typography, colors, transparency, spacing,
@@ -38,8 +38,9 @@ local-first, deeply customizable, and source-available.
   transliteration and optional translation, with each active secondary layer's
   identity and provenance visible without displacing the original script.
   Available translations are shown by default and remain independently toggled.
-- **Local-first resolution:** sidecar and embedded lyrics, SQLite-backed cache,
-  offline reuse, and LRCLIB fallback.
+- **Resilient local-first resolution:** sidecar and embedded lyrics,
+  provider-isolated SQLite cache and negative cache, offline reuse, and bounded
+  parallel lookup across LRCLIB and Unison without accepting the first response.
 - **Player-aware matching:** conservative metadata handling for Strawberry and
   KDE Plasma Browser Integration, including duplicate MPRIS entries.
 - **Review tools:** choose or reject lyric matches, correct resolved identity,
@@ -130,6 +131,15 @@ visibility, colors, background opacity, spacing, alignment, lyric scale, smooth
 motion, and progress styling remain independently adjustable. Unavailable fonts
 fall back through Qt/fontconfig without replacing the configured choice.
 
+The **Online lyric sources** setting controls the source order. LRCLIB and
+Unison are enabled by default; order is only a tie-break after KonoKashi's own
+recording-match evidence, and an empty list disables online lookup. Provider
+diagnostics report source, cache/network path, duration, status, and result count
+without recording titles, artists, local paths, URLs, or credentials.
+On a cache miss, each enabled source receives only the provider-safe resolved
+title, musical artist, and available album/duration—not the local media path,
+raw MPRIS URL, player identity, or playback history.
+
 Use **View → Window mode** or `Ctrl+Alt+1` through `Ctrl+Alt+3` to switch among
 normal, compact, and overlay modes; `F11` opens fullscreen lyrics. `Esc` always
 leaves an interactive overlay or fullscreen. The unlocked overlay has explicit
@@ -151,6 +161,12 @@ Translation generation is not implemented. A translation layer contains aligned
 provider, imported, local, or user-approved text; KonoKashi does not silently
 send lyrics to a machine-translation service. A full lyrics TUI, web frontend,
 additional rich-timing provider formats, and Windows support are future work.
+
+Lyrics from [Unison](https://unison.boidu.dev) are used under the ODbL-1.0
+public-corpus terms. KonoKashi performs read-only access, retains source
+attribution, and does not require a Better Lyrics account. Unison LRC, plain,
+and media-clock TTML entries are supported; TTML word spans retain start/end
+timing, while malformed element timing falls back to the containing line.
 
 The current overlay uses Qt's portable top-most window support. On Wayland this
 is a graceful normal-window fallback and a compositor may still place fullscreen

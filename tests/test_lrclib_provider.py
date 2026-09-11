@@ -290,6 +290,7 @@ def test_timeout_and_connect_failures_are_unavailable(
 
     result = _provider(handler).search(LyricsQuery("Song", ("Artist",), None, None))
     assert result.status is LyricsProviderStatus.UNAVAILABLE
+    assert all("network failure" not in item for item in result.diagnostics)
 
 
 def test_oversized_response_is_rejected_without_json_parsing() -> None:
@@ -347,6 +348,10 @@ def test_cached_payload_round_trips_without_request() -> None:
     assert result.status is LyricsProviderStatus.RESULTS
     assert result.candidates[0].record_id == "3396226"
     assert miss.status is LyricsProviderStatus.NO_RESULT
+    assert (
+        provider.parse_cached(b" " * 2_000_001, search=True).status
+        is LyricsProviderStatus.INVALID_RESPONSE
+    )
 
 
 def test_inflight_request_can_be_cancelled_after_frontend_source_change() -> None:

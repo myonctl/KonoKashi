@@ -55,7 +55,7 @@ def test_xdg_path_uses_absolute_override_and_home_fallback(tmp_path: Path) -> No
 
 
 def test_schema_has_stable_complete_metadata() -> None:
-    assert len(SETTINGS_SCHEMA) == len(SETTINGS_BY_KEY) == 80
+    assert len(SETTINGS_SCHEMA) == len(SETTINGS_BY_KEY) == 81
     assert {item.scope for item in SETTINGS_SCHEMA} == {
         SettingScope.GLOBAL,
         SettingScope.DESKTOP,
@@ -63,6 +63,7 @@ def test_schema_has_stable_complete_metadata() -> None:
     assert {item.reload for item in SETTINGS_SCHEMA} == {
         ReloadBehavior.LIVE,
         ReloadBehavior.NEXT_OPERATION,
+        ReloadBehavior.RESTART,
     }
     assert all(item.description.endswith(".") for item in SETTINGS_SCHEMA)
     assert all(item.title for item in SETTINGS_SCHEMA)
@@ -73,6 +74,7 @@ def test_schema_has_stable_complete_metadata() -> None:
         "lyrics.display.original",
         "lyrics.display.romanized",
         "lyrics.display.translated",
+        "lyrics.sources.preferred",
         "desktop.lyrics.selectable",
         "library.roots",
         "library.automatic_downloads",
@@ -100,6 +102,7 @@ def test_defaults_are_lower_precedence_than_explicit_toml(tmp_path: Path) -> Non
 def test_missing_empty_and_unicode_config_are_valid(tmp_path: Path) -> None:
     missing = _service(tmp_path / "missing.toml")
     assert missing.current.player_selection == PlayerSelectionConfig()
+    assert missing.current.lyrics_sources.providers == ("LRCLIB", "Unison")
     empty_path = tmp_path / "empty.toml"
     empty_path.write_text("", encoding="utf-8")
     assert _service(empty_path).current.library == LibrarySettings()
@@ -135,6 +138,10 @@ def test_malformed_toml_retains_default_last_known_good(tmp_path: Path) -> None:
         (
             'schema_version = 1\n[players]\npreferred = ["Firefox", "firefox"]\n',
             "duplicates",
+        ),
+        (
+            'schema_version = 1\n[lyrics.sources]\npreferred = ["PrivateScraper"]\n',
+            "Expected only: LRCLIB, Unison",
         ),
     ],
 )

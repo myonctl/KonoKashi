@@ -9,7 +9,7 @@
     <p>
       KonoKashi follows MPRIS playback in a native Linux desktop window and
       displays synchronized lyrics from local files, an offline cache, or
-      LRCLIB.
+      conservatively scored LRCLIB and Unison results.
     </p>
     <p>
       Original-script lyrics remain authoritative. Aligned romanization or

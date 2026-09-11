@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from threading import Barrier
 
 from konokashi.application.resolve_lyrics import (
     LyricsResolver,
@@ -84,6 +85,7 @@ def _track(
 def _candidate(
     record_id: str = "1",
     *,
+    provider: str = "LRCLIB",
     title: str = "Elevate (Radio Edit)",
     artist: str = "Little Sis Nora & S3RL",
     album: str | None = "Elevate",
@@ -93,7 +95,7 @@ def _candidate(
     instrumental: bool = False,
 ) -> LyricsProviderCandidate:
     return LyricsProviderCandidate(
-        "LRCLIB",
+        provider,
         record_id,
         title,
         artist,
@@ -111,10 +113,12 @@ class _FakeProvider:
     def __init__(
         self,
         *,
+        name: str = "LRCLIB",
         exact: LyricsProviderResult | None = None,
         search: LyricsProviderResult | None = None,
         cached: dict[tuple[bytes, bool], LyricsProviderResult] | None = None,
     ) -> None:
+        self.name = name
         self.exact_result = exact or LyricsProviderResult(
             LyricsProviderStatus.NO_RESULT, raw_payload=b""
         )
@@ -200,7 +204,7 @@ def _document(
 
 def _resolver(
     path: Path,
-    provider: _FakeProvider,
+    provider: _FakeProvider | tuple[_FakeProvider, ...],
     *,
     local_sources: tuple[_LocalSource, ...] = (),
     title_aliases: object | None = None,
@@ -341,7 +345,7 @@ def test_missing_album_skips_exact_and_uses_search_without_fabrication(
     assert result.status is LyricsResolutionStatus.FOUND_TIMED
     assert provider.exact_queries == []
     assert provider.search_queries[0].album is None
-    assert any("exact LRCLIB lookup skipped" in item for item in result.diagnostics)
+    assert any("exact provider lookup skipped" in item for item in result.diagnostics)
 
 
 def test_low_or_medium_candidates_are_ambiguous_and_not_auto_attached(
@@ -894,6 +898,214 @@ def test_rate_limit_and_invalid_local_are_distinct_states(tmp_path: Path) -> Non
         local_sources=(invalid_local,),
     ).resolve(_track(artists=()), offline=True)
     assert invalid.status is LyricsResolutionStatus.INVALID_LOCAL_LYRICS
+
+
+def test_unavailable_primary_does_not_hide_high_confidence_backup(
+    tmp_path: Path,
+) -> None:
+    primary = _FakeProvider(
+        exact=LyricsProviderResult(LyricsProviderStatus.UNAVAILABLE),
+        search=LyricsProviderResult(LyricsProviderStatus.UNAVAILABLE),
+    )
+    backup_candidate = replace(
+        _candidate(provider="Unison", duration_ms=None),
+        provider_duration_matched=True,
+    )
+    backup = _FakeProvider(
+        name="Unison",
+        exact=LyricsProviderResult(
+            LyricsProviderStatus.RESULTS,
+            (backup_candidate,),
+            raw_payload=b"unison-exact",
+        ),
+    )
+
+    result = _resolver(tmp_path / "fallback.sqlite3", (primary, backup)).resolve(
+        _track()
+    )
+
+    assert result.status is LyricsResolutionStatus.FOUND_TIMED
+    assert result.source_label == "Unison"
+    assert primary.exact_queries
+    assert backup.exact_queries
+    assert any("provider LRCLIB: queried" in item for item in result.diagnostics)
+    assert any("provider Unison: queried" in item for item in result.diagnostics)
+
+
+def test_configured_providers_begin_each_lookup_in_bounded_parallel(
+    tmp_path: Path,
+) -> None:
+    rendezvous = Barrier(2)
+
+    class CoordinatedProvider(_FakeProvider):
+        def exact(self, query: LyricsQuery) -> LyricsProviderResult:
+            self.exact_queries.append(query)
+            rendezvous.wait(timeout=2)
+            return self.exact_result
+
+    first = CoordinatedProvider(
+        exact=LyricsProviderResult(
+            LyricsProviderStatus.RESULTS,
+            (_candidate("l"),),
+        )
+    )
+    second = CoordinatedProvider(
+        name="Unison",
+        exact=LyricsProviderResult(
+            LyricsProviderStatus.RESULTS,
+            (_candidate("u", provider="Unison"),),
+        ),
+    )
+
+    result = _resolver(tmp_path / "parallel.sqlite3", (first, second)).resolve(_track())
+
+    assert result.status is LyricsResolutionStatus.FOUND_TIMED
+    assert first.exact_queries and second.exact_queries
+
+
+def test_equivalent_cross_provider_results_use_preference_only_as_tie_break(
+    tmp_path: Path,
+) -> None:
+    unison = _FakeProvider(
+        name="Unison",
+        exact=LyricsProviderResult(
+            LyricsProviderStatus.RESULTS,
+            (_candidate("u", provider="Unison"),),
+        ),
+    )
+    lrclib = _FakeProvider(
+        exact=LyricsProviderResult(
+            LyricsProviderStatus.RESULTS,
+            (_candidate("l"),),
+        ),
+    )
+
+    result = _resolver(tmp_path / "preference.sqlite3", (unison, lrclib)).resolve(
+        _track()
+    )
+
+    assert result.status is LyricsResolutionStatus.FOUND_TIMED
+    assert result.source_label == "Unison"
+
+
+def test_preference_cannot_break_conflicting_high_confidence_results(
+    tmp_path: Path,
+) -> None:
+    unison = _FakeProvider(
+        name="Unison",
+        exact=LyricsProviderResult(
+            LyricsProviderStatus.RESULTS,
+            (
+                _candidate(
+                    "u",
+                    provider="Unison",
+                    plain="Different text",
+                    synced="[00:01.00]Different text",
+                ),
+            ),
+        ),
+    )
+    lrclib = _FakeProvider(
+        exact=LyricsProviderResult(
+            LyricsProviderStatus.RESULTS,
+            (_candidate("l"),),
+        ),
+    )
+
+    result = _resolver(tmp_path / "conflict.sqlite3", (unison, lrclib)).resolve(
+        _track()
+    )
+
+    assert result.status is LyricsResolutionStatus.AMBIGUOUS
+    assert {item.provider for item in result.alternatives} == {"LRCLIB", "Unison"}
+
+
+def test_low_community_confidence_never_increases_automatic_acceptance(
+    tmp_path: Path,
+) -> None:
+    candidate = replace(
+        _candidate(provider="Unison"),
+        provider_confidence=LyricsMatchConfidence.LOW,
+    )
+    provider = _FakeProvider(
+        name="Unison",
+        exact=LyricsProviderResult(LyricsProviderStatus.RESULTS, (candidate,)),
+    )
+
+    result = _resolver(tmp_path / "community-low.sqlite3", provider).resolve(_track())
+
+    assert result.status is LyricsResolutionStatus.AMBIGUOUS
+    assert result.alternatives[0].provider_confidence is LyricsMatchConfidence.LOW
+    assert any(
+        "low provider confidence prevents automatic match" in item
+        for item in result.diagnostics
+    )
+
+
+def test_provider_exception_isolated_without_leaking_exception_text(
+    tmp_path: Path,
+) -> None:
+    class BrokenProvider(_FakeProvider):
+        def exact(self, query: LyricsQuery) -> LyricsProviderResult:
+            self.exact_queries.append(query)
+            raise RuntimeError("private-token-value")
+
+        def search(self, query: LyricsQuery) -> LyricsProviderResult:
+            self.search_queries.append(query)
+            raise RuntimeError("private-token-value")
+
+    backup = _FakeProvider(
+        name="Unison",
+        exact=LyricsProviderResult(
+            LyricsProviderStatus.RESULTS,
+            (_candidate(provider="Unison"),),
+        ),
+    )
+
+    result = _resolver(
+        tmp_path / "adapter-failure.sqlite3", (BrokenProvider(), backup)
+    ).resolve(_track())
+
+    assert result.status is LyricsResolutionStatus.FOUND_TIMED
+    assert any("adapter failed as RuntimeError" in item for item in result.diagnostics)
+    assert all("private-token-value" not in item for item in result.diagnostics)
+
+
+def test_candidate_cannot_impersonate_another_provider(tmp_path: Path) -> None:
+    provider = _FakeProvider(
+        name="Unison",
+        exact=LyricsProviderResult(
+            LyricsProviderStatus.RESULTS,
+            (_candidate(provider="LRCLIB"),),
+        ),
+        search=LyricsProviderResult(
+            LyricsProviderStatus.RESULTS,
+            (_candidate(provider="LRCLIB"),),
+        ),
+    )
+
+    result = _resolver(tmp_path / "provenance.sqlite3", provider).resolve(_track())
+
+    assert result.status is LyricsResolutionStatus.INVALID_PROVIDER_RESPONSE
+    assert any("mismatched provenance" in item for item in result.diagnostics)
+
+
+def test_cancellation_reaches_every_configured_provider(tmp_path: Path) -> None:
+    class CancellableProvider(_FakeProvider):
+        def __init__(self, *, name: str) -> None:
+            super().__init__(name=name)
+            self.cancellations = 0
+
+        def cancel_inflight(self) -> None:
+            self.cancellations += 1
+
+    first = CancellableProvider(name="LRCLIB")
+    second = CancellableProvider(name="Unison")
+    resolver = _resolver(tmp_path / "cancel.sqlite3", (first, second))
+
+    resolver.cancel_inflight()
+
+    assert first.cancellations == second.cancellations == 1
 
 
 def test_exact_version_candidate_outranks_base_title_fallback(tmp_path: Path) -> None:
