@@ -86,10 +86,75 @@ def test_snapshot_exposes_all_frontend_timing_and_aligned_text_layers() -> None:
     assert snapshot.active[0].line_id == "two-a"
     assert snapshot.active[0].original_index == 1
     assert snapshot.active[0].romanized_or_transliterated == "second romaji"
+    assert snapshot.active[0].reading is not None
+    assert snapshot.active[0].reading.kind == "romanized"
+    assert snapshot.active[0].reading.provenance == "user"
+    assert snapshot.active[0].reading.source_name == "user"
     assert snapshot.active[0].source_timestamp_us == 2_000_000
     assert snapshot.active[0].effective_transition_us == 2_050_000
     assert snapshot.next_transition_monotonic_ns is not None
     assert snapshot.time_until_next_transition_us is not None
+
+
+def test_snapshot_keeps_reading_and_translation_origins_independent() -> None:
+    lyric_document = document()
+    original = lyric_document.representations[0].lines[1]
+    reading = EffectiveRepresentationLine(
+        original,
+        RepresentationKind.ROMANIZED,
+        "second romaji",
+        ContentProvenance.GENERATED,
+        ApprovalState.UNREVIEWED,
+        "Japanese engine",
+        "1.2",
+        RepresentationUncertainty.AMBIGUOUS,
+        language="ja-Latn",
+        script="Latn",
+    )
+    translation = EffectiveRepresentationLine(
+        original,
+        RepresentationKind.TRANSLATED,
+        "A much shorter translation",
+        ContentProvenance.PROVIDER,
+        ApprovalState.UNREVIEWED,
+        "Lyrics provider",
+        "2026",
+        RepresentationUncertainty.NONE,
+        language="en",
+        script="Latn",
+    )
+    raw = replace(fixture_snapshot("stage2/youtube_jesskah.json"), rate=1.0)
+    track = ResolvedTrack(
+        raw,
+        YouTubeIdentity("xa4WrgqI7q0"),
+        TrackCandidate("Track", ("Artist",), None, 5_000_000),
+        Confidence.HIGH,
+    )
+    calibration = SynchronizationCalibration(AudioOutputLatency(0, 0, "test"))
+    current_estimate = estimate()
+
+    snapshot = build_sync_snapshot(
+        generation=1,
+        track=track,
+        document=lyric_document,
+        estimate=current_estimate,
+        frame=synchronize(lyric_document, current_estimate, calibration),
+        calibration=calibration,
+        representations=(reading, translation),
+    )
+    line = snapshot.active[0]
+
+    assert line.reading is not None
+    assert line.reading.kind == "romanized"
+    assert line.reading.provenance == "generated"
+    assert line.reading.source_name == "Japanese engine"
+    assert line.reading.source_version == "1.2"
+    assert line.reading.language == "ja-Latn"
+    assert line.translated is not None
+    assert line.translated.provenance == "provider"
+    assert line.translated.source_name == "Lyrics provider"
+    assert line.translated.source_version == "2026"
+    assert line.translated.language == "en"
 
 
 def test_rich_timing_degrades_to_lines_and_projects_calibrated_segments() -> None:

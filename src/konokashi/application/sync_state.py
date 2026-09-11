@@ -46,6 +46,21 @@ class SynchronizedTimingSegment:
 
 
 @dataclass(frozen=True, slots=True)
+class SynchronizedRepresentationLayer:
+    """One selected secondary text layer with its independent identity."""
+
+    kind: str
+    text: str
+    provenance: str | None
+    approval_state: str | None
+    source_name: str | None
+    source_version: str | None
+    language: str | None
+    script: str | None
+    uncertainty: str | None
+
+
+@dataclass(frozen=True, slots=True)
 class SynchronizedLine:
     """One original timing identity with every selected textual layer."""
 
@@ -54,12 +69,27 @@ class SynchronizedLine:
     source_timestamp_us: int | None
     effective_transition_us: int | None
     original: str
-    romanized_or_transliterated: str | None = None
-    translation: str | None = None
-    representation_provenance: tuple[str, ...] = field(default_factory=tuple)
+    reading: SynchronizedRepresentationLayer | None = None
+    translated: SynchronizedRepresentationLayer | None = None
     timing_segments: tuple[SynchronizedTimingSegment, ...] = field(
         default_factory=tuple
     )
+
+    @property
+    def romanized_or_transliterated(self) -> str | None:
+        return None if self.reading is None else self.reading.text
+
+    @property
+    def translation(self) -> str | None:
+        return None if self.translated is None else self.translated.text
+
+    @property
+    def representation_provenance(self) -> tuple[str, ...]:
+        return tuple(
+            "unknown" if layer.provenance is None else layer.provenance
+            for layer in (self.reading, self.translated)
+            if layer is not None
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -166,11 +196,26 @@ def _line_bundle(
         if transliterated is not None
         else romanized
     )
-    selected = tuple(
-        item
-        for item in (alternate, translation)
-        if item is not None and item.text is not None
-    )
+
+    def synchronized_layer(
+        item: EffectiveRepresentationLine | None,
+    ) -> SynchronizedRepresentationLayer | None:
+        if item is None or item.text is None:
+            return None
+        return SynchronizedRepresentationLayer(
+            kind=item.kind.value,
+            text=item.text,
+            provenance=None if item.provenance is None else item.provenance.value,
+            approval_state=(
+                None if item.approval_state is None else item.approval_state.value
+            ),
+            source_name=item.source_name,
+            source_version=item.source_version,
+            language=item.language,
+            script=item.script,
+            uncertainty=(None if item.uncertainty is None else item.uncertainty.value),
+        )
+
     start_ms = lyric_line_timing_start_ms(line)
     source_us = None if start_ms is None else start_ms * 1_000
     effective_us = (
@@ -232,18 +277,14 @@ def _line_bundle(
         for segment in line.timing_segments
     )
     return SynchronizedLine(
-        line.line_id,
-        original_index,
-        source_us,
-        effective_us,
-        line.text,
-        None if alternate is None else alternate.text,
-        None if translation is None else translation.text,
-        tuple(
-            "unknown" if item.provenance is None else item.provenance.value
-            for item in selected
-        ),
-        timing_segments,
+        line_id=line.line_id,
+        original_index=original_index,
+        source_timestamp_us=source_us,
+        effective_transition_us=effective_us,
+        original=line.text,
+        reading=synchronized_layer(alternate),
+        translated=synchronized_layer(translation),
+        timing_segments=timing_segments,
     )
 
 

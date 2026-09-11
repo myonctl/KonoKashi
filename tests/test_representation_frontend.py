@@ -214,6 +214,12 @@ def test_supported_scripts_generate_locally_into_frontend_bundle(
     assert selected.provenance is ContentProvenance.GENERATED
     assert selected.source_name
     assert selected.source_version
+    if document_id.startswith("japanese"):
+        assert selected.language == "ja-Latn"
+    elif document_id.startswith("mandarin"):
+        assert selected.language == "zh-Latn-pinyin"
+    elif document_id == "korean":
+        assert selected.language == "ko-Latn"
     assert status.availability is RepresentationAvailability.AVAILABLE_SHOWN
     assert status.generated_successfully == 1
     assert status.candidate_selected == 1
@@ -365,7 +371,11 @@ def test_document_native_translation_visibility_and_user_restart_are_truthful(
     )
     document = _document("translated", ("君の声",), language="ja", extra=(translated,))
     path = tmp_path / "state.sqlite3"
-    service, track, _representations = _frontend(path, document)
+    service, track, _representations = _frontend(
+        path,
+        document,
+        display=RepresentationDisplaySettings(show_translated=False),
+    )
 
     hidden = service.load_track(track)
     hidden_status = next(

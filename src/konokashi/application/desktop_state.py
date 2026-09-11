@@ -12,6 +12,7 @@ from konokashi.application.sync_state import (
     SourceGenerationToken,
     SynchronizationSnapshot,
     SynchronizedLine,
+    SynchronizedRepresentationLayer,
 )
 from konokashi.domain.lyrics import (
     LyricDocument,
@@ -55,6 +56,20 @@ class DesktopKaraokeSegment:
 
 
 @dataclass(frozen=True, slots=True)
+class DesktopRepresentationMetadata:
+    """Identity and provenance for one independently selected text layer."""
+
+    kind: str
+    provenance: str | None = None
+    approval_state: str | None = None
+    source_name: str | None = None
+    source_version: str | None = None
+    language: str | None = None
+    script: str | None = None
+    uncertainty: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
 class DesktopLyricGroup:
     """One grouped original/romanized/translated line for display."""
 
@@ -65,6 +80,8 @@ class DesktopLyricGroup:
     provenance: tuple[str, ...] = field(default_factory=tuple)
     transition_us: int | None = None
     karaoke_segments: tuple[DesktopKaraokeSegment, ...] = field(default_factory=tuple)
+    reading_metadata: DesktopRepresentationMetadata | None = None
+    translation_metadata: DesktopRepresentationMetadata | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -401,6 +418,8 @@ class DesktopStateController:
                 line.representation_provenance,
                 line.effective_transition_us,
                 _trusted_karaoke_segments(line),
+                _desktop_representation_metadata(line.reading),
+                _desktop_representation_metadata(line.translated),
             )
             for line in lines
         )
@@ -458,6 +477,10 @@ class DesktopStateController:
                         "unknown" if item.provenance is None else item.provenance.value
                         for item in visible
                     ),
+                    reading_metadata=_effective_representation_metadata(alternate),
+                    translation_metadata=_effective_representation_metadata(
+                        translation
+                    ),
                 )
             )
         return tuple(groups)
@@ -501,6 +524,42 @@ def _trusted_karaoke_segments(
     if cursor != len(line.original):
         return ()
     return tuple(output)
+
+
+def _desktop_representation_metadata(
+    layer: SynchronizedRepresentationLayer | None,
+) -> DesktopRepresentationMetadata | None:
+    if layer is None:
+        return None
+    return DesktopRepresentationMetadata(
+        layer.kind,
+        layer.provenance,
+        layer.approval_state,
+        layer.source_name,
+        layer.source_version,
+        layer.language,
+        layer.script,
+        layer.uncertainty,
+    )
+
+
+def _effective_representation_metadata(
+    layer: EffectiveRepresentationLine | None,
+) -> DesktopRepresentationMetadata | None:
+    if layer is None or layer.text is None:
+        return None
+    return DesktopRepresentationMetadata(
+        kind=layer.kind.value,
+        provenance=None if layer.provenance is None else layer.provenance.value,
+        approval_state=(
+            None if layer.approval_state is None else layer.approval_state.value
+        ),
+        source_name=layer.source_name,
+        source_version=layer.source_version,
+        language=layer.language,
+        script=layer.script,
+        uncertainty=None if layer.uncertainty is None else layer.uncertainty.value,
+    )
 
 
 def _state_for_resolution_status(status: LyricsResolutionStatus) -> DesktopLyricsState:

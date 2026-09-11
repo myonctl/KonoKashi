@@ -68,7 +68,13 @@ def _layer_labels(window: MainWindow) -> tuple[QLabel, ...]:
         for band in (window.previous_band, window.active_band, window.next_band)
         for group in band._group_widgets
         if not group.isHidden()
-        for label in (group.original, group.romanized, group.translation)
+        for label in (
+            group.original,
+            group.reading_caption,
+            group.romanized,
+            group.translation_caption,
+            group.translation,
+        )
         if not label.isHidden()
     )
 
@@ -120,7 +126,13 @@ def test_wrapped_layers_have_disjoint_measured_geometry_at_supported_scales(
         )
         for group in window.active_band._group_widgets
         if not group.isHidden()
-        for label in (group.original, group.romanized, group.translation)
+        for label in (
+            group.original,
+            group.reading_caption,
+            group.romanized,
+            group.translation_caption,
+            group.translation,
+        )
         if not label.isHidden()
     )
     if any(not viewport.contains(rect) for rect in active_rectangles):
@@ -313,7 +325,13 @@ def test_two_original_lines_share_one_measured_transition_anchor(
     active_rectangles = tuple(
         _content_rect(label, window)
         for group in window.active_band._group_widgets
-        for label in (group.original, group.romanized, group.translation)
+        for label in (
+            group.original,
+            group.reading_caption,
+            group.romanized,
+            group.translation_caption,
+            group.translation,
+        )
         if not label.isHidden()
     )
     assert all(

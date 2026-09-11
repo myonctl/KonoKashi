@@ -173,7 +173,7 @@ class RepresentationDisplaySettings:
 
     show_original: bool = True
     show_romanized: bool = True
-    show_translated: bool = False
+    show_translated: bool = True
 
 
 @dataclass(frozen=True, slots=True)
@@ -191,6 +191,8 @@ class EffectiveRepresentationLine:
     diagnostics: tuple[str, ...] = field(default_factory=tuple)
     inherited_start_ms: int | None = None
     candidate_id: str | None = None
+    language: str | None = None
+    script: str | None = None
 
 
 @dataclass(frozen=True, slots=True)

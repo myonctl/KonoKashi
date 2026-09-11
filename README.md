@@ -35,7 +35,9 @@ local-first, deeply customizable, and source-available.
   trustworthy word-timed lyrics, with exact pause, seek, rate, and track-change
   handling; line-only, plain, and instrumental states remain explicit.
 - **Multilingual layers:** original text plus aligned romanization or
-  transliteration and optional translation, with provenance preserved.
+  transliteration and optional translation, with each active secondary layer's
+  identity and provenance visible without displacing the original script.
+  Available translations are shown by default and remain independently toggled.
 - **Local-first resolution:** sidecar and embedded lyrics, SQLite-backed cache,
   offline reuse, and LRCLIB fallback.
 - **Player-aware matching:** conservative metadata handling for Strawberry and
@@ -46,8 +48,10 @@ local-first, deeply customizable, and source-available.
   settings interface, CLI diagnostics, and one canonical TOML configuration.
 
 Local reading support covers Japanese and Mandarin with language-aware limits,
-plus generic transliteration for Korean, Cyrillic, Greek, Arabic, and Thai.
-Romanization is a reading aid, not a promise of perfect sung pronunciation.
+Korean romanization, and generic transliteration for Cyrillic, Greek, Arabic,
+and Thai.
+Generated readings are labeled in the lyric view. Romanization is a reading aid,
+not a promise of perfect sung pronunciation.
 
 ## What the demo shows
 

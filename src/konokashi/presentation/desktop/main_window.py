@@ -292,7 +292,56 @@ def _lyric_group_layout_key(group: DesktopLyricGroup) -> tuple[object, ...]:
         group.translation,
         group.provenance,
         group.transition_us,
+        group.reading_metadata,
+        group.translation_metadata,
     )
+
+
+def _provenance_caption(provenance: str | None) -> str | None:
+    if provenance is None:
+        return None
+    return {
+        "provider": "Provider",
+        "imported": "Imported",
+        "local": "Local",
+        "user": "Your version",
+        "generated": "Generated",
+    }.get(provenance)
+
+
+def _reading_caption(group: DesktopLyricGroup) -> str:
+    metadata = group.reading_metadata
+    language = ("" if metadata is None else metadata.language or "").casefold()
+    if metadata is not None and metadata.kind == "transliterated":
+        layer = "Transliteration"
+    elif language.startswith("ja"):
+        layer = "Romaji"
+    elif language.startswith("zh"):
+        layer = "Pinyin"
+    elif language.startswith("ko"):
+        layer = "Korean reading"
+    else:
+        layer = "Reading"
+    provenance = _provenance_caption(None if metadata is None else metadata.provenance)
+    return layer if provenance is None else f"{layer} · {provenance}"
+
+
+def _translation_caption(group: DesktopLyricGroup) -> str:
+    provenance = _provenance_caption(
+        None
+        if group.translation_metadata is None
+        else group.translation_metadata.provenance
+    )
+    return "Translation" if provenance is None else f"Translation · {provenance}"
+
+
+def _layer_tooltip(
+    caption: str, source_name: str | None, source_version: str | None
+) -> str:
+    source = source_name or "Source unavailable"
+    if source_version:
+        source = f"{source} {source_version}"
+    return escape(f"{caption}. {source}")
 
 
 def _desktop_layout_key(state: DesktopViewState) -> tuple[object, ...]:
@@ -517,7 +566,7 @@ def _lyric_layer_label(accessible_name: str) -> _WrappedLyricLabel:
 
 
 class _LyricGroupWidget(QWidget):
-    """Three reusable plain-text labels for one aligned representation group."""
+    """Reusable original, reading, translation, and provenance labels."""
 
     def __init__(self, *, active: bool) -> None:
         super().__init__()
@@ -530,11 +579,16 @@ class _LyricGroupWidget(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(1)
         region = "current" if active else "nearby"
+        self._region = region
         self.original = _lyric_layer_label(f"Original {region} lyric")
+        self.reading_caption = _lyric_layer_label("Reading provenance")
         self.romanized = _lyric_layer_label(f"Romanized {region} lyric")
+        self.translation_caption = _lyric_layer_label("Translation provenance")
         self.translation = _lyric_layer_label(f"Translated {region} lyric")
         layout.addWidget(self.original)
+        layout.addWidget(self.reading_caption)
         layout.addWidget(self.romanized)
+        layout.addWidget(self.translation_caption)
         layout.addWidget(self.translation)
 
     def set_group(self, group: DesktopLyricGroup) -> None:
@@ -552,6 +606,60 @@ class _LyricGroupWidget(QWidget):
             if label.isHidden() == visible:
                 label.setVisible(visible)
                 layout_changed = True
+        reading_caption = _reading_caption(group)
+        translation_caption = _translation_caption(group)
+        for label, text, visible in (
+            (
+                self.reading_caption,
+                reading_caption,
+                self._active and group.romanized_or_transliterated is not None,
+            ),
+            (
+                self.translation_caption,
+                translation_caption,
+                self._active and group.translation is not None,
+            ),
+        ):
+            if label.text() != text:
+                label.setText(text)
+                layout_changed = True
+            if label.isHidden() == visible:
+                label.setVisible(visible)
+                layout_changed = True
+        self.reading_caption.setToolTip(
+            _layer_tooltip(
+                reading_caption,
+                (
+                    None
+                    if group.reading_metadata is None
+                    else group.reading_metadata.source_name
+                ),
+                (
+                    None
+                    if group.reading_metadata is None
+                    else group.reading_metadata.source_version
+                ),
+            )
+        )
+        self.translation_caption.setToolTip(
+            _layer_tooltip(
+                translation_caption,
+                (
+                    None
+                    if group.translation_metadata is None
+                    else group.translation_metadata.source_name
+                ),
+                (
+                    None
+                    if group.translation_metadata is None
+                    else group.translation_metadata.source_version
+                ),
+            )
+        )
+        self.romanized.setAccessibleName(f"{reading_caption} {self._region} lyric")
+        self.translation.setAccessibleName(
+            f"{translation_caption} {self._region} lyric"
+        )
         self.original.set_karaoke_segments(
             group.karaoke_segments if self._active else ()
         )
@@ -566,7 +674,13 @@ class _LyricGroupWidget(QWidget):
         inner_width = max(1, width - margins.left() - margins.right())
         labels = tuple(
             label
-            for label in (self.original, self.romanized, self.translation)
+            for label in (
+                self.original,
+                self.reading_caption,
+                self.romanized,
+                self.translation_caption,
+                self.translation,
+            )
             if not label.isHidden()
         )
         return (
@@ -631,6 +745,18 @@ class _LyricGroupWidget(QWidget):
                 )
             _apply_text_palette(label, semantic_color)
             label.setAlignment(_qt_alignment(appearance.lyric_alignment))
+        caption_color = _semantic_color(
+            appearance.colors.muted,
+            round(
+                appearance.opacity.secondary_representation
+                * appearance.opacity.content
+                / 100
+            ),
+        )
+        for caption in (self.reading_caption, self.translation_caption):
+            caption.setFont(_styled_font(caption, appearance.status, scale * 0.9))
+            _apply_text_palette(caption, caption_color)
+            caption.setAlignment(_qt_alignment(appearance.lyric_alignment))
         active_color = _semantic_color(
             appearance.colors.active_lyric, appearance.opacity.content
         )

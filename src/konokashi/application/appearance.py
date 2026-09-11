@@ -432,7 +432,7 @@ def default_appearance_profile() -> AppearanceProfile:
         {
             "lyrics.display.original": True,
             "lyrics.display.romanized": True,
-            "lyrics.display.translated": False,
+            "lyrics.display.translated": True,
         }
     )
     return resolve_appearance(values)

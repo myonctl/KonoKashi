@@ -211,7 +211,7 @@ SETTINGS_SCHEMA: tuple[SettingDefinition, ...] = (
     SettingDefinition(
         "lyrics.display.translated",
         SettingType.BOOLEAN,
-        False,
+        True,
         SettingScope.GLOBAL,
         ReloadBehavior.LIVE,
         "Show translation",

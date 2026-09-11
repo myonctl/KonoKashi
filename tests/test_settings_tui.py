@@ -652,7 +652,7 @@ def test_external_atomic_remove_and_recreate_refreshes_app(tmp_path: Path) -> No
         )
         os.replace(replacement, path)
         await observe(app)
-        assert service.get("lyrics.display.translated") is False
+        assert service.get("lyrics.display.translated") is True
         assert service.get("library.metadata_workers") == 7
 
         path.unlink()

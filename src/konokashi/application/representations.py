@@ -740,6 +740,14 @@ class RepresentationService:
                 and decision.approval_state is ApprovalState.APPROVED
                 and decision.text is not None
             ):
+                based_on = next(
+                    (
+                        item
+                        for item in candidates
+                        if item.candidate_id == decision.based_on_candidate_id
+                    ),
+                    None,
+                )
                 output.append(
                     EffectiveRepresentationLine(
                         original,
@@ -753,6 +761,8 @@ class RepresentationService:
                         ("user-approved value outranks retained candidates",),
                         original.start_ms,
                         decision.based_on_candidate_id,
+                        None if based_on is None else based_on.language,
+                        None if based_on is None else based_on.script,
                     )
                 )
                 continue
@@ -818,6 +828,8 @@ class RepresentationService:
                     (*decision_diagnostic, *winner.diagnostics),
                     original.start_ms,
                     winner.candidate_id,
+                    winner.language,
+                    winner.script,
                 )
             )
         return tuple(output)

@@ -26,6 +26,7 @@ from konokashi.application.desktop_state import (
     DesktopKaraokeSegment,
     DesktopLyricGroup,
     DesktopLyricsState,
+    DesktopRepresentationMetadata,
     DesktopViewState,
 )
 from konokashi.application.review_corrections import (
@@ -173,6 +174,94 @@ def test_line_only_active_and_context_colors_keep_their_visual_hierarchy(
     )
     assert active.red() > active.blue()
     assert previous.blue() > previous.red()
+    window.close()
+
+
+@pytest.mark.parametrize(
+    ("kind", "language", "provenance", "expected"),
+    (
+        ("romanized", "ja-Latn", "generated", "Romaji · Generated"),
+        ("romanized", "zh-Latn-pinyin", "provider", "Pinyin · Provider"),
+        ("romanized", "ko-Latn", "user", "Korean reading · Your version"),
+        ("transliterated", None, "imported", "Transliteration · Imported"),
+    ),
+)
+def test_active_reading_caption_names_language_kind_and_provenance(
+    qt_app: QApplication,
+    kind: str,
+    language: str | None,
+    provenance: str,
+    expected: str,
+) -> None:
+    window = MainWindow()
+    active = replace(
+        _state().active[0],
+        reading_metadata=DesktopRepresentationMetadata(
+            kind,
+            provenance,
+            source_name="<local engine>",
+            source_version="1 & 2",
+            language=language,
+        ),
+        translation_metadata=DesktopRepresentationMetadata(
+            "translated", "provider", source_name="translation fixture"
+        ),
+    )
+    window.render_state(replace(_state(), active=(active,)))
+    window.show()
+    qt_app.processEvents()
+
+    group = window.active_band._group_widgets[0]
+    assert group.reading_caption.text() == expected
+    assert group.reading_caption.isVisible()
+    assert group.reading_caption.toolTip() == (
+        f"{expected}. &lt;local engine&gt; 1 &amp; 2"
+    )
+    assert group.romanized.accessibleName() == f"{expected} current lyric"
+    assert group.translation_caption.text() == "Translation · Provider"
+    assert (
+        group.original.font().pointSizeF() > group.reading_caption.font().pointSizeF()
+    )
+    assert all(
+        caption.isHidden()
+        for context in (
+            window.previous_band._group_widgets[0],
+            window.next_band._group_widgets[0],
+        )
+        for caption in (context.reading_caption, context.translation_caption)
+    )
+    window.close()
+
+
+def test_word_timing_remains_bound_to_original_not_shorter_translation(
+    qt_app: QApplication,
+) -> None:
+    window = MainWindow()
+    original = "one two three"
+    active = DesktopLyricGroup(
+        "active",
+        original,
+        "reading with a different count",
+        "短い",
+        karaoke_segments=(
+            DesktopKaraokeSegment("one", 0, 4, 1.0),
+            DesktopKaraokeSegment("two", 4, 8, 0.5),
+            DesktopKaraokeSegment("three", 8, len(original), 0.0),
+        ),
+        reading_metadata=DesktopRepresentationMetadata(
+            "romanized", "generated", language="ja-Latn"
+        ),
+        translation_metadata=DesktopRepresentationMetadata("translated", "user"),
+    )
+    window.render_state(replace(_state(), active=(active,)))
+    window.show()
+    qt_app.processEvents()
+
+    group = window.active_band._group_widgets[0]
+    assert group.original.karaoke_segments == active.karaoke_segments
+    assert group.romanized.karaoke_segments == ()
+    assert group.translation.karaoke_segments == ()
+    assert group.translation_caption.text() == "Translation · Your version"
     window.close()
 
 

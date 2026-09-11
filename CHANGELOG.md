@@ -13,6 +13,9 @@ All notable user-visible changes are recorded here.
   exposing calibrated word segments to frontend snapshots.
 - Trust-gated desktop karaoke highlighting for exact word-timed lyrics, with
   wrapped multilingual text, clock-driven interpolation, and line-sync fallback.
+- Independent reading and translation identities through synchronized frontend
+  state, with compact active-line captions for romaji, pinyin, Korean readings,
+  generic transliteration, and provider/imported/user/generated provenance.
 
 ### Changed
 
@@ -25,6 +28,8 @@ All notable user-visible changes are recorded here.
   or session-bus permissions.
 - Rich-timing progress updates use a lightweight paint path so lyrics remain
   stable while seeking, pausing, changing playback rate, or refreshing metadata.
+- Fresh profiles show available aligned translations by default to complete the
+  original/reading/translation hierarchy; explicit existing choices are kept.
 
 ## 0.1.0-beta.1 — 2026-09-10
 

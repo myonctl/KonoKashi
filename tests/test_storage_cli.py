@@ -99,7 +99,7 @@ def test_multilingual_display_settings_persist_across_cli_calls(
     defaults = capsys.readouterr().out
     assert "show original: on" in defaults
     assert "show romanized/transliterated: on" in defaults
-    assert "show translated: off" in defaults
+    assert "show translated: on" in defaults
 
     assert (
         cli.main(

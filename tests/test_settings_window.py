@@ -204,7 +204,7 @@ def test_typed_controls_emit_only_canonical_key_and_typed_value(
     preferred.reset_button.click()
 
     assert changes == [
-        ("lyrics.display.translated", True),
+        ("lyrics.display.translated", False),
         ("library.metadata_workers", 6),
         ("players.preferred", ("strawberry",)),
     ]
@@ -245,7 +245,7 @@ def test_external_diagnostics_are_actionable_without_replacing_controls(
     window = _window(qt_app, tmp_path / "config.toml")
     row = window.rows["lyrics.display.translated"]
     assert isinstance(row.editor, QCheckBox)
-    assert not row.editor.isChecked()
+    assert row.editor.isChecked()
 
     diagnostic = SettingsDiagnostic(
         "Expected boolean, got str 'invalid'.",
@@ -260,7 +260,7 @@ def test_external_diagnostics_are_actionable_without_replacing_controls(
     assert window.error_banner.isVisible()
     assert "current values remain active" in window.error_banner.text()
     assert "lyrics.display.translated" in window.error_banner.text()
-    assert not row.editor.isChecked()
+    assert row.editor.isChecked()
     window.set_diagnostics(())
     assert not window.error_banner.isVisible()
     window.close()
