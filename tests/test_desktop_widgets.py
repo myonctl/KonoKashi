@@ -16,6 +16,7 @@ from PySide6.QtTest import QTest
 from PySide6.QtWidgets import (
     QApplication,
     QBoxLayout,
+    QDialog,
     QDialogButtonBox,
     QLabel,
     QPlainTextEdit,
@@ -45,6 +46,10 @@ from konokashi.domain.library import (
     LibraryScanIssue,
     LibraryScanIssueCategory,
     LibraryScanSummary,
+)
+from konokashi.domain.lyric_corrections import (
+    LyricEditorLine,
+    LyricEditorSnapshot,
 )
 from konokashi.domain.lyrics import (
     ApprovalState,
@@ -76,6 +81,7 @@ from konokashi.presentation.desktop.main_window import (
 )
 from konokashi.presentation.desktop.review_dialog import (
     CorrectionActionKind,
+    LyricEditorDialog,
     ReviewCorrectionDialog,
 )
 from konokashi.presentation.desktop.settings_window import SettingsWindow
@@ -1060,12 +1066,14 @@ def test_review_dialog_track_and_delay_requests_are_typed(
     track_dialog = ReviewCorrectionDialog(_review_snapshot())
     track_dialog.title_edit.setText(" Corrected title ")
     track_dialog.artists_edit.setText("Artist A; Artist B")
+    track_dialog.album_edit.setText(" Corrected album ")
     QTest.mouseClick(track_dialog.save_track_button, Qt.MouseButton.LeftButton)
     track_action = track_dialog.action()
     assert track_action is not None
     assert track_action.kind is CorrectionActionKind.PUT_TRACK_OVERRIDE
     assert track_action.title == "Corrected title"
     assert track_action.artists == ("Artist A", "Artist B")
+    assert track_action.album == "Corrected album"
 
     delay_dialog = ReviewCorrectionDialog(_review_snapshot())
     delay_dialog.delay_ms.setValue(-250)
@@ -1172,6 +1180,71 @@ def test_review_dialog_exposes_routing_layers_and_aligned_translation_actions(
     )
     assert automatic.action() is not None
     assert automatic.action().kind is CorrectionActionKind.RESET_LANGUAGE  # type: ignore[union-attr]
+
+
+def _editor_snapshot() -> LyricEditorSnapshot:
+    return LyricEditorSnapshot(
+        "document-editor",
+        "Test provider",
+        180_000,
+        (
+            LyricEditorLine("line-1", "First", "First", None, None),
+            LyricEditorLine("line-2", "Second", "Second", None, None),
+        ),
+        0,
+        0,
+        True,
+    )
+
+
+def test_line_editor_previews_stamps_advances_undoes_and_exports(
+    qt_app: QApplication,
+) -> None:
+    position = [1_250]
+    dialog = LyricEditorDialog(_editor_snapshot(), lambda: position[0])
+    dialog.show()
+    qt_app.processEvents()
+
+    dialog.text_edit.setText("Corrected first")
+    QTest.mouseClick(dialog.stamp_button, Qt.MouseButton.LeftButton)
+    assert dialog.line_selector.currentIndex() == 1
+    assert dialog.edits()[0].text == "Corrected first"
+    assert dialog.edits()[0].start_ms == 1_250
+    position[0] = 2_500
+    QTest.mouseClick(dialog.stamp_button, Qt.MouseButton.LeftButton)
+    assert dialog.edits()[1].start_ms == 2_500
+    assert "[00:01.250]Corrected first" in dialog.preview.toPlainText()
+    assert "line 2: Second" in dialog.preview_now.text()
+
+    QTest.mouseClick(dialog.copy_lrc_button, Qt.MouseButton.LeftButton)
+    assert QApplication.clipboard().text() == (
+        "[00:01.250]Corrected first\n[00:02.500]Second\n"
+    )
+    QTest.mouseClick(dialog.undo_button, Qt.MouseButton.LeftButton)
+    assert dialog.edits()[1].start_ms is None
+    dialog.close()
+
+
+def test_line_editor_imports_clipboard_and_review_can_revert_all(
+    qt_app: QApplication,
+) -> None:
+    QApplication.clipboard().setText("[00:01.000]One\n[00:02.000]Two\n")
+    editor = LyricEditorDialog(_editor_snapshot(), lambda: None)
+    QTest.mouseClick(editor.import_button, Qt.MouseButton.LeftButton)
+    assert editor.result() == QDialog.DialogCode.Accepted
+    assert editor.imported_text() == "[00:01.000]One\n[00:02.000]Two\n"
+
+    snapshot = replace(
+        _review_snapshot(),
+        lyric_editor=replace(_editor_snapshot(), corrected_lines=1),
+    )
+    review = ReviewCorrectionDialog(snapshot)
+    assert review.open_editor_button.isEnabled()
+    assert review.reset_lyrics_button.isEnabled()
+    QTest.mouseClick(review.reset_lyrics_button, Qt.MouseButton.LeftButton)
+    action = review.action()
+    assert action is not None
+    assert action.kind is CorrectionActionKind.RESET_LYRIC_EDITS
 
 
 def test_review_dialog_keeps_actions_reachable_in_narrow_geometry(

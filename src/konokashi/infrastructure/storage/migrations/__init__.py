@@ -776,6 +776,46 @@ MIGRATIONS: tuple[Migration, ...] = (
             """,
         ),
     ),
+    Migration(
+        14,
+        "immutable-source lyric line corrections",
+        (
+            """
+            CREATE TABLE lyric_line_corrections (
+                document_id TEXT NOT NULL
+                    REFERENCES lyrics_documents(document_id) ON DELETE CASCADE,
+                line_id TEXT NOT NULL,
+                based_on_text TEXT NOT NULL,
+                based_on_start_ms INTEGER CHECK (
+                    based_on_start_ms IS NULL OR based_on_start_ms >= 0
+                ),
+                corrected_text TEXT CHECK (
+                    corrected_text IS NULL
+                    OR (
+                        length(corrected_text) <= 10000
+                        AND instr(corrected_text, char(0)) = 0
+                        AND instr(corrected_text, char(10)) = 0
+                        AND instr(corrected_text, char(13)) = 0
+                    )
+                ),
+                corrected_start_ms INTEGER CHECK (
+                    corrected_start_ms IS NULL
+                    OR (
+                        corrected_start_ms >= 0
+                        AND corrected_start_ms <= 604800000
+                    )
+                ),
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                PRIMARY KEY (document_id, line_id),
+                CHECK (
+                    corrected_text IS NOT NULL
+                    OR corrected_start_ms IS NOT NULL
+                )
+            )
+            """,
+        ),
+    ),
 )
 
 CURRENT_SCHEMA_VERSION = MIGRATIONS[-1].version

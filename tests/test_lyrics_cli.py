@@ -279,3 +279,79 @@ def test_manual_search_json_has_stable_schema_and_title_only_query(
             provenance=(("title", "manual-search"),),
         )
     ]
+
+
+def test_current_lyrics_import_and_export_are_portable_and_non_destructive(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    database = tmp_path / "exchange.sqlite3"
+    provider = _CliProvider(_provider_result())
+    initial = tmp_path / "initial.lrc"
+
+    export_exit = cli.main(
+        ["lyrics", "export", "current", str(initial), "--format", "lrc"],
+        runtime_factory=_runtime,
+        lyrics_provider_factory=lambda: provider,
+        database_path=database,
+    )
+    assert export_exit == 0
+    assert initial.read_text(encoding="utf-8").startswith("[00:01.000]one\n")
+    assert "source lyric document: unchanged" in capsys.readouterr().out
+
+    imported = tmp_path / "repair.lrc"
+    imported.write_text(
+        "[00:01.250]One repaired\n"
+        "[00:02.500]Two\n"
+        "[00:03.500]Three\n"
+        "[00:04.500]Four\n"
+        "[00:05.500]Five\n",
+        encoding="utf-8",
+    )
+    import_exit = cli.main(
+        ["lyrics", "import", "current", str(imported), "--offline"],
+        runtime_factory=_runtime,
+        lyrics_provider_factory=lambda: _CliProvider(
+            LyricsProviderResult(LyricsProviderStatus.UNAVAILABLE)
+        ),
+        database_path=database,
+    )
+    assert import_exit == 0
+    assert "Imported 5 local lyric line correction(s)" in capsys.readouterr().out
+
+    repaired = tmp_path / "repaired.lrc"
+    repaired_exit = cli.main(
+        [
+            "lyrics",
+            "export",
+            "current",
+            str(repaired),
+            "--format",
+            "lrc",
+            "--offline",
+        ],
+        runtime_factory=_runtime,
+        lyrics_provider_factory=lambda: _CliProvider(
+            LyricsProviderResult(LyricsProviderStatus.UNAVAILABLE)
+        ),
+        database_path=database,
+    )
+    assert repaired_exit == 0
+    assert repaired.read_text(encoding="utf-8") == imported.read_text(encoding="utf-8")
+    capsys.readouterr()
+
+    exists_exit = cli.main(
+        [
+            "lyrics",
+            "export",
+            "current",
+            str(repaired),
+            "--format",
+            "plain",
+            "--offline",
+        ],
+        runtime_factory=_runtime,
+        lyrics_provider_factory=lambda: provider,
+        database_path=database,
+    )
+    assert exists_exit == 2
+    assert "already exists" in capsys.readouterr().err

@@ -43,8 +43,10 @@ local-first, deeply customizable, and source-available.
   parallel lookup across LRCLIB and Unison without accepting the first response.
 - **Player-aware matching:** conservative metadata handling for Strawberry and
   KDE Plasma Browser Integration, including duplicate MPRIS entries.
-- **Review tools:** choose or reject lyric matches, correct resolved identity,
-  adjust whole-document timing, and maintain local per-line translations.
+- **Review and repair tools:** choose or reject lyric matches; correct resolved
+  title, artists, and album; adjust whole-document timing; maintain local
+  per-line translations; and edit original lyric text or individual timestamps
+  without replacing provider evidence.
 - **Multiple controls:** native PySide6 desktop, graphical settings, a terminal
   settings interface, CLI diagnostics, and one canonical TOML configuration.
 - **Four desktop modes:** normal window, compact companion, lyric-only desktop
@@ -140,6 +142,27 @@ On a cache miss, each enabled source receives only the provider-safe resolved
 title, musical artist, and available album/duration—not the local media path,
 raw MPRIS URL, player identity, or playback history.
 
+Open **Review** from the active lyric view to repair the current
+match, identity, offset, translation, lyric text, or line timing. The compact
+line editor can stamp each plain lyric line from the current playback position
+with `Ctrl+Space`, preview the active corrected line, undo editor changes, and
+revert the complete local overlay. Provider and imported source documents stay
+unchanged; corrections are stored separately and are ignored safely if their
+captured source line no longer matches.
+
+Effective corrected lyrics can also leave the database as portable UTF-8 text:
+
+```bash
+konokashi lyrics export current corrected.lrc --format lrc
+konokashi lyrics export current corrected.txt --format plain
+konokashi lyrics import current corrected.lrc
+```
+
+Import requires exactly one aligned line per source line and validates timing
+order before replacing the current document's local corrections atomically.
+Exports refuse to overwrite a file unless `--force` is supplied. No external
+account or contribution service is required.
+
 Use **View → Window mode** or `Ctrl+Alt+1` through `Ctrl+Alt+3` to switch among
 normal, compact, and overlay modes; `F11` opens fullscreen lyrics. `Esc` always
 leaves an interactive overlay or fullscreen. The unlocked overlay has explicit
@@ -160,7 +183,8 @@ certified.
 Translation generation is not implemented. A translation layer contains aligned
 provider, imported, local, or user-approved text; KonoKashi does not silently
 send lyrics to a machine-translation service. A full lyrics TUI, web frontend,
-additional rich-timing provider formats, and Windows support are future work.
+word-level rich-timing editing, additional rich-timing provider formats, and
+Windows support are future work.
 
 Lyrics from [Unison](https://unison.boidu.dev) are used under the ODbL-1.0
 public-corpus terms. KonoKashi performs read-only access, retains source
@@ -176,7 +200,8 @@ are not shipped yet; KonoKashi does not claim them based on KDE-only behavior.
 ## What's next
 
 - Refine the Linux desktop experience through public-beta feedback.
-- Expand lyric-text and per-line timing correction while preserving originals.
+- Refine the correction editor through public-beta feedback and investigate
+  word-level rich-timing edits without turning it into a DAW.
 - Add an optional, replaceable Wayland layer-shell backend after its native
   dependency and cross-compositor packaging path are validated.
 - Explore deeper themes and a full lyrics TUI.

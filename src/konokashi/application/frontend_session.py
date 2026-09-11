@@ -10,6 +10,7 @@ from konokashi.application.frontend_lines import (
     FrontendLineCache,
     build_frontend_line_cache,
 )
+from konokashi.application.lyric_corrections import LyricCorrectionService
 from konokashi.application.ports import (
     SettingsRepositoryPort,
     TimingCalibrationRepositoryPort,
@@ -24,6 +25,11 @@ from konokashi.application.review_corrections import (
 )
 from konokashi.application.select_player import PlayerSelectionService
 from konokashi.application.settings import DesktopInteractionSettings
+from konokashi.domain.identity import PersistenceScope
+from konokashi.domain.lyric_corrections import (
+    LyricCorrectionProjection,
+    LyricLineEdit,
+)
 from konokashi.domain.lyrics import (
     LyricDocument,
     LyricsAlternative,
@@ -55,6 +61,8 @@ class FrontendLyricsBundle:
     routing: LanguageRoutingEvidence | None = None
     layer_statuses: tuple[RepresentationLayerStatus, ...] = ()
     line_cache: FrontendLineCache | None = None
+    source_document: LyricDocument | None = None
+    correction_projection: LyricCorrectionProjection | None = None
 
 
 class FrontendSessionPort(Protocol):
@@ -100,9 +108,14 @@ class FrontendSessionPort(Protocol):
         """Load alternatives and audit evidence for one exact current source."""
 
     def put_track_override(
-        self, track: ResolvedTrack, *, title: str, artists: tuple[str, ...]
+        self,
+        track: ResolvedTrack,
+        *,
+        title: str,
+        artists: tuple[str, ...],
+        album: str | None,
     ) -> None:
-        """Persist one source-identity artist/title correction."""
+        """Persist one source-identity title, artist, and album correction."""
 
     def reset_track_override(self, track: ResolvedTrack) -> bool:
         """Reset only the source-identity correction."""
@@ -154,6 +167,17 @@ class FrontendSessionPort(Protocol):
     def reset_display_delay(self, bundle: FrontendLyricsBundle) -> bool:
         """Reset one exact-document lyric delay."""
 
+    def put_lyric_edits(
+        self, bundle: FrontendLyricsBundle, edits: tuple[LyricLineEdit, ...]
+    ) -> int:
+        """Atomically replace local line text/timestamp overlays."""
+
+    def reset_lyric_edits(self, bundle: FrontendLyricsBundle) -> int:
+        """Revert every line overlay to the immutable source document."""
+
+    def import_lyric_text(self, bundle: FrontendLyricsBundle, text: str) -> int:
+        """Import aligned plain/LRC text as the same local correction layer."""
+
     def cancel_inflight(self) -> None:
         """Request cancellation of the replaceable provider boundary."""
 
@@ -171,6 +195,7 @@ class FrontendSessionService:
         corrections: ReviewCorrectionService,
         cancel_inflight: Callable[[], None] | None = None,
         youtube_metadata: YouTubeMetadataEnrichmentPort | None = None,
+        lyric_corrections: LyricCorrectionService | None = None,
     ) -> None:
         self._selection = selection
         self._lyrics = lyrics
@@ -178,6 +203,7 @@ class FrontendSessionService:
         self._settings = settings
         self._timing = timing
         self._corrections = corrections
+        self._lyric_corrections = lyric_corrections
         self._cancel_inflight = cancel_inflight or (lambda: None)
         self._youtube_metadata = youtube_metadata
 
@@ -206,6 +232,30 @@ class FrontendSessionService:
         document = result.document
         if document is None:
             return FrontendLyricsBundle(track, result, (), settings, None)
+        source_document = document
+        correction_projection = (
+            None
+            if self._lyric_corrections is None
+            else self._lyric_corrections.project(source_document)
+        )
+        if correction_projection is not None:
+            document = correction_projection.document
+            if (
+                correction_projection.applied_corrections
+                or correction_projection.stale_corrections
+            ):
+                source_label = result.source_label or source_document.source_name
+                if correction_projection.applied_corrections:
+                    source_label += " + local corrections"
+                result = replace(
+                    result,
+                    document=document,
+                    source_label=source_label,
+                    diagnostics=(
+                        *result.diagnostics,
+                        *correction_projection.diagnostics,
+                    ),
+                )
         # Frontends request ready-to-display multilingual values from this
         # shared application boundary.  Generation is local, runs on the
         # desktop worker, and preserves imported/user-approved precedence.
@@ -240,6 +290,8 @@ class FrontendSessionService:
             self._representations.routing_language(document),
             statuses,
             build_frontend_line_cache(document, effective),
+            source_document,
+            correction_projection,
         )
 
     def put_display_settings(self, settings: RepresentationDisplaySettings) -> None:
@@ -355,12 +407,24 @@ class FrontendSessionService:
                 )
                 for item in translated
             ),
+            lyric_editor=(
+                None
+                if bundle.correction_projection is None
+                else bundle.correction_projection.editor
+            ),
         )
 
     def put_track_override(
-        self, track: ResolvedTrack, *, title: str, artists: tuple[str, ...]
+        self,
+        track: ResolvedTrack,
+        *,
+        title: str,
+        artists: tuple[str, ...],
+        album: str | None,
     ) -> None:
-        self._corrections.put_track_override(track, title=title, artists=artists)
+        self._corrections.put_track_override(
+            track, title=title, artists=artists, album=album
+        )
 
     def reset_track_override(self, track: ResolvedTrack) -> bool:
         return self._corrections.reset_track_override(track)
@@ -433,6 +497,29 @@ class FrontendSessionService:
     def reset_display_delay(self, bundle: FrontendLyricsBundle) -> bool:
         return self._corrections.reset_display_delay(bundle.track, bundle.resolution)
 
+    def put_lyric_edits(
+        self, bundle: FrontendLyricsBundle, edits: tuple[LyricLineEdit, ...]
+    ) -> int:
+        if self._lyric_corrections is None:
+            raise ValueError("local lyric corrections are unavailable")
+        _require_durable_bundle(bundle)
+        source = _require_source_document(bundle)
+        return self._lyric_corrections.replace(source, edits)
+
+    def reset_lyric_edits(self, bundle: FrontendLyricsBundle) -> int:
+        if self._lyric_corrections is None:
+            raise ValueError("local lyric corrections are unavailable")
+        _require_durable_bundle(bundle)
+        return self._lyric_corrections.reset(_require_source_document(bundle))
+
+    def import_lyric_text(self, bundle: FrontendLyricsBundle, text: str) -> int:
+        if self._lyric_corrections is None:
+            raise ValueError("local lyric corrections are unavailable")
+        _require_durable_bundle(bundle)
+        return self._lyric_corrections.import_text(
+            _require_source_document(bundle), text
+        )
+
     def cancel_inflight(self) -> None:
         """Cancel a provider request after a source change or frontend shutdown."""
 
@@ -448,3 +535,17 @@ def _require_document(bundle: FrontendLyricsBundle) -> LyricDocument:
     if document is None:
         raise ValueError("there is no current lyric document")
     return document
+
+
+def _require_source_document(bundle: FrontendLyricsBundle) -> LyricDocument:
+    source = bundle.source_document or bundle.resolution.document
+    if source is None:
+        raise ValueError("there is no current lyric source document")
+    return source
+
+
+def _require_durable_bundle(bundle: FrontendLyricsBundle) -> None:
+    if bundle.track.source_identity.persistence_scope is not PersistenceScope.PERMANENT:
+        raise ValueError(
+            "session-only sources cannot receive durable lyric corrections"
+        )

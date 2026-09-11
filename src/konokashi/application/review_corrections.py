@@ -18,6 +18,7 @@ from konokashi.domain.identity import (
     SourceIdentity,
     YouTubeIdentity,
 )
+from konokashi.domain.lyric_corrections import LyricEditorSnapshot
 from konokashi.domain.lyrics import (
     ApprovalState,
     ContentProvenance,
@@ -104,6 +105,7 @@ class ReviewCorrectionSnapshot:
     language_override: str | None = None
     layer_statuses: tuple[RepresentationLayerStatus, ...] = field(default_factory=tuple)
     translation_lines: tuple[TranslationReviewLine, ...] = field(default_factory=tuple)
+    lyric_editor: LyricEditorSnapshot | None = None
 
 
 class ReviewCorrectionService:
@@ -228,6 +230,7 @@ class ReviewCorrectionService:
         *,
         title: str,
         artists: tuple[str, ...],
+        album: str | None,
     ) -> None:
         """Approve one corrected identity while retaining the raw snapshot."""
 
@@ -243,7 +246,7 @@ class ReviewCorrectionService:
             ApprovedTrackIdentity(
                 cleaned_title,
                 cleaned_artists,
-                track.candidate.album,
+                None if album is None else album.strip() or None,
             ),
         )
 

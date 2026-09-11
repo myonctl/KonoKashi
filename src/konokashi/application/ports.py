@@ -10,6 +10,7 @@ from typing import Protocol
 
 from konokashi.application.settings import DesktopInteractionSettings
 from konokashi.domain.identity import LocalFileIdentity, SourceIdentity
+from konokashi.domain.lyric_corrections import LyricLineCorrection
 from konokashi.domain.lyrics import (
     LocalLyricsResult,
     LyricDocument,
@@ -363,6 +364,21 @@ class LyricsRepositoryPort(Protocol):
 
     def delete(self, document_id: str) -> bool:
         """Explicitly remove one document and its owned representation data."""
+
+
+class LyricsCorrectionRepositoryPort(Protocol):
+    """Persist local lyric overlays without replacing source documents."""
+
+    def get(self, document_id: str) -> tuple[LyricLineCorrection, ...]:
+        """Return corrections in stable line-ID order."""
+
+    def replace(
+        self, document_id: str, corrections: tuple[LyricLineCorrection, ...]
+    ) -> None:
+        """Atomically replace one document's explicit correction layer."""
+
+    def reset(self, document_id: str) -> int:
+        """Remove every correction for one document and return the row count."""
 
 
 class LyricsMatchRepositoryPort(Protocol):

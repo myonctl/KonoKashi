@@ -2114,7 +2114,15 @@ class MainWindow(DesktopWindowSurface):
     def show_review(self, snapshot: ReviewCorrectionSnapshot) -> None:
         """Render one source-bound review model and emit at most one action."""
 
-        dialog = ReviewCorrectionDialog(snapshot, self)
+        dialog = ReviewCorrectionDialog(
+            snapshot,
+            self,
+            position_ms=lambda: (
+                None
+                if self._state.position_us is None
+                else max(0, self._state.position_us // 1_000)
+            ),
+        )
         if dialog.exec() == QDialog.DialogCode.Accepted:
             action = dialog.action()
             if isinstance(action, CorrectionActionRequest):

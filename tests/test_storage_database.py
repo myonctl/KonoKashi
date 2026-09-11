@@ -265,6 +265,67 @@ def test_legacy_manual_timing_upgrades_to_user_edited_provenance(
     assert line[0] == "user-edited"
 
 
+def test_stage_seven_database_adds_corrections_without_rewriting_source(
+    tmp_path: Path,
+) -> None:
+    database = SQLiteDatabase(tmp_path / "stage-seven.sqlite3")
+    database.initialize(MIGRATIONS[:13])
+    with database.transaction() as connection:
+        connection.execute(
+            """
+            INSERT INTO lyrics_documents(
+                document_id, document_kind, source_name, original_text,
+                approval_state, retrieved_at, timing_level
+            ) VALUES ('doc', 'synced', 'fixture', 'provider line', 'approved',
+                      '2026-09-12T00:00:00+00:00', 'line')
+            """
+        )
+        connection.execute(
+            """
+            INSERT INTO lyric_representations(
+                document_id, representation_id, representation_kind, provenance,
+                approval_state, position
+            ) VALUES ('doc', 'original', 'original', 'provider', 'approved', 0)
+            """
+        )
+        connection.execute(
+            """
+            INSERT INTO lyric_lines(
+                document_id, representation_id, line_id, position, line_text,
+                start_ms, timing_provenance_detail
+            ) VALUES ('doc', 'original', 'line-1', 0, 'provider line', 1000,
+                      'provider')
+            """
+        )
+
+    assert database.initialize() == CURRENT_SCHEMA_VERSION
+
+    with database.transaction() as connection:
+        connection.execute(
+            """
+            INSERT INTO lyric_line_corrections(
+                document_id, line_id, based_on_text, based_on_start_ms,
+                corrected_text, corrected_start_ms, created_at, updated_at
+            ) VALUES ('doc', 'line-1', 'provider line', 1000, 'local line', 1250,
+                      '2026-09-12T00:01:00+00:00',
+                      '2026-09-12T00:01:00+00:00')
+            """
+        )
+    with database.connection(readonly=True) as connection:
+        source = connection.execute(
+            "SELECT line_text, start_ms FROM lyric_lines WHERE line_id = 'line-1'"
+        ).fetchone()
+        correction = connection.execute(
+            """
+            SELECT corrected_text, corrected_start_ms
+            FROM lyric_line_corrections WHERE line_id = 'line-1'
+            """
+        ).fetchone()
+
+    assert tuple(source) == ("provider line", 1000)
+    assert tuple(correction) == ("local line", 1250)
+
+
 def test_stage_six_rejected_match_is_backfilled_into_durable_history(
     tmp_path: Path,
 ) -> None:

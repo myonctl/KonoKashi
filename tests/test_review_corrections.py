@@ -185,7 +185,12 @@ def test_corrections_persist_across_restart_and_reset_independently(
         ("duration differs by 0 ms",),
     )
 
-    service.put_track_override(track, title="Correct Title", artists=("Correct",))
+    service.put_track_override(
+        track,
+        title="Correct Title",
+        artists=("Correct",),
+        album="Correct Album",
+    )
     service.approve_current(track, resolution)
     service.set_display_delay(track, resolution, 125_000)
 
@@ -193,6 +198,7 @@ def test_corrections_persist_across_restart_and_reset_independently(
     override = restarted.track_overrides.get(track.source_identity)
     match = restarted.lyrics_matches.get(track.source_identity)
     assert override is not None and override.title == "Correct Title"
+    assert override.album == "Correct Album"
     assert match is not None
     assert match.document_id == document.document_id
     assert match.decision is LyricsMatchDecision.APPROVED
@@ -427,7 +433,9 @@ def test_session_only_and_stale_source_corrections_are_rejected(tmp_path: Path) 
     generic = _track(generic=True)
 
     with pytest.raises(ReviewCorrectionError, match="session-only"):
-        service.put_track_override(generic, title="Title", artists=("Artist",))
+        service.put_track_override(
+            generic, title="Title", artists=("Artist",), album=None
+        )
     with pytest.raises(ReviewCorrectionError, match="session-only"):
         service.set_display_delay(
             generic,
@@ -454,13 +462,13 @@ def test_session_only_and_stale_source_corrections_are_rejected(tmp_path: Path) 
 def test_blank_track_correction_is_controlled(tmp_path: Path) -> None:
     service, _storage = _service(tmp_path / "blank.sqlite3")
     with pytest.raises(ReviewCorrectionError, match="non-blank"):
-        service.put_track_override(_track(), title=" ", artists=("Artist",))
+        service.put_track_override(_track(), title=" ", artists=("Artist",), album=None)
 
 
 def test_snapshot_marks_existing_override(tmp_path: Path) -> None:
     service, _storage = _service(tmp_path / "override.sqlite3")
     track = _track()
-    service.put_track_override(track, title="Edited", artists=("Artist",))
+    service.put_track_override(track, title="Edited", artists=("Artist",), album=None)
     approved_track = replace(track, user_approved=True, confidence=Confidence.APPROVED)
     snapshot = service.snapshot(
         approved_track,
@@ -525,7 +533,9 @@ def test_every_correction_leaves_local_audio_bytes_unchanged(tmp_path: Path) -> 
         LyricsMatchConfidence.LOW,
     )
 
-    service.put_track_override(track, title="Corrected", artists=("Artist",))
+    service.put_track_override(
+        track, title="Corrected", artists=("Artist",), album=None
+    )
     service.approve_current(track, resolution)
     service.set_display_delay(track, resolution, 125_000)
     service.reject_current(track, resolution)

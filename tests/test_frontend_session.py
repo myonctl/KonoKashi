@@ -8,8 +8,10 @@ from konokashi.application.frontend_session import (
     FrontendLyricsBundle,
     FrontendSessionService,
 )
+from konokashi.application.lyric_corrections import LyricCorrectionService
 from konokashi.application.settings import DesktopInteractionSettings
 from konokashi.domain.identity import YouTubeIdentity
+from konokashi.domain.lyric_corrections import LyricLineCorrection, LyricLineEdit
 from konokashi.domain.lyrics import (
     LyricsAlternativeResult,
     LyricsResolutionResult,
@@ -153,6 +155,22 @@ class _Timing:
         return LyricDocumentTiming(document_id, 25_000)
 
 
+class _LineCorrections:
+    def __init__(self) -> None:
+        self.values: dict[str, tuple[LyricLineCorrection, ...]] = {}
+
+    def get(self, document_id: str) -> tuple[LyricLineCorrection, ...]:
+        return self.values.get(document_id, ())
+
+    def replace(
+        self, document_id: str, corrections: tuple[LyricLineCorrection, ...]
+    ) -> None:
+        self.values[document_id] = corrections
+
+    def reset(self, document_id: str) -> int:
+        return len(self.values.pop(document_id, ()))
+
+
 def test_frontend_session_combines_existing_services_without_adapter_values() -> None:
     track = _track()
     selection = _Selection(track)
@@ -271,3 +289,41 @@ def test_review_only_youtube_enrichment_feeds_bounded_interpretations() -> None:
     assert native in lyrics.searched_track.interpretation_candidates
     assert corrections.alternatives is not None
     assert corrections.alternatives.diagnostics[0] == "enriched"
+
+
+def test_frontend_projects_line_corrections_into_every_shared_display_value() -> None:
+    track = _track()
+    repository = _LineCorrections()
+    service = FrontendSessionService(
+        _Selection(track),  # type: ignore[arg-type]
+        _Lyrics(track),  # type: ignore[arg-type]
+        _Representations(),  # type: ignore[arg-type]
+        _Settings(),  # type: ignore[arg-type]
+        _Timing(),  # type: ignore[arg-type]
+        object(),  # type: ignore[arg-type]
+        lyric_corrections=LyricCorrectionService(repository),
+    )
+    initial = service.load_track(track)
+    assert initial.source_document == document()
+    assert initial.correction_projection is not None
+
+    edits = tuple(
+        LyricLineEdit(
+            line.line_id,
+            "first repaired" if line.line_id == "one" else line.effective_text,
+            line.effective_start_ms,
+        )
+        for line in initial.correction_projection.editor.lines
+    )
+    assert service.put_lyric_edits(initial, edits) == 1
+
+    repaired = service.load_track(track)
+    assert repaired.resolution.document is not None
+    assert repaired.resolution.document.representations[0].lines[0].text == (
+        "first repaired"
+    )
+    assert repaired.line_cache is not None
+    assert repaired.line_cache.originals[0].text == "first repaired"
+    assert repaired.representations[0].original_line.text == "first repaired"
+    assert repaired.resolution.source_label == "fixture + local corrections"
+    assert service.reset_lyric_edits(repaired) == 1

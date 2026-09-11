@@ -8,6 +8,9 @@ from pathlib import Path
 from konokashi.infrastructure.storage.diagnostics import inspect_storage
 from konokashi.infrastructure.storage.errors import UnsupportedSchemaError
 from konokashi.infrastructure.storage.library import SQLiteLibraryRepository
+from konokashi.infrastructure.storage.lyric_corrections import (
+    SQLiteLyricsCorrectionRepository,
+)
 from konokashi.infrastructure.storage.lyrics import SQLiteLyricsRepository
 from konokashi.infrastructure.storage.lyrics_matches import (
     SQLiteLyricsMatchRepository,
@@ -41,6 +44,7 @@ class StorageRepositories:
     track_overrides: SQLiteTrackOverrideRepository
     settings: SQLiteSettingsRepository
     lyrics: SQLiteLyricsRepository
+    lyric_corrections: SQLiteLyricsCorrectionRepository
     lyrics_matches: SQLiteLyricsMatchRepository
     provider_cache: SQLiteProviderCacheRepository
     representations: SQLiteRepresentationRepository
@@ -55,6 +59,7 @@ def _repositories(database: SQLiteDatabase) -> StorageRepositories:
         track_overrides=SQLiteTrackOverrideRepository(database),
         settings=SQLiteSettingsRepository(database),
         lyrics=SQLiteLyricsRepository(database),
+        lyric_corrections=SQLiteLyricsCorrectionRepository(database),
         lyrics_matches=SQLiteLyricsMatchRepository(database),
         provider_cache=SQLiteProviderCacheRepository(database),
         representations=SQLiteRepresentationRepository(database),

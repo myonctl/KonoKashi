@@ -33,6 +33,7 @@ from konokashi.application.settings_service import (
 from konokashi.application.sync_session import PlaybackSyncSession
 from konokashi.domain.identity import GenericMprisIdentity
 from konokashi.domain.library import LibraryScanSummary
+from konokashi.domain.lyric_corrections import LyricLineEdit
 from konokashi.domain.lyrics import (
     LyricsResolutionResult,
     LyricsResolutionStatus,
@@ -220,9 +221,14 @@ class _Frontend:
         return _review_snapshot()
 
     def put_track_override(
-        self, track: ResolvedTrack, *, title: str, artists: tuple[str, ...]
+        self,
+        track: ResolvedTrack,
+        *,
+        title: str,
+        artists: tuple[str, ...],
+        album: str | None,
     ) -> None:
-        self.correction_calls.append(("track", (track, title, artists)))
+        self.correction_calls.append(("track", (track, title, artists, album)))
 
     def reset_track_override(self, track: ResolvedTrack) -> bool:
         self.correction_calls.append(("reset-track", track))
@@ -271,6 +277,20 @@ class _Frontend:
     def reset_display_delay(self, bundle: FrontendLyricsBundle) -> bool:
         self.correction_calls.append(("reset-delay", bundle))
         return True
+
+    def put_lyric_edits(
+        self, bundle: FrontendLyricsBundle, edits: tuple[LyricLineEdit, ...]
+    ) -> int:
+        self.correction_calls.append(("lyric-edits", (bundle, edits)))
+        return len(edits)
+
+    def reset_lyric_edits(self, bundle: FrontendLyricsBundle) -> int:
+        self.correction_calls.append(("reset-lyric-edits", bundle))
+        return 1
+
+    def import_lyric_text(self, bundle: FrontendLyricsBundle, text: str) -> int:
+        self.correction_calls.append(("import-lyric-text", (bundle, text)))
+        return 1
 
 
 class _ImmediateCoordinator(DesktopCoordinator):
@@ -630,12 +650,15 @@ def test_review_load_and_track_correction_dispatch_through_application_boundary(
             CorrectionActionKind.PUT_TRACK_OVERRIDE,
             title="Corrected",
             artists=("Artist",),
+            album="Album",
         )
     )
 
     assert frontend.correction_calls[0][0] == "track"
-    _track_value, title, artists = frontend.correction_calls[0][1]
+    _track_value, title, artists, album = frontend.correction_calls[0][1]
     assert title == "Corrected"
+    assert artists == ("Artist",)
+    assert album == "Album"
     assert artists == ("Artist",)
     assert frontend.load_calls == [track, track]
     coordinator.close()
@@ -684,6 +707,41 @@ def test_representation_corrections_dispatch_exact_document_values(
         "Translated line",
     )
     assert frontend.correction_calls[4][1][1] == "line-0001"
+    coordinator.close()
+    window.close()
+
+
+def test_line_corrections_dispatch_through_shared_frontend_and_reload(
+    qt_app: QApplication,
+) -> None:
+    window = _ReviewWindow()
+    coordinator = _ImmediateCoordinator(qt_app, window)
+    track = _track("xa4WrgqI7q0", "Track A")
+    frontend = _Frontend(track)
+    coordinator._frontend = frontend
+    coordinator._begin_track(track)
+    edit = LyricLineEdit("line-1", "Corrected", 1_250)
+
+    for request in (
+        CorrectionActionRequest(
+            CorrectionActionKind.APPLY_LYRIC_EDITS, line_edits=(edit,)
+        ),
+        CorrectionActionRequest(CorrectionActionKind.RESET_LYRIC_EDITS),
+        CorrectionActionRequest(
+            CorrectionActionKind.IMPORT_LYRIC_TEXT,
+            import_text="[00:01.000]Imported\n",
+        ),
+    ):
+        coordinator._apply_correction(request)
+
+    assert [kind for kind, _value in frontend.correction_calls] == [
+        "lyric-edits",
+        "reset-lyric-edits",
+        "import-lyric-text",
+    ]
+    assert frontend.correction_calls[0][1][1] == (edit,)
+    assert frontend.correction_calls[2][1][1] == "[00:01.000]Imported\n"
+    assert frontend.load_calls == [track, track, track, track]
     coordinator.close()
     window.close()
 

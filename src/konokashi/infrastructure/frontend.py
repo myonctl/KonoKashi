@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 
 from konokashi.application.frontend_session import FrontendSessionService
+from konokashi.application.lyric_corrections import LyricCorrectionService
 from konokashi.application.ports import LyricsProviderPort, SettingsRepositoryPort
 from konokashi.application.representations import RepresentationService
 from konokashi.application.resolve_lyrics import LyricsResolver
@@ -14,6 +15,7 @@ from konokashi.application.select_player import PlayerSelectionService
 from konokashi.application.source_identity import SourceIdentityResolver
 from konokashi.infrastructure.lyrics.embedded import EmbeddedLyricsProvider
 from konokashi.infrastructure.lyrics.local_sidecar import LocalSidecarLyricsProvider
+from konokashi.infrastructure.lyrics.lrc import parse_lyrics_text
 from konokashi.infrastructure.lyrics.provider_documents import (
     ProviderLyricDocumentBuilder,
 )
@@ -89,4 +91,8 @@ def create_frontend_session(
         ),
         lyrics_resolver.cancel_inflight,
         YtDlpYouTubeMetadataEnricher(storage.provider_cache),
+        LyricCorrectionService(
+            storage.lyric_corrections,
+            parser=lambda text, duration: parse_lyrics_text(text, duration_ms=duration),
+        ),
     )

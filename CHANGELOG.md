@@ -26,6 +26,11 @@ All notable user-visible changes are recorded here.
 - Configurable provider preference and bounded parallel lookup with isolated
   failure, cancellation, privacy-safe duration/result diagnostics, and
   conservative conflict handling instead of first-response selection.
+- A compact lyric line editor reachable from the active view, with immutable
+  source evidence, local text/timestamp overlays, playback-position stamping,
+  preview, undo, ordering validation, and one-action revert.
+- Portable UTF-8 plain-text and LRC import/export for the current lyric document,
+  including private atomic file writes and explicit overwrite protection.
 
 ### Changed
 
@@ -42,6 +47,8 @@ All notable user-visible changes are recorded here.
   original/reading/translation hierarchy; explicit existing choices are kept.
 - Wayland overlay behavior is described as a portable Qt top-most fallback;
   above-fullscreen layer-shell placement is not claimed when unavailable.
+- Resolved-track corrections now cover album as well as title and artists, while
+  provider metadata and media tags remain unchanged.
 
 ## 0.1.0-beta.1 — 2026-09-10
 

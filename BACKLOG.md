@@ -4,9 +4,8 @@ This is a compact list of accepted future problems. Details and sequencing belon
 in issues when work begins; an entry here is not a promise or implementation
 authorization.
 
-- Edit and approve lyric text and individual line timestamps without replacing
-  provider originals.
-- Stamp plain lyrics during playback as a fast manual synchronization fallback.
+- Extend the compact line editor to trustworthy word-level rich timing after
+  the line-based workflow has matured; avoid a DAW-like editing surface.
 - Add a full-screen synchronized-lyrics TUI.
 - Stabilize machine-readable current-line and event output for desktop widgets
   and streaming tools.

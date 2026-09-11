@@ -1055,6 +1055,7 @@ class DesktopCoordinator(QObject):
                     track,
                     title=action.title or "",
                     artists=action.artists,
+                    album=action.album,
                 )
             elif action.kind is CorrectionActionKind.RESET_TRACK_OVERRIDE:
                 frontend.reset_track_override(track)
@@ -1105,6 +1106,16 @@ class DesktopCoordinator(QObject):
                 if document is None:
                     raise ValueError("no lyric document delay can be reset")
                 frontend.reset_display_delay(bundle)
+            elif action.kind is CorrectionActionKind.APPLY_LYRIC_EDITS:
+                if not action.line_edits:
+                    raise ValueError("the lyric editor returned no source lines")
+                frontend.put_lyric_edits(bundle, action.line_edits)
+            elif action.kind is CorrectionActionKind.RESET_LYRIC_EDITS:
+                frontend.reset_lyric_edits(bundle)
+            elif action.kind is CorrectionActionKind.IMPORT_LYRIC_TEXT:
+                if action.import_text is None:
+                    raise ValueError("no pasted lyric text was supplied")
+                frontend.import_lyric_text(bundle, action.import_text)
 
         def applied(result: object | None, error: BaseException | None) -> None:
             del result

@@ -37,6 +37,7 @@ class StorageCounts:
     representation_decisions: int = 0
     language_overrides: int = 0
     lyric_document_delays: int = 0
+    lyric_line_corrections: int = 0
     audio_output_calibrations: int = 0
     library_roots: int = 0
     library_tracks: int = 0
@@ -99,6 +100,7 @@ def render_storage_status(status: StorageStatus) -> str:
                 f"representation decisions: {status.counts.representation_decisions}",
                 f"lyric language overrides: {status.counts.language_overrides}",
                 f"lyric document delays: {status.counts.lyric_document_delays}",
+                f"lyric line corrections: {status.counts.lyric_line_corrections}",
                 f"audio output calibrations: {status.counts.audio_output_calibrations}",
                 f"library roots: {status.counts.library_roots}",
                 f"library tracks: {status.counts.library_tracks}",

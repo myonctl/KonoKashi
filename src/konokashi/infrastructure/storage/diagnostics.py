@@ -115,6 +115,11 @@ def inspect_storage(path: Path) -> StorageStatus:
                             "SELECT COUNT(*) FROM lyric_document_timing"
                         ).fetchone()[0]
                     ),
+                    lyric_line_corrections=int(
+                        connection.execute(
+                            "SELECT COUNT(*) FROM lyric_line_corrections"
+                        ).fetchone()[0]
+                    ),
                     audio_output_calibrations=int(
                         connection.execute(
                             "SELECT COUNT(*) FROM audio_output_calibrations"

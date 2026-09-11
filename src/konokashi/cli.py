@@ -475,6 +475,22 @@ def _parser() -> argparse.ArgumentParser:
     lyrics_search.add_argument(
         "--json", action="store_true", help="emit stable machine-readable JSON"
     )
+    lyrics_export = lyrics_commands.add_parser(
+        "export", help="export effective current lyrics as UTF-8 plain text or LRC"
+    )
+    lyrics_export.add_argument("target", choices=("current",))
+    lyrics_export.add_argument("output", type=Path)
+    lyrics_export.add_argument("--format", choices=("plain", "lrc"), required=True)
+    lyrics_export.add_argument("--offline", action="store_true")
+    lyrics_export.add_argument(
+        "--force", action="store_true", help="explicitly replace an existing file"
+    )
+    lyrics_import = lyrics_commands.add_parser(
+        "import", help="import aligned UTF-8 LRC/plain text for the current lyrics"
+    )
+    lyrics_import.add_argument("target", choices=("current",))
+    lyrics_import.add_argument("input", type=Path)
+    lyrics_import.add_argument("--offline", action="store_true")
     romanize = lyrics_commands.add_parser(
         "romanize", help="generate and persist offline representations"
     )
@@ -1230,6 +1246,56 @@ def _run_lyrics(
     except StorageError as error:
         print(f"Unable to use KonoKashi storage: {error}", file=sys.stderr)
         return 1
+
+    if arguments.lyrics_command in {"export", "import"}:
+        from konokashi.application.lyric_corrections import LyricCorrectionService
+        from konokashi.application.lyric_exchange import (
+            LyricExchangeFormat,
+            document_lyric_edits,
+            serialize_lyric_edits,
+        )
+        from konokashi.domain.identity import PersistenceScope
+        from konokashi.infrastructure.lyrics.files import (
+            read_lyric_exchange,
+            write_lyric_exchange,
+        )
+        from konokashi.infrastructure.lyrics.lrc import parse_lyrics_text
+
+        if result.document is None:
+            print("No lyric document is available for import/export.", file=sys.stderr)
+            return 1
+        corrections = LyricCorrectionService(
+            storage.lyric_corrections,
+            parser=lambda text, duration: parse_lyrics_text(text, duration_ms=duration),
+        )
+        try:
+            if arguments.lyrics_command == "import":
+                if (
+                    selection.selected.track.source_identity.persistence_scope
+                    is not PersistenceScope.PERMANENT
+                ):
+                    raise ValueError(
+                        "session-only sources cannot receive durable lyric corrections"
+                    )
+                content = read_lyric_exchange(arguments.input)
+                changed = corrections.import_text(result.document, content)
+                print(f"Imported {changed} local lyric line correction(s).")
+                print("source lyric document: unchanged")
+                return 0
+            effective = corrections.project(result.document).document
+            content = serialize_lyric_edits(
+                document_lyric_edits(effective),
+                LyricExchangeFormat(arguments.format),
+            )
+            output = write_lyric_exchange(
+                arguments.output, content, overwrite=arguments.force
+            )
+            print(f"Exported effective {arguments.format.upper()} lyrics: {output}")
+            print("source lyric document: unchanged")
+            return 0
+        except (OSError, StorageError, ValueError) as error:
+            print(f"Unable to exchange lyrics: {error}", file=sys.stderr)
+            return 2
 
     if arguments.lyrics_command == "current":
         print(
