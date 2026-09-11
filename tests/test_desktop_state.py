@@ -9,7 +9,10 @@ from konokashi.application.desktop_state import (
     DesktopStateController,
 )
 from konokashi.application.lyrics_sync import synchronize
-from konokashi.application.sync_state import build_sync_snapshot
+from konokashi.application.sync_state import (
+    SynchronizedTimingSegment,
+    build_sync_snapshot,
+)
 from konokashi.domain.identity import YouTubeIdentity
 from konokashi.domain.lyrics import (
     ContentProvenance,
@@ -218,6 +221,71 @@ def test_live_snapshots_follow_pause_resume_seek_and_rapid_seek() -> None:
             replace(backward, disciplined_player_position_us=position)
         )
     assert controller.state.generation == token.generation
+
+
+def test_only_fully_trusted_exact_leaf_timing_becomes_karaoke_spans() -> None:
+    controller = DesktopStateController()
+    track = _track("xa4WrgqI7q0", "Track")
+    token = controller.begin_resolution(track)
+    base = _snapshot(track, token.generation)
+    line = base.active[0]
+    trusted = (
+        SynchronizedTimingSegment(
+            "word-1",
+            "second ",
+            "word",
+            2_000_000,
+            2_400_000,
+            2_000_000,
+            2_400_000,
+            "provider",
+            highlight_fraction=0.5,
+        ),
+        SynchronizedTimingSegment(
+            "word-2",
+            "A",
+            "word",
+            2_400_000,
+            2_800_000,
+            2_400_000,
+            2_800_000,
+            "user-edited",
+            highlight_fraction=0.0,
+        ),
+    )
+
+    assert controller.accept_snapshot(
+        replace(base, active=(replace(line, timing_segments=trusted), *base.active[1:]))
+    )
+    spans = controller.state.active[0].karaoke_segments
+    assert [(span.start_index, span.end_index) for span in spans] == [(0, 7), (7, 8)]
+    assert [span.highlight_fraction for span in spans] == [0.5, 0.0]
+
+    untrusted = replace(
+        trusted[1], timing_provenance="estimated", highlight_fraction=None
+    )
+    assert controller.accept_snapshot(
+        replace(
+            base,
+            active=(
+                replace(line, timing_segments=(trusted[0], untrusted)),
+                *base.active[1:],
+            ),
+        )
+    )
+    assert controller.state.active[0].karaoke_segments == ()
+
+    misaligned = replace(trusted[1], text="not A")
+    assert controller.accept_snapshot(
+        replace(
+            base,
+            active=(
+                replace(line, timing_segments=(trusted[0], misaligned)),
+                *base.active[1:],
+            ),
+        )
+    )
+    assert controller.state.active[0].karaoke_segments == ()
 
 
 def test_chinese_active_transition_moves_original_and_pinyin_as_one_group() -> None:

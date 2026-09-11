@@ -33,7 +33,11 @@ from konokashi.application.settings_service import (
 from konokashi.application.sync_session import PlaybackSyncSession
 from konokashi.domain.identity import GenericMprisIdentity
 from konokashi.domain.library import LibraryScanSummary
-from konokashi.domain.lyrics import LyricsResolutionResult, LyricsResolutionStatus
+from konokashi.domain.lyrics import (
+    LyricsResolutionResult,
+    LyricsResolutionStatus,
+    LyricTimingLevel,
+)
 from konokashi.domain.models import (
     PlayerEvent,
     PlayerEventKind,
@@ -62,6 +66,7 @@ from konokashi.presentation.desktop.review_dialog import (
 from konokashi.presentation.desktop.settings_window import OrderedStringListEditor
 from tests.test_desktop_state import _snapshot, _track
 from tests.test_desktop_widgets import _review_snapshot
+from tests.test_lyrics_sync import document as lyric_document
 
 
 @pytest.fixture(scope="module")
@@ -1099,6 +1104,43 @@ def test_temporary_timing_offset_composes_once_and_survives_session_events(
     restarted._start_playback_session(bundle_a)
     assert restarted._calibration.lyrics.shift_us == 125_000
     restarted.close()
+    coordinator.close()
+    window.close()
+
+
+def test_rich_timing_uses_a_smooth_local_projection_cadence(
+    qt_app: QApplication,
+) -> None:
+    window = MainWindow()
+    coordinator = _CalibrationCoordinator(
+        qt_app,
+        window,
+        runtime=_Runtime(),  # type: ignore[arg-type]
+    )
+    track = _track("xa4WrgqI7q0", "Track")
+    frontend = _Frontend(track)
+    line_bundle = frontend.load_track(track)
+    document = lyric_document()
+    line_bundle = replace(
+        line_bundle,
+        resolution=LyricsResolutionResult(
+            track.source_identity,
+            LyricsResolutionStatus.FOUND_TIMED,
+            document=document,
+        ),
+    )
+    rich_bundle = replace(
+        line_bundle,
+        resolution=replace(
+            line_bundle.resolution,
+            document=replace(document, timing_level=LyricTimingLevel.WORD),
+        ),
+    )
+
+    coordinator._start_playback_session(rich_bundle)
+    assert coordinator._sync_timer.interval() == 33
+    coordinator._start_playback_session(line_bundle)
+    assert coordinator._sync_timer.interval() == 100
     coordinator.close()
     window.close()
 

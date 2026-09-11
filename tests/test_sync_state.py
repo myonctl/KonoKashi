@@ -6,6 +6,7 @@ from konokashi.application.lyrics_sync import synchronize
 from konokashi.application.sync_state import (
     SourceGenerationGuard,
     SynchronizationPublisher,
+    SynchronizedTimingSegment,
     build_sync_snapshot,
 )
 from konokashi.domain.identity import YouTubeIdentity
@@ -135,7 +136,7 @@ def test_rich_timing_degrades_to_lines_and_projects_calibrated_segments() -> Non
         AudioOutputLatency(100_000, 5_000, "test"),
         LyricTimingCalibration(50_000),
     )
-    current_estimate = estimate()
+    current_estimate = estimate(2_350_000)
 
     snapshot = build_sync_snapshot(
         generation=1,
@@ -156,7 +157,9 @@ def test_rich_timing_degrades_to_lines_and_projects_calibrated_segments() -> Non
     assert projected.timing_segments[0].effective_start_us == 2_050_000
     assert projected.timing_segments[0].effective_end_us == 2_450_000
     assert projected.timing_segments[0].timing_provenance == "provider"
+    assert projected.timing_segments[0].highlight_fraction == 0.5
     assert projected.timing_segments[1].timing_provenance == "estimated"
+    assert projected.timing_segments[1].highlight_fraction is None
 
 
 def test_snapshot_retains_explained_missing_representation_diagnostics() -> None:
@@ -300,6 +303,61 @@ def test_publisher_suppresses_identical_state_and_unsubscribes_cleanly() -> None
     assert publisher.subscriber_count == 0
     publisher.publish(replace(snapshot, generation=2))
     assert received == [snapshot, active_transition]
+
+
+def test_publisher_delivers_clock_driven_karaoke_progress() -> None:
+    lyric_document = document()
+    raw = replace(fixture_snapshot("stage2/youtube_jesskah.json"), rate=1.0)
+    track = ResolvedTrack(
+        raw,
+        YouTubeIdentity("xa4WrgqI7q0"),
+        TrackCandidate("Track", ("Artist",), None, 5_000_000),
+        Confidence.HIGH,
+    )
+    calibration = SynchronizationCalibration(AudioOutputLatency(0, 0, "test"))
+    current_estimate = estimate()
+    snapshot = build_sync_snapshot(
+        generation=1,
+        track=track,
+        document=lyric_document,
+        estimate=current_estimate,
+        frame=synchronize(lyric_document, current_estimate, calibration),
+        calibration=calibration,
+    )
+    segment = SynchronizedTimingSegment(
+        "word",
+        snapshot.active[0].original,
+        "word",
+        2_000_000,
+        2_500_000,
+        2_000_000,
+        2_500_000,
+        "provider",
+        highlight_fraction=0.25,
+    )
+    first = replace(
+        snapshot,
+        active=(
+            replace(snapshot.active[0], timing_segments=(segment,)),
+            *snapshot.active[1:],
+        ),
+    )
+    advanced_segment = replace(segment, highlight_fraction=0.5)
+    advanced = replace(
+        first,
+        active=(
+            replace(first.active[0], timing_segments=(advanced_segment,)),
+            *first.active[1:],
+        ),
+        disciplined_player_position_us=first.disciplined_player_position_us + 125_000,
+    )
+    received = []
+    publisher = SynchronizationPublisher()
+    publisher.subscribe(received.append)
+
+    assert publisher.publish(first)
+    assert publisher.publish(advanced)
+    assert received == [first, advanced]
 
 
 def test_generation_guard_rejects_a_after_b_and_rapid_a_b_c_results() -> None:

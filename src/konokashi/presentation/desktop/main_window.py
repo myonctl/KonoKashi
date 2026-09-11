@@ -4,14 +4,17 @@ from __future__ import annotations
 
 from html import escape
 from types import MappingProxyType
+from typing import cast
 
 from PySide6.QtCore import (
     Property,
     QAbstractAnimation,
     QEasingCurve,
     QEvent,
+    QPointF,
     QPropertyAnimation,
     QRect,
+    QRectF,
     QSize,
     Qt,
     QTimer,
@@ -25,8 +28,13 @@ from PySide6.QtGui import (
     QHideEvent,
     QKeySequence,
     QPainter,
+    QPaintEvent,
     QPalette,
     QResizeEvent,
+    QTextCharFormat,
+    QTextLayout,
+    QTextLine,
+    QTextOption,
 )
 from PySide6.QtWidgets import (
     QBoxLayout,
@@ -53,6 +61,7 @@ from konokashi.application.appearance import (
     default_appearance_profile,
 )
 from konokashi.application.desktop_state import (
+    DesktopKaraokeSegment,
     DesktopLyricGroup,
     DesktopLyricsState,
     DesktopViewState,
@@ -273,6 +282,44 @@ def _group_text(groups: tuple[DesktopLyricGroup, ...]) -> str:
     return "\n\n".join(rendered)
 
 
+def _lyric_group_layout_key(group: DesktopLyricGroup) -> tuple[object, ...]:
+    """Return lyric content/identity while excluding clock-driven color fill."""
+
+    return (
+        group.line_id,
+        group.original,
+        group.romanized_or_transliterated,
+        group.translation,
+        group.provenance,
+        group.transition_us,
+    )
+
+
+def _desktop_layout_key(state: DesktopViewState) -> tuple[object, ...]:
+    """Identify states that require semantic layout or transition work."""
+
+    return (
+        state.state,
+        state.status_message,
+        state.generation,
+        state.title,
+        state.artists,
+        state.album,
+        state.player,
+        state.playback_state,
+        state.duration_us,
+        tuple(_lyric_group_layout_key(group) for group in state.previous),
+        tuple(_lyric_group_layout_key(group) for group in state.active),
+        tuple(_lyric_group_layout_key(group) for group in state.next),
+        tuple(_lyric_group_layout_key(group) for group in state.static_lines),
+        state.lyrics_source,
+        state.match_confidence,
+        state.sync_health,
+        state.display_delay_us,
+        state.diagnostics,
+    )
+
+
 def _timestamp_context(
     groups: tuple[DesktopLyricGroup, ...], count: int, *, preceding: bool
 ) -> tuple[DesktopLyricGroup, ...]:
@@ -296,6 +343,134 @@ def _timestamp_context(
 
 class _WrappedLyricLabel(QLabel):
     """Plain wrapped text with a width-dependent document height."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self._karaoke_segments: tuple[DesktopKaraokeSegment, ...] = ()
+        self._karaoke_base_color = QColor()
+        self._karaoke_highlight_color = QColor()
+
+    @property
+    def karaoke_segments(self) -> tuple[DesktopKaraokeSegment, ...]:
+        return self._karaoke_segments
+
+    def set_karaoke_segments(self, segments: tuple[DesktopKaraokeSegment, ...]) -> None:
+        if segments == self._karaoke_segments:
+            return
+        self._karaoke_segments = segments
+        self.setAccessibleDescription(
+            "Word-timed lyric highlighting" if segments else ""
+        )
+        self._apply_karaoke_palette()
+        self.update()
+
+    def set_karaoke_colors(self, base: QColor, highlight: QColor) -> None:
+        if (
+            base == self._karaoke_base_color
+            and highlight == self._karaoke_highlight_color
+        ):
+            return
+        self._karaoke_base_color = QColor(base)
+        self._karaoke_highlight_color = QColor(highlight)
+        self._apply_karaoke_palette()
+        self.update()
+
+    def _apply_karaoke_palette(self) -> None:
+        color = (
+            self._karaoke_base_color
+            if self._karaoke_segments
+            else self._karaoke_highlight_color
+        )
+        if color.isValid():
+            _apply_text_palette(self, color)
+
+    def _karaoke_layout(self) -> tuple[QTextLayout, QPointF]:
+        rect = self.contentsRect()
+        layout = QTextLayout(self.text(), self.font())
+        option = QTextOption()
+        option.setWrapMode(QTextOption.WrapMode.WrapAtWordBoundaryOrAnywhere)
+        option.setAlignment(
+            self.alignment()
+            & (
+                Qt.AlignmentFlag.AlignLeft
+                | Qt.AlignmentFlag.AlignRight
+                | Qt.AlignmentFlag.AlignHCenter
+                | Qt.AlignmentFlag.AlignJustify
+            )
+        )
+        layout.setTextOption(option)
+        layout.beginLayout()
+        height = 0.0
+        while True:
+            line = layout.createLine()
+            if not line.isValid():
+                break
+            line.setLineWidth(max(1, rect.width()))
+            line.setPosition(QPointF(0.0, height))
+            height += line.height()
+        layout.endLayout()
+        if self.alignment() & Qt.AlignmentFlag.AlignBottom:
+            y = rect.bottom() - height + 1
+        elif self.alignment() & Qt.AlignmentFlag.AlignVCenter:
+            y = rect.top() + (rect.height() - height) / 2
+        else:
+            y = rect.top()
+        return layout, QPointF(rect.left(), y)
+
+    @staticmethod
+    def _segment_line_pieces(
+        layout: QTextLayout, segment: DesktopKaraokeSegment
+    ) -> tuple[tuple[QTextLine, float, float], ...]:
+        pieces: list[tuple[QTextLine, float, float]] = []
+        for line_index in range(layout.lineCount()):
+            line = layout.lineAt(line_index)
+            start = max(segment.start_index, line.textStart())
+            end = min(
+                segment.end_index,
+                line.textStart() + line.textLength(),
+            )
+            if start >= end:
+                continue
+            start_x = cast(tuple[float, int], line.cursorToX(start))[0]
+            end_x = cast(tuple[float, int], line.cursorToX(end))[0]
+            pieces.append((line, start_x, end_x))
+        return tuple(pieces)
+
+    def paintEvent(self, event: QPaintEvent) -> None:
+        super().paintEvent(event)
+        if not self._karaoke_segments or self.hasSelectedText():
+            return
+        layout, origin = self._karaoke_layout()
+        painter = QPainter(self)
+        painter.setPen(self._karaoke_base_color)
+        text_format = QTextCharFormat()
+        text_format.setForeground(self._karaoke_highlight_color)
+        for segment in self._karaoke_segments:
+            progress = min(1.0, max(0.0, segment.highlight_fraction))
+            if progress <= 0:
+                continue
+            selection = QTextLayout.FormatRange()
+            selection.start = segment.start_index
+            selection.length = segment.end_index - segment.start_index
+            selection.format = text_format
+            pieces = self._segment_line_pieces(layout, segment)
+            remaining = (
+                sum(abs(end_x - start_x) for _, start_x, end_x in pieces) * progress
+            )
+            for line, start_x, end_x in pieces:
+                width = abs(end_x - start_x)
+                painted_width = min(width, remaining)
+                if painted_width <= 0:
+                    break
+                left = start_x if end_x >= start_x else start_x - painted_width
+                clip = QRectF(
+                    origin.x() + left,
+                    origin.y() + line.y(),
+                    painted_width,
+                    line.height(),
+                )
+                layout.draw(painter, origin, (selection,), clip)
+                remaining -= painted_width
 
     def hasHeightForWidth(self) -> bool:
         return True
@@ -363,14 +538,25 @@ class _LyricGroupWidget(QWidget):
         layout.addWidget(self.translation)
 
     def set_group(self, group: DesktopLyricGroup) -> None:
+        layout_changed = False
         for label, text in (
             (self.original, group.original),
             (self.romanized, group.romanized_or_transliterated),
             (self.translation, group.translation),
         ):
-            label.setText(text or "")
-            label.setVisible(text is not None)
-        self.updateGeometry()
+            rendered = text or ""
+            visible = text is not None
+            if label.text() != rendered:
+                label.setText(rendered)
+                layout_changed = True
+            if label.isHidden() == visible:
+                label.setVisible(visible)
+                layout_changed = True
+        self.original.set_karaoke_segments(
+            group.karaoke_segments if self._active else ()
+        )
+        if layout_changed:
+            self.updateGeometry()
 
     def hasHeightForWidth(self) -> bool:
         return True
@@ -445,6 +631,19 @@ class _LyricGroupWidget(QWidget):
                 )
             _apply_text_palette(label, semantic_color)
             label.setAlignment(_qt_alignment(appearance.lyric_alignment))
+        active_color = _semantic_color(
+            appearance.colors.active_lyric, appearance.opacity.content
+        )
+        karaoke_base = _semantic_color(
+            appearance.colors.inactive_lyric, appearance.opacity.content
+        )
+        if self._active:
+            self.original.set_karaoke_colors(karaoke_base, active_color)
+        else:
+            karaoke_base.setAlpha(
+                round(karaoke_base.alpha() * appearance.opacity.inactive_line / 100)
+            )
+            self.original.set_karaoke_colors(karaoke_base, karaoke_base)
         self._layout.setSpacing(appearance.spacing.representation)
         self.updateGeometry()
 
@@ -522,7 +721,21 @@ class LyricBand(QWidget):
             widget.apply_appearance(appearance, scale)
 
     def set_groups(self, groups: tuple[DesktopLyricGroup, ...]) -> None:
+        same_layout = len(groups) == len(self._groups) and all(
+            _lyric_group_layout_key(current) == _lyric_group_layout_key(incoming)
+            for current, incoming in zip(self._groups, groups, strict=True)
+        )
         self._groups = groups
+        if same_layout:
+            for group, widget in zip(
+                groups[: self._MAX_VISIBLE_GROUPS],
+                self._group_widgets,
+                strict=False,
+            ):
+                widget.original.set_karaoke_segments(
+                    group.karaoke_segments if self._active else ()
+                )
+            return
         self._render_groups()
 
     def hasHeightForWidth(self) -> bool:
@@ -1197,6 +1410,7 @@ class MainWindow(DesktopWindowSurface):
     def set_appearance_profile(self, appearance: AppearanceProfile) -> None:
         """Apply one resolved semantic profile without touching playback state."""
 
+        self._lyric_column.settle()
         self._appearance = appearance
         self.application_menu.project(appearance)
         scale = self._applied_typography_scale or self._responsive_scale(
@@ -1306,6 +1520,11 @@ class MainWindow(DesktopWindowSurface):
         """Render one immutable semantic state without external side effects."""
 
         previous_state = self._state
+        if _desktop_layout_key(previous_state) == _desktop_layout_key(state):
+            self._state = state
+            self.active_band.set_groups(state.active)
+            self.update_playback(state)
+            return
         transition_direction = self._lyric_transition_direction(previous_state, state)
         transition_anchor = self._lyric_column.capture_anchor(
             tuple(group.line_id for group in state.active),

@@ -42,6 +42,7 @@ class SynchronizedTimingSegment:
     timing_provenance: str | None
     parent_segment_id: str | None = None
     provider_unit: str | None = None
+    highlight_fraction: float | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -148,6 +149,7 @@ def _line_bundle(
     original_index: int,
     document_delay_us: int,
     line_shift_us: int,
+    display_position_us: int,
     representations: Mapping[
         tuple[str, RepresentationKind], EffectiveRepresentationLine
     ],
@@ -175,6 +177,24 @@ def _line_bundle(
         None if source_us is None else source_us + document_delay_us + line_shift_us
     )
     timing_shift_us = document_delay_us + line_shift_us
+    trusted_karaoke_provenance = {
+        "provider",
+        "imported",
+        "user-approved",
+        "user-edited",
+    }
+
+    def highlight_fraction(
+        start_us: int, end_us: int | None, provenance: str | None
+    ) -> float | None:
+        if provenance not in trusted_karaoke_provenance:
+            return None
+        if display_position_us <= start_us:
+            return 0.0
+        if end_us is None or end_us <= start_us:
+            return 1.0
+        return min(1.0, (display_position_us - start_us) / (end_us - start_us))
+
     timing_segments = tuple(
         SynchronizedTimingSegment(
             segment.segment_id,
@@ -195,6 +215,19 @@ def _line_bundle(
             ),
             segment.parent_segment_id,
             segment.provider_unit,
+            highlight_fraction(
+                segment.start_ms * 1_000 + timing_shift_us,
+                (
+                    None
+                    if segment.end_ms is None
+                    else segment.end_ms * 1_000 + timing_shift_us
+                ),
+                (
+                    None
+                    if segment.timing_provenance is None
+                    else segment.timing_provenance.value
+                ),
+            ),
         )
         for segment in line.timing_segments
     )
@@ -236,6 +269,11 @@ def build_sync_snapshot(
     shifts = dict(
         (*frame.lyrics.active_line_shifts_us, *frame.lyrics.next_line_shifts_us)
     )
+    display_position_us = (
+        frame.media_position_us
+        if frame.audible_position_us is None
+        else frame.audible_position_us
+    )
 
     def bundle(lines: tuple[LyricLine, ...]) -> tuple[SynchronizedLine, ...]:
         return tuple(
@@ -247,6 +285,7 @@ def build_sync_snapshot(
                     line.line_id,
                     calibration.lyrics.line_shift_us(line.line_id),
                 ),
+                display_position_us=display_position_us,
                 representations=by_line_kind,
             )
             for line in lines
@@ -392,6 +431,7 @@ class SynchronizationPublisher:
             snapshot.lyrics_source,
             snapshot.lyrics_match_confidence,
             snapshot.lyric_document_id,
+            snapshot.lyrics_timing_level,
             snapshot.lyrics_display_delay_us,
             snapshot.previous,
             snapshot.active,

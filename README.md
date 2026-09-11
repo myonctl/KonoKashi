@@ -31,8 +31,9 @@ local-first, deeply customizable, and source-available.
 
 ## Features
 
-- **Synchronized lyrics:** timed line changes with pause, seek, track-change, and
-  playback-progress handling; plain and instrumental states remain explicit.
+- **Synchronized lyrics:** timed line changes plus progressive highlighting for
+  trustworthy word-timed lyrics, with exact pause, seek, rate, and track-change
+  handling; line-only, plain, and instrumental states remain explicit.
 - **Multilingual layers:** original text plus aligned romanization or
   transliteration and optional translation, with provenance preserved.
 - **Local-first resolution:** sidecar and embedded lyrics, SQLite-backed cache,
@@ -136,7 +137,7 @@ certified.
 Translation generation is not implemented. A translation layer contains aligned
 provider, imported, local, or user-approved text; KonoKashi does not silently
 send lyrics to a machine-translation service. A full lyrics TUI, web frontend,
-karaoke mode, word-level timing, and Windows support are future work.
+additional rich-timing provider formats, and Windows support are future work.
 
 ## What's next
 

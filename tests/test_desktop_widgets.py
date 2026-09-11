@@ -23,6 +23,7 @@ from PySide6.QtWidgets import (
 )
 
 from konokashi.application.desktop_state import (
+    DesktopKaraokeSegment,
     DesktopLyricGroup,
     DesktopLyricsState,
     DesktopViewState,
@@ -143,6 +144,35 @@ def test_main_window_launches_and_renders_plain_multilingual_text(
     assert window.active_band.accessibleName() == "Current lyric"
     assert window.progress.value() == 420
     assert window.title_label.toolTip() == state.title
+    window.close()
+
+
+def test_line_only_active_and_context_colors_keep_their_visual_hierarchy(
+    qt_app: QApplication,
+) -> None:
+    window = MainWindow()
+    colors = replace(
+        window.appearance_profile.colors,
+        active_lyric="#FF0000",
+        inactive_lyric="#0000FF",
+    )
+    window.set_appearance_profile(replace(window.appearance_profile, colors=colors))
+    window.render_state(_state())
+    window.show()
+    qt_app.processEvents()
+
+    active = (
+        window.active_band._group_widgets[0]
+        .original.palette()
+        .color(QPalette.ColorRole.WindowText)
+    )
+    previous = (
+        window.previous_band._group_widgets[0]
+        .original.palette()
+        .color(QPalette.ColorRole.WindowText)
+    )
+    assert active.red() > active.blue()
+    assert previous.blue() > previous.red()
     window.close()
 
 
@@ -334,6 +364,91 @@ def test_untrusted_unicode_and_markup_render_as_plain_text(
     assert window.active_band._group_widgets[0].original.text() == text
     assert window.active_band.textFormat() is Qt.TextFormat.PlainText
     assert not window.active_band.openExternalLinks()
+    window.close()
+
+
+@pytest.mark.parametrize(
+    "text",
+    (
+        "A long karaoke phrase that wraps naturally across the narrow window",
+        "君の声が聞こえる夜の街を越えて歌が続いていく",
+        "أسمع صوتك عبر شوارع الليل البعيدة",
+    ),
+)
+def test_karaoke_overlay_preserves_plain_wrapped_multiscript_text(
+    qt_app: QApplication, text: str
+) -> None:
+    window = MainWindow()
+    colors = replace(
+        window.appearance_profile.colors,
+        active_lyric="#FF0000",
+        inactive_lyric="#0000FF",
+    )
+    window.set_appearance_profile(replace(window.appearance_profile, colors=colors))
+    split = max(1, len(text) // 2)
+    active = DesktopLyricGroup(
+        "active",
+        text,
+        karaoke_segments=(
+            DesktopKaraokeSegment("first", 0, split, 0.5),
+            DesktopKaraokeSegment("second", split, len(text), 0.0),
+        ),
+    )
+    window.resize(420, 520)
+    window.render_state(replace(_state(), active=(active,)))
+    window.show()
+    qt_app.processEvents()
+
+    label = window.active_band._group_widgets[0].original
+    image = label.grab().toImage()
+    pixels = (
+        image.pixelColor(x, y)
+        for y in range(image.height())
+        for x in range(image.width())
+    )
+    colors_seen = tuple(color for color in pixels if color.alpha() > 0)
+    assert any(color.red() > color.blue() for color in colors_seen)
+    assert any(color.blue() > color.red() for color in colors_seen)
+    assert label.text() == text
+    assert label.accessibleDescription() == "Word-timed lyric highlighting"
+    window.close()
+
+
+def test_progress_only_karaoke_update_does_not_relayout_or_restart_transition(
+    qt_app: QApplication, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    window = MainWindow()
+    text = "karaoke line"
+    initial = DesktopLyricGroup(
+        "active",
+        text,
+        karaoke_segments=(DesktopKaraokeSegment("word", 0, len(text), 0.25),),
+    )
+    state = replace(_state(), active=(initial,))
+    window.render_state(state)
+    window.show()
+    qt_app.processEvents()
+    geometry = window.active_band._group_widgets[0].geometry()
+    relayouts = 0
+    original_relayout = window._lyric_column.relayout
+
+    def counted_relayout(*, center_active: bool = False) -> None:
+        nonlocal relayouts
+        relayouts += 1
+        original_relayout(center_active=center_active)
+
+    monkeypatch.setattr(window._lyric_column, "relayout", counted_relayout)
+    updated = replace(
+        initial,
+        karaoke_segments=(DesktopKaraokeSegment("word", 0, len(text), 0.75),),
+    )
+    window.render_state(replace(state, active=(updated,), position_us=42_030_000))
+
+    label = window.active_band._group_widgets[0].original
+    assert label.karaoke_segments[0].highlight_fraction == 0.75
+    assert window.active_band._group_widgets[0].geometry() == geometry
+    assert relayouts == 0
+    assert not window._lyric_column.animation_running
     window.close()
 
 

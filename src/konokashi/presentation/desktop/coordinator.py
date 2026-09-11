@@ -54,7 +54,11 @@ from konokashi.application.sync_state import (
     build_sync_snapshot,
 )
 from konokashi.domain.library import LibraryReviewItem, LibraryScanSummary
-from konokashi.domain.lyrics import LyricDocumentKind, LyricsResolutionStatus
+from konokashi.domain.lyrics import (
+    LyricDocumentKind,
+    LyricsResolutionStatus,
+    LyricTimingLevel,
+)
 from konokashi.domain.models import (
     PlayerEvent,
     PlayerEventKind,
@@ -653,6 +657,14 @@ class DesktopCoordinator(QObject):
         )
         self._publisher = SynchronizationPublisher()
         self._snapshot_subscription = self._publisher.subscribe(self._accept_snapshot)
+        document = bundle.resolution.document
+        self._sync_timer.setInterval(
+            33
+            if document is not None
+            and document.timing_level
+            in {LyricTimingLevel.WORD, LyricTimingLevel.ELEMENT}
+            else 100
+        )
         self._sync_timer.start()
         self._sync_tick()
 

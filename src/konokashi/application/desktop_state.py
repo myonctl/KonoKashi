@@ -45,6 +45,16 @@ class DesktopLyricsState(Enum):
 
 
 @dataclass(frozen=True, slots=True)
+class DesktopKaraokeSegment:
+    """A trusted timed span within the original line's plain text."""
+
+    segment_id: str
+    start_index: int
+    end_index: int
+    highlight_fraction: float
+
+
+@dataclass(frozen=True, slots=True)
 class DesktopLyricGroup:
     """One grouped original/romanized/translated line for display."""
 
@@ -54,6 +64,7 @@ class DesktopLyricGroup:
     translation: str | None = None
     provenance: tuple[str, ...] = field(default_factory=tuple)
     transition_us: int | None = None
+    karaoke_segments: tuple[DesktopKaraokeSegment, ...] = field(default_factory=tuple)
 
 
 @dataclass(frozen=True, slots=True)
@@ -389,6 +400,7 @@ class DesktopStateController:
                 line.translation if self._settings.show_translated else None,
                 line.representation_provenance,
                 line.effective_transition_us,
+                _trusted_karaoke_segments(line),
             )
             for line in lines
         )
@@ -449,6 +461,46 @@ class DesktopStateController:
                 )
             )
         return tuple(groups)
+
+
+def _trusted_karaoke_segments(
+    line: SynchronizedLine,
+) -> tuple[DesktopKaraokeSegment, ...]:
+    """Project only exact, fully trusted leaf timing onto plain-text offsets."""
+
+    parent_ids = {
+        segment.parent_segment_id
+        for segment in line.timing_segments
+        if segment.parent_segment_id is not None
+    }
+    leaves = tuple(
+        segment
+        for segment in line.timing_segments
+        if segment.segment_id not in parent_ids
+    )
+    if not leaves or any(segment.highlight_fraction is None for segment in leaves):
+        return ()
+
+    output: list[DesktopKaraokeSegment] = []
+    cursor = 0
+    for segment in leaves:
+        if not segment.text or not line.original.startswith(segment.text, cursor):
+            return ()
+        end = cursor + len(segment.text)
+        fraction = segment.highlight_fraction
+        assert fraction is not None
+        output.append(
+            DesktopKaraokeSegment(
+                segment.segment_id,
+                cursor,
+                end,
+                fraction,
+            )
+        )
+        cursor = end
+    if cursor != len(line.original):
+        return ()
+    return tuple(output)
 
 
 def _state_for_resolution_status(status: LyricsResolutionStatus) -> DesktopLyricsState:

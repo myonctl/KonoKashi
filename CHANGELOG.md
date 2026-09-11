@@ -11,6 +11,8 @@ All notable user-visible changes are recorded here.
   and frontend-neutral fallback to line synchronization.
 - Enhanced LRC word timing parsing that retains the original source while
   exposing calibrated word segments to frontend snapshots.
+- Trust-gated desktop karaoke highlighting for exact word-timed lyrics, with
+  wrapped multilingual text, clock-driven interpolation, and line-sync fallback.
 
 ### Changed
 
@@ -21,6 +23,8 @@ All notable user-visible changes are recorded here.
 - Flatpak folder selection now uses the asynchronous XDG desktop portal with a
   correctly exported X11 or Wayland parent window, without broadening filesystem
   or session-bus permissions.
+- Rich-timing progress updates use a lightweight paint path so lyrics remain
+  stable while seeking, pausing, changing playback rate, or refreshing metadata.
 
 ## 0.1.0-beta.1 — 2026-09-10
 
