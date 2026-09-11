@@ -15,6 +15,7 @@ PUBLIC_DOCUMENTS = (
     "BACKLOG.md",
     "CHANGELOG.md",
     "CONTRIBUTING.md",
+    "packaging/README.md",
     "SECURITY.md",
 )
 
@@ -173,6 +174,17 @@ def test_readme_is_product_first_and_honest_about_license() -> None:
     assert "AGENT_TODO.md" not in content
 
 
+def test_readme_has_a_no_clone_release_install_path() -> None:
+    content = (REPOSITORY_ROOT / "README.md").read_text(encoding="utf-8")
+
+    assert "pipx install 'https://github.com/myonctl/KonoKashi/releases/" in content
+    assert "konokashi doctor" in content
+    assert "pipx uninstall konokashi" in content
+    assert "requires neither a repository clone" in (
+        REPOSITORY_ROOT / "packaging/README.md"
+    ).read_text(encoding="utf-8")
+
+
 def test_runtime_source_does_not_embed_a_maintainer_home_path() -> None:
     private_marker = "/" + "home/" + "myon"
     offending = [
@@ -256,6 +268,16 @@ def test_aur_dependency_graph_has_separate_candidates_for_real_gaps() -> None:
     assert "pkgname=python-unidic-lite" in unidic
     assert "license=('MIT' 'BSD-3-Clause')" in unidic
     assert "pip install" not in unidic
+
+
+def test_later_package_formats_have_an_explicit_maintenance_gate() -> None:
+    status = (REPOSITORY_ROOT / "packaging/README.md").read_text(encoding="utf-8")
+
+    for package_format in ("`.deb`", "`.rpm`", "AppImage"):
+        assert package_format in status
+    assert status.count("Deferred") >= 3
+    assert "must not vendor dependencies" in status
+    assert "`--nodeps` or `--nocheck`" in status
 
 
 def test_release_copy_excludes_maintainer_and_flatpak_worktrees() -> None:

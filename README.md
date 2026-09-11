@@ -65,15 +65,27 @@ included.
 
 ## Try it
 
-KonoKashi currently supports installation from a source checkout on Linux with
-Python 3.11 through 3.14; every advertised version is exercised in CI. Use a
-dedicated virtual environment rather than the distribution's system Python.
+KonoKashi supports Linux with Python 3.11 through 3.14; every advertised version
+is exercised in CI. For the current beta, install the immutable public release
+with your distribution's `pipx` package. Pipx creates and manages the isolated
+environment for you:
 
 A desktop session needs a Qt/EGL runtime and session D-Bus. If PyICU has no
 wheel for your Python version, install ICU development headers, `pkg-config`,
 and a C++ compiler first.
 
-Create an isolated install:
+```bash
+pipx install 'https://github.com/myonctl/KonoKashi/releases/download/v0.1.0-beta.1/konokashi-0.1.0b1.tar.gz'
+konokashi doctor
+konokashi desktop-integration install
+```
+
+Launch KonoKashi from the application menu, or run `konokashi desktop`. Upgrade
+to a future release with `pipx install --force <new-release-url>`, and remove the
+application with `pipx uninstall konokashi`. Removal intentionally preserves
+your XDG configuration, cache, and lyric database.
+
+For a development checkout instead:
 
 ```bash
 git clone https://github.com/myonctl/KonoKashi.git
@@ -93,7 +105,9 @@ Launch KonoKashi from the application menu, or run:
 
 Then start an MPRIS player such as Strawberry—or play media through KDE Plasma
 Browser Integration—and KonoKashi will follow the selected source. AUR and
-Flatpak recipes exist for local validation, but neither is published yet.
+Flatpak recipes exist for local validation, but neither is published yet. See
+the [packaging status](https://github.com/myonctl/KonoKashi/blob/main/packaging/README.md)
+for validated routes and explicit decisions on later formats.
 
 For a development checkout, see [CONTRIBUTING.md](CONTRIBUTING.md).
 
