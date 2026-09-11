@@ -3,7 +3,11 @@
 from __future__ import annotations
 
 from konokashi.domain.identity import source_identity_value
-from konokashi.domain.lyrics import LyricLine, LyricsResolutionResult
+from konokashi.domain.lyrics import (
+    LyricLine,
+    LyricsResolutionResult,
+    lyric_line_timing_start_ms,
+)
 from konokashi.domain.tracks import ResolvedTrack
 
 DEFAULT_PREVIEW_LINES = 3
@@ -51,7 +55,11 @@ def render_lyrics_resolution(
         lines = original.lines
     output.extend(
         (
-            f"timed lines: {sum(line.start_ms is not None for line in lines)}",
+            "timing level: "
+            f"{document.timing_level.value if document is not None else 'none'}",
+            "timed lines: "
+            f"{sum(lyric_line_timing_start_ms(line) is not None for line in lines)}",
+            f"timed elements: {sum(len(line.timing_segments) for line in lines)}",
             f"plain lines: {len(lines)}",
             f"cache: {'hit' if result.cache_hit else 'miss'}",
             f"network: {'used' if result.network_used else 'not used'}",
@@ -70,8 +78,9 @@ def render_lyrics_resolution(
         output.append("lyrics:" if full else "lyrics preview:")
         for line in shown:
             prefix = ""
-            if line.start_ms is not None:
-                minutes, remainder = divmod(line.start_ms, 60_000)
+            start_ms = lyric_line_timing_start_ms(line)
+            if start_ms is not None:
+                minutes, remainder = divmod(start_ms, 60_000)
                 seconds, milliseconds = divmod(remainder, 1000)
                 prefix = f"[{minutes:02d}:{seconds:02d}.{milliseconds:03d}] "
             output.append(f"  {prefix}{line.text}")

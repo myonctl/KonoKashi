@@ -12,7 +12,11 @@ from mutagen import MutagenError
 from mutagen.flac import VCFLACDict
 
 from konokashi.domain.identity import LocalFileIdentity, YouTubeIdentity
-from konokashi.domain.lyrics import LocalLyricsStatus, LyricDocumentKind
+from konokashi.domain.lyrics import (
+    LocalLyricsStatus,
+    LyricDocumentKind,
+    TimingProvenance,
+)
 from konokashi.domain.models import PlayerCapabilities, PlayerSnapshot, RawTrackMetadata
 from konokashi.domain.tracks import Confidence, ResolvedTrack, TrackCandidate
 from konokashi.infrastructure.lyrics.embedded import EmbeddedLyricsProvider
@@ -74,7 +78,7 @@ def test_unicode_space_sidecar_is_derived_from_exact_media_path(
         2_345,
     ]
     assert all(
-        line.timing_provenance is None
+        line.timing_provenance is TimingProvenance.IMPORTED
         for line in result.document.representations[0].lines
     )
     assert str(media) not in result.document.document_id

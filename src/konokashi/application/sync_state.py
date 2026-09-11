@@ -11,7 +11,12 @@ from konokashi.application.frontend_lines import (
 )
 from konokashi.application.lyrics_sync import SynchronizationFrame
 from konokashi.domain.identity import SourceIdentity
-from konokashi.domain.lyrics import LyricDocument, LyricLine, RepresentationKind
+from konokashi.domain.lyrics import (
+    LyricDocument,
+    LyricLine,
+    RepresentationKind,
+    lyric_line_timing_start_ms,
+)
 from konokashi.domain.representations import EffectiveRepresentationLine
 from konokashi.domain.synchronization import (
     AudioOutputLatency,
@@ -21,6 +26,22 @@ from konokashi.domain.synchronization import (
     SynchronizationCalibration,
 )
 from konokashi.domain.tracks import ResolvedTrack
+
+
+@dataclass(frozen=True, slots=True)
+class SynchronizedTimingSegment:
+    """One rich timing element projected into the calibrated lyric timeline."""
+
+    segment_id: str
+    text: str
+    unit: str
+    source_start_us: int
+    source_end_us: int | None
+    effective_start_us: int
+    effective_end_us: int | None
+    timing_provenance: str | None
+    parent_segment_id: str | None = None
+    provider_unit: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -35,6 +56,9 @@ class SynchronizedLine:
     romanized_or_transliterated: str | None = None
     translation: str | None = None
     representation_provenance: tuple[str, ...] = field(default_factory=tuple)
+    timing_segments: tuple[SynchronizedTimingSegment, ...] = field(
+        default_factory=tuple
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -60,6 +84,7 @@ class SynchronizationSnapshot:
     lyrics_source: str
     lyrics_match_confidence: str | None
     lyric_document_id: str
+    lyrics_timing_level: str
     lyrics_display_delay_us: int
     previous: tuple[SynchronizedLine, ...]
     active: tuple[SynchronizedLine, ...]
@@ -144,9 +169,34 @@ def _line_bundle(
         for item in (alternate, translation)
         if item is not None and item.text is not None
     )
-    source_us = None if line.start_ms is None else line.start_ms * 1_000
+    start_ms = lyric_line_timing_start_ms(line)
+    source_us = None if start_ms is None else start_ms * 1_000
     effective_us = (
         None if source_us is None else source_us + document_delay_us + line_shift_us
+    )
+    timing_shift_us = document_delay_us + line_shift_us
+    timing_segments = tuple(
+        SynchronizedTimingSegment(
+            segment.segment_id,
+            segment.text,
+            segment.unit.value,
+            segment.start_ms * 1_000,
+            None if segment.end_ms is None else segment.end_ms * 1_000,
+            segment.start_ms * 1_000 + timing_shift_us,
+            (
+                None
+                if segment.end_ms is None
+                else segment.end_ms * 1_000 + timing_shift_us
+            ),
+            (
+                None
+                if segment.timing_provenance is None
+                else segment.timing_provenance.value
+            ),
+            segment.parent_segment_id,
+            segment.provider_unit,
+        )
+        for segment in line.timing_segments
     )
     return SynchronizedLine(
         line.line_id,
@@ -160,6 +210,7 @@ def _line_bundle(
             "unknown" if item.provenance is None else item.provenance.value
             for item in selected
         ),
+        timing_segments,
     )
 
 
@@ -238,6 +289,7 @@ def build_sync_snapshot(
         lyrics_source=document.source_name,
         lyrics_match_confidence=lyrics_match_confidence,
         lyric_document_id=document.document_id,
+        lyrics_timing_level=document.timing_level.value,
         lyrics_display_delay_us=calibration.lyrics.shift_us,
         previous=bundle(frame.lyrics.previous),
         active=bundle(frame.lyrics.active),

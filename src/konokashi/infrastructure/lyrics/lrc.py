@@ -3,11 +3,15 @@
 from __future__ import annotations
 
 import re
+from dataclasses import dataclass
 from hashlib import sha256
 
 from konokashi.domain.lyrics import (
     LyricLine,
     LyricsTextParseStatus,
+    LyricTimingLevel,
+    LyricTimingSegment,
+    LyricTimingUnit,
     ParsedLyricsText,
     TimingProvenance,
 )
@@ -22,7 +26,26 @@ _SUPPORTED_METADATA = frozenset({"ar", "ti", "al", "by", "re", "ve", "length"})
 _MALFORMED_KNOWN_METADATA = re.compile(
     r"^\[(ar|ti|al|by|re|ve|length|offset)(?:\s+[^\]]*)?\]$", re.IGNORECASE
 )
-_ENHANCED_TIMESTAMP = re.compile(r"<\d{1,3}:[0-5]\d[.:]\d{2,3}>")
+_ENHANCED_TIMESTAMP = re.compile(r"<(\d{1,3}):([0-5]\d)[.:](\d{2,3})>")
+
+
+@dataclass(frozen=True, slots=True)
+class _EnhancedPart:
+    """One source-order enhanced-LRC text part and its absolute marker."""
+
+    start_ms: int
+    text: str
+
+
+@dataclass(frozen=True, slots=True)
+class _TimedSourceLine:
+    """One expanded line timestamp before offset and range validation."""
+
+    start_ms: int
+    source_position: int
+    copy: int
+    text: str
+    enhanced_parts: tuple[_EnhancedPart, ...] = ()
 
 
 def _line_id(
@@ -30,6 +53,40 @@ def _line_id(
 ) -> str:
     payload = f"{checksum}:{source_position}:{copy}:{start_ms}".encode()
     return f"line-{sha256(payload).hexdigest()[:20]}"
+
+
+def _timestamp_ms(match: re.Match[str]) -> int:
+    """Convert one validated LRC timestamp match to exact milliseconds."""
+
+    fraction = match.group(3)
+    milliseconds = int(fraction) * (10 if len(fraction) == 2 else 1)
+    return (int(match.group(1)) * 60 + int(match.group(2))) * 1000 + milliseconds
+
+
+def _enhanced_parts(text: str) -> tuple[str, tuple[_EnhancedPart, ...]]:
+    """Remove enhanced markers while preserving every source text character."""
+
+    matches = tuple(_ENHANCED_TIMESTAMP.finditer(text))
+    if not matches:
+        return text, ()
+    prefix = text[: matches[0].start()]
+    parts = [
+        _EnhancedPart(
+            _timestamp_ms(match),
+            text[match.end() : matches[index + 1].start()]
+            if index + 1 < len(matches)
+            else text[match.end() :],
+        )
+        for index, match in enumerate(matches)
+    ]
+    if prefix:
+        parts[0] = _EnhancedPart(parts[0].start_ms, prefix + parts[0].text)
+    return "".join(part.text for part in parts), tuple(parts)
+
+
+def _segment_id(line_id: str, position: int, start_ms: int) -> str:
+    payload = f"{line_id}:{position}:{start_ms}".encode()
+    return f"segment-{sha256(payload).hexdigest()[:20]}"
 
 
 def parse_lyrics_text(
@@ -49,7 +106,7 @@ def parse_lyrics_text(
     checksum = sha256(normalized.encode("utf-8")).hexdigest()
     metadata: list[tuple[str, str]] = []
     diagnostics: list[str] = []
-    timed: list[tuple[int, int, int, str]] = []
+    timed: list[_TimedSourceLine] = []
     plain_source: list[tuple[int, str]] = []
     offset_ms = 0
     invalid_timing = False
@@ -58,20 +115,25 @@ def parse_lyrics_text(
         remaining = source_line
         timestamps: list[int] = []
         while match := _TIMESTAMP.match(remaining):
-            minutes = int(match.group(1))
-            seconds = int(match.group(2))
-            fraction = match.group(3)
-            milliseconds = int(fraction) * (10 if len(fraction) == 2 else 1)
-            timestamps.append((minutes * 60 + seconds) * 1000 + milliseconds)
+            timestamps.append(_timestamp_ms(match))
             remaining = remaining[match.end() :]
 
         if timestamps:
-            if _ENHANCED_TIMESTAMP.search(remaining):
-                diagnostics.append(
-                    f"line {source_position + 1}: enhanced word timing retained as text"
-                )
+            line_text, enhanced_parts = _enhanced_parts(remaining)
             for copy, timestamp in enumerate(timestamps):
-                timed.append((timestamp, source_position, copy, remaining))
+                timing_delta = timestamp - timestamps[0]
+                timed.append(
+                    _TimedSourceLine(
+                        timestamp,
+                        source_position,
+                        copy,
+                        line_text,
+                        tuple(
+                            _EnhancedPart(part.start_ms + timing_delta, part.text)
+                            for part in enhanced_parts
+                        ),
+                    )
+                )
             continue
 
         if _TIMESTAMP_LIKE.match(source_line):
@@ -126,27 +188,55 @@ def parse_lyrics_text(
                 normalized_text=normalized,
                 raw_text_checksum=checksum,
             )
-        adjusted: list[tuple[int, int, int, str]] = []
-        for timestamp, source_position, copy, line_text in timed:
-            start_ms = timestamp + offset_ms
+        adjusted: list[_TimedSourceLine] = []
+        for timed_source in timed:
+            start_ms = timed_source.start_ms + offset_ms
             if start_ms < 0:
                 diagnostics.append(
-                    f"line {source_position + 1}: offset produced a negative timestamp"
+                    f"line {timed_source.source_position + 1}: offset produced a "
+                    "negative timestamp"
                 )
                 invalid_timing = True
                 continue
             if start_ms > MAX_LYRIC_TIMESTAMP_MS:
                 diagnostics.append(
-                    f"line {source_position + 1}: timestamp is outside the supported "
-                    "integer range"
+                    f"line {timed_source.source_position + 1}: timestamp is outside "
+                    "the supported integer range"
                 )
                 invalid_timing = True
                 continue
             if duration_ms is not None and start_ms > duration_ms + 2_000:
                 diagnostics.append(
-                    f"line {source_position + 1}: timestamp exceeds track duration"
+                    f"line {timed_source.source_position + 1}: timestamp exceeds track "
+                    "duration"
                 )
-            adjusted.append((start_ms, source_position, copy, line_text))
+            adjusted_parts: list[_EnhancedPart] = []
+            enhanced_starts = [part.start_ms for part in timed_source.enhanced_parts]
+            if enhanced_starts != sorted(enhanced_starts):
+                diagnostics.append(
+                    f"line {timed_source.source_position + 1}: enhanced timestamps "
+                    "are out of order"
+                )
+                invalid_timing = True
+            for part in timed_source.enhanced_parts:
+                segment_start_ms = part.start_ms + offset_ms
+                if not 0 <= segment_start_ms <= MAX_LYRIC_TIMESTAMP_MS:
+                    diagnostics.append(
+                        f"line {timed_source.source_position + 1}: enhanced timestamp "
+                        "is outside the supported integer range"
+                    )
+                    invalid_timing = True
+                    continue
+                adjusted_parts.append(_EnhancedPart(segment_start_ms, part.text))
+            adjusted.append(
+                _TimedSourceLine(
+                    start_ms,
+                    timed_source.source_position,
+                    timed_source.copy,
+                    timed_source.text,
+                    tuple(adjusted_parts),
+                )
+            )
         if invalid_timing:
             return ParsedLyricsText(
                 LyricsTextParseStatus.INVALID,
@@ -155,29 +245,53 @@ def parse_lyrics_text(
                 normalized_text=normalized,
                 raw_text_checksum=checksum,
             )
-        source_order = [item[0] for item in adjusted]
+        source_order = [item.start_ms for item in adjusted]
         if source_order != sorted(source_order):
             diagnostics.append("out-of-order timestamps were ordered chronologically")
-        starts = [item[0] for item in adjusted]
+        starts = [item.start_ms for item in adjusted]
         if len(starts) != len(set(starts)):
             diagnostics.append("duplicate timestamps were preserved as distinct lines")
-        adjusted.sort(key=lambda item: (item[0], item[1], item[2]))
-        lines = tuple(
-            LyricLine(
-                _line_id(checksum, source_position, copy, start_ms),
-                line_text,
-                start_ms=start_ms,
-                timing_provenance=timing_provenance,
+        adjusted.sort(key=lambda item: (item.start_ms, item.source_position, item.copy))
+        timed_lines: list[LyricLine] = []
+        for item in adjusted:
+            line_id = _line_id(checksum, item.source_position, item.copy, item.start_ms)
+            segments = tuple(
+                LyricTimingSegment(
+                    segment_id=_segment_id(line_id, position, part.start_ms),
+                    text=part.text,
+                    start_ms=part.start_ms,
+                    end_ms=(
+                        item.enhanced_parts[position + 1].start_ms
+                        if position + 1 < len(item.enhanced_parts)
+                        else None
+                    ),
+                    unit=LyricTimingUnit.WORD,
+                    timing_provenance=timing_provenance,
+                )
+                for position, part in enumerate(item.enhanced_parts)
             )
-            for start_ms, source_position, copy, line_text in adjusted
+            timed_lines.append(
+                LyricLine(
+                    line_id,
+                    item.text,
+                    start_ms=item.start_ms,
+                    timing_provenance=timing_provenance,
+                    timing_segments=segments,
+                )
+            )
+        timing_level = (
+            LyricTimingLevel.WORD
+            if any(line.timing_segments for line in timed_lines)
+            else LyricTimingLevel.LINE
         )
         return ParsedLyricsText(
             LyricsTextParseStatus.SYNCED,
-            lines,
+            tuple(timed_lines),
             tuple(metadata),
             tuple(dict.fromkeys(diagnostics)),
             normalized,
             checksum,
+            timing_level,
         )
 
     if invalid_timing:
@@ -196,15 +310,16 @@ def parse_lyrics_text(
             normalized_text=normalized,
             raw_text_checksum=checksum,
         )
-    lines = tuple(
+    plain_lines = tuple(
         LyricLine(_line_id(checksum, source_position, 0, None), line_text)
         for source_position, line_text in plain_source
     )
     return ParsedLyricsText(
         LyricsTextParseStatus.PLAIN,
-        lines,
+        plain_lines,
         tuple(metadata),
         tuple(dict.fromkeys(diagnostics)),
         normalized,
         checksum,
+        LyricTimingLevel.UNSYNCHRONIZED,
     )

@@ -221,6 +221,50 @@ def test_published_stage_four_database_upgrades_without_losing_original_lines(
     assert "lyric_representation_decisions" in stage5_tables
 
 
+def test_legacy_manual_timing_upgrades_to_user_edited_provenance(
+    tmp_path: Path,
+) -> None:
+    database = SQLiteDatabase(tmp_path / "legacy-timing.sqlite3")
+    database.initialize(MIGRATIONS[:12])
+    with database.transaction() as connection:
+        connection.execute(
+            """
+            INSERT INTO lyrics_documents(
+                document_id, document_kind, source_name, approval_state, retrieved_at
+            ) VALUES ('doc', 'synced', 'fixture', 'approved',
+                      '2026-09-11T00:00:00+00:00')
+            """
+        )
+        connection.execute(
+            """
+            INSERT INTO lyric_representations(
+                document_id, representation_id, representation_kind, provenance,
+                approval_state, position
+            ) VALUES ('doc', 'original', 'original', 'user', 'approved', 0)
+            """
+        )
+        connection.execute(
+            """
+            INSERT INTO lyric_lines(
+                document_id, representation_id, line_id, position, line_text,
+                start_ms, timing_provenance
+            ) VALUES ('doc', 'original', 'line-1', 0, 'line', 1000, 'manual')
+            """
+        )
+
+    assert database.initialize() == CURRENT_SCHEMA_VERSION
+
+    with database.connection(readonly=True) as connection:
+        document = connection.execute(
+            "SELECT timing_level FROM lyrics_documents WHERE document_id = 'doc'"
+        ).fetchone()
+        line = connection.execute(
+            "SELECT timing_provenance_detail FROM lyric_lines WHERE line_id = 'line-1'"
+        ).fetchone()
+    assert document[0] == "line"
+    assert line[0] == "user-edited"
+
+
 def test_stage_six_rejected_match_is_backfilled_into_durable_history(
     tmp_path: Path,
 ) -> None:

@@ -17,6 +17,7 @@ from konokashi.domain.lyrics import (
     LocalLyricsResult,
     LocalLyricsStatus,
     LyricsTextParseStatus,
+    TimingProvenance,
 )
 from konokashi.domain.tracks import ResolvedTrack
 from konokashi.infrastructure.lyrics.documents import build_lyric_document
@@ -132,7 +133,9 @@ class EmbeddedLyricsProvider:
             )
         duration_ms = _duration_ms(track.candidate.duration_us)
         parsed = parse_lyrics_text(
-            text, duration_ms=duration_ms, timing_provenance=None
+            text,
+            duration_ms=duration_ms,
+            timing_provenance=TimingProvenance.IMPORTED,
         )
         if parsed.status is LyricsTextParseStatus.INVALID:
             return LocalLyricsResult(

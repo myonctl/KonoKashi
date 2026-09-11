@@ -27,6 +27,24 @@ class LyricDocumentKind(Enum):
     INSTRUMENTAL = "instrumental"
 
 
+class LyricTimingLevel(Enum):
+    """Richest synchronization level carried by a lyric document."""
+
+    UNSYNCHRONIZED = "unsynchronized"
+    LINE = "line"
+    WORD = "word"
+    ELEMENT = "element"
+
+
+class LyricTimingUnit(Enum):
+    """Semantic unit covered by one finer-than-line timing segment."""
+
+    WORD = "word"
+    SYLLABLE = "syllable"
+    GRAPHEME = "grapheme"
+    PROVIDER_ELEMENT = "provider-element"
+
+
 class RepresentationKind(Enum):
     """A distinct textual layer within a lyric document."""
 
@@ -50,8 +68,25 @@ class TimingProvenance(Enum):
     """Origin of a line's timing information."""
 
     PROVIDER = "provider"
+    IMPORTED = "imported"
+    USER_APPROVED = "user-approved"
+    USER_EDITED = "user-edited"
     GENERATED = "generated"
-    MANUAL = "manual"
+    ESTIMATED = "estimated"
+
+
+@dataclass(frozen=True, slots=True)
+class LyricTimingSegment:
+    """One ordered word or finer timing element within a stable lyric line."""
+
+    segment_id: str
+    text: str
+    start_ms: int
+    end_ms: int | None = None
+    unit: LyricTimingUnit = LyricTimingUnit.WORD
+    timing_provenance: TimingProvenance | None = None
+    parent_segment_id: str | None = None
+    provider_unit: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -64,6 +99,28 @@ class LyricLine:
     end_ms: int | None = None
     timing_provenance: TimingProvenance | None = None
     source_line_id: str | None = None
+    timing_segments: tuple[LyricTimingSegment, ...] = field(default_factory=tuple)
+
+
+def lyric_line_timing_start_ms(line: LyricLine) -> int | None:
+    """Return explicit line timing or degrade richer timing to its first element."""
+
+    if line.start_ms is not None:
+        return line.start_ms
+    if not line.timing_segments:
+        return None
+    return min(segment.start_ms for segment in line.timing_segments)
+
+
+def lyric_line_timing_end_ms(line: LyricLine) -> int | None:
+    """Return explicit line end or the latest bounded richer timing element."""
+
+    if line.end_ms is not None:
+        return line.end_ms
+    ends = tuple(
+        segment.end_ms for segment in line.timing_segments if segment.end_ms is not None
+    )
+    return max(ends) if ends else None
 
 
 @dataclass(frozen=True, slots=True)
@@ -109,6 +166,34 @@ class LyricDocument:
     source_title: str | None = None
     source_artist: str | None = None
     source_album: str | None = None
+    timing_level: LyricTimingLevel = LyricTimingLevel.UNSYNCHRONIZED
+
+    def __post_init__(self) -> None:
+        """Infer legacy line-only constructors without hiding richer timing."""
+
+        original_lines = tuple(
+            line
+            for representation in self.representations
+            if representation.kind is RepresentationKind.ORIGINAL
+            for line in representation.lines
+        )
+        segments = tuple(
+            segment for line in original_lines for segment in line.timing_segments
+        )
+        inferred = LyricTimingLevel.UNSYNCHRONIZED
+        if any(line.start_ms is not None for line in original_lines):
+            inferred = LyricTimingLevel.LINE
+        if segments:
+            inferred = (
+                LyricTimingLevel.WORD
+                if all(segment.unit is LyricTimingUnit.WORD for segment in segments)
+                else LyricTimingLevel.ELEMENT
+            )
+        if (
+            self.timing_level is LyricTimingLevel.UNSYNCHRONIZED
+            and inferred is not LyricTimingLevel.UNSYNCHRONIZED
+        ):
+            object.__setattr__(self, "timing_level", inferred)
 
 
 class LyricsMatchDecision(Enum):
@@ -293,6 +378,7 @@ class ParsedLyricsText:
     diagnostics: tuple[str, ...] = field(default_factory=tuple)
     normalized_text: str = ""
     raw_text_checksum: str | None = None
+    timing_level: LyricTimingLevel = LyricTimingLevel.UNSYNCHRONIZED
 
 
 class LocalLyricsStatus(Enum):

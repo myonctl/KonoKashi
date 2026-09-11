@@ -12,6 +12,7 @@ from konokashi.domain.lyrics import (
     LyricDocumentKind,
     LyricRepresentation,
     LyricsTextParseStatus,
+    LyricTimingLevel,
     ParsedLyricsText,
     RepresentationKind,
 )
@@ -59,6 +60,7 @@ def build_lyric_document(
         raw_text_checksum=parsed.raw_text_checksum,
         approval_state=ApprovalState.UNREVIEWED,
         retrieved_at=retrieved_at,
+        timing_level=parsed.timing_level,
         representations=(
             LyricRepresentation(
                 representation_id=f"{document_id}:original",
@@ -96,6 +98,7 @@ def build_instrumental_document(
         raw_text_checksum=None,
         approval_state=ApprovalState.UNREVIEWED,
         retrieved_at=retrieved_at,
+        timing_level=LyricTimingLevel.UNSYNCHRONIZED,
         provider_record_id=provider_record_id,
         duration_ms=duration_ms,
         source_title=source_title,

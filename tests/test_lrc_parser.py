@@ -1,6 +1,11 @@
 """Bounded LRC and first-class plain lyrics parsing regressions."""
 
-from konokashi.domain.lyrics import LyricsTextParseStatus
+from konokashi.domain.lyrics import (
+    LyricsTextParseStatus,
+    LyricTimingLevel,
+    LyricTimingUnit,
+    TimingProvenance,
+)
 from konokashi.infrastructure.lyrics.lrc import parse_lyrics_text
 
 
@@ -16,6 +21,7 @@ def test_lrc_hundredths_milliseconds_bom_crlf_and_unicode() -> None:
     ]
     assert parsed.metadata == (("ar", "歌手"), ("ti", "題名"))
     assert parsed.normalized_text.startswith("[ar:歌手]\n")
+    assert parsed.timing_level is LyricTimingLevel.LINE
 
 
 def test_multiple_timestamps_create_distinct_stable_line_instances() -> None:
@@ -29,6 +35,7 @@ def test_multiple_timestamps_create_distinct_stable_line_instances() -> None:
     assert [line.line_id for line in first.lines] == [
         line.line_id for line in second.lines
     ]
+    assert first.timing_level is LyricTimingLevel.LINE
 
 
 def test_valid_offset_uses_integer_milliseconds() -> None:
@@ -96,6 +103,7 @@ def test_plain_lyrics_preserve_unicode_empty_and_repeated_lines_without_timing()
     assert [line.text for line in parsed.lines] == ["君の声", "", "君の声"]
     assert all(line.start_ms is None for line in parsed.lines)
     assert len({line.line_id for line in parsed.lines}) == 3
+    assert parsed.timing_level is LyricTimingLevel.UNSYNCHRONIZED
 
 
 def test_metadata_only_or_empty_text_is_invalid() -> None:
@@ -113,13 +121,73 @@ def test_malformed_known_metadata_is_not_reinterpreted_as_plain_lyrics() -> None
     assert any("malformed lyrics metadata" in item for item in parsed.diagnostics)
 
 
-def test_unknown_metadata_and_enhanced_timing_are_diagnostic_not_crashes() -> None:
-    parsed = parse_lyrics_text("[foo:bar]\n[00:01.00]<00:01.10>Word")
+def test_unknown_metadata_and_enhanced_timing_are_structured() -> None:
+    parsed = parse_lyrics_text(
+        "[foo:bar]\n[00:01.00]<00:01.10>君の <00:01.80>声",
+        timing_provenance=TimingProvenance.PROVIDER,
+    )
 
     assert parsed.status is LyricsTextParseStatus.SYNCED
-    assert parsed.lines[0].text == "<00:01.10>Word"
+    assert parsed.timing_level is LyricTimingLevel.WORD
+    assert parsed.lines[0].text == "君の 声"
+    assert parsed.normalized_text.endswith("<00:01.10>君の <00:01.80>声")
+    assert [segment.text for segment in parsed.lines[0].timing_segments] == [
+        "君の ",
+        "声",
+    ]
+    assert [segment.start_ms for segment in parsed.lines[0].timing_segments] == [
+        1_100,
+        1_800,
+    ]
+    assert parsed.lines[0].timing_segments[0].end_ms == 1_800
+    assert parsed.lines[0].timing_segments[1].end_ms is None
+    assert all(
+        segment.unit is LyricTimingUnit.WORD
+        and segment.timing_provenance is TimingProvenance.PROVIDER
+        for segment in parsed.lines[0].timing_segments
+    )
     assert any("unsupported metadata" in item for item in parsed.diagnostics)
-    assert any("enhanced word timing" in item for item in parsed.diagnostics)
+
+
+def test_enhanced_timing_offset_and_repeated_line_timestamps_are_exact() -> None:
+    parsed = parse_lyrics_text(
+        "[offset:25]\n[00:01.00][00:03.00]<00:01.10>A <00:01.50>B"
+    )
+
+    assert [line.start_ms for line in parsed.lines] == [1_025, 3_025]
+    assert [
+        [segment.start_ms for segment in line.timing_segments] for line in parsed.lines
+    ] == [[1_125, 1_525], [3_125, 3_525]]
+    assert (
+        len(
+            {
+                segment.segment_id
+                for line in parsed.lines
+                for segment in line.timing_segments
+            }
+        )
+        == 4
+    )
+
+
+def test_out_of_order_enhanced_timestamps_are_rejected() -> None:
+    parsed = parse_lyrics_text("[00:01.00]<00:01.80>later <00:01.20>earlier")
+
+    assert parsed.status is LyricsTextParseStatus.INVALID
+    assert any(
+        "enhanced timestamps are out of order" in item for item in parsed.diagnostics
+    )
+
+
+def test_timing_provenance_keeps_estimates_distinct_from_supplied_timing() -> None:
+    assert {item.value for item in TimingProvenance} == {
+        "provider",
+        "imported",
+        "user-approved",
+        "user-edited",
+        "generated",
+        "estimated",
+    }
 
 
 def test_oversized_text_is_rejected() -> None:

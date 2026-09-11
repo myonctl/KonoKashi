@@ -9,7 +9,14 @@ from konokashi.application.sync_state import (
     build_sync_snapshot,
 )
 from konokashi.domain.identity import YouTubeIdentity
-from konokashi.domain.lyrics import ApprovalState, ContentProvenance, RepresentationKind
+from konokashi.domain.lyrics import (
+    ApprovalState,
+    ContentProvenance,
+    LyricTimingLevel,
+    LyricTimingSegment,
+    RepresentationKind,
+    TimingProvenance,
+)
 from konokashi.domain.representations import (
     EffectiveRepresentationLine,
     RepresentationUncertainty,
@@ -74,6 +81,7 @@ def test_snapshot_exposes_all_frontend_timing_and_aligned_text_layers() -> None:
     assert snapshot.clock is current_estimate.diagnostics
     assert snapshot.audio_output.route == "headphones"
     assert snapshot.lyrics_display_delay_us == 50_000
+    assert snapshot.lyrics_timing_level == "line"
     assert snapshot.active[0].line_id == "two-a"
     assert snapshot.active[0].original_index == 1
     assert snapshot.active[0].romanized_or_transliterated == "second romaji"
@@ -81,6 +89,74 @@ def test_snapshot_exposes_all_frontend_timing_and_aligned_text_layers() -> None:
     assert snapshot.active[0].effective_transition_us == 2_050_000
     assert snapshot.next_transition_monotonic_ns is not None
     assert snapshot.time_until_next_transition_us is not None
+
+
+def test_rich_timing_degrades_to_lines_and_projects_calibrated_segments() -> None:
+    base = document()
+    original = base.representations[0]
+    rich_line = replace(
+        original.lines[1],
+        start_ms=None,
+        timing_segments=(
+            LyricTimingSegment(
+                "word-1",
+                "second ",
+                2_000,
+                2_400,
+                timing_provenance=TimingProvenance.PROVIDER,
+            ),
+            LyricTimingSegment(
+                "word-2",
+                "A",
+                2_400,
+                2_800,
+                timing_provenance=TimingProvenance.ESTIMATED,
+            ),
+        ),
+    )
+    rich = replace(
+        base,
+        timing_level=LyricTimingLevel.WORD,
+        representations=(
+            replace(
+                original,
+                lines=(original.lines[0], rich_line, *original.lines[2:]),
+            ),
+        ),
+    )
+    raw = replace(fixture_snapshot("stage2/youtube_jesskah.json"), rate=1.0)
+    track = ResolvedTrack(
+        raw,
+        YouTubeIdentity("xa4WrgqI7q0"),
+        TrackCandidate("Track", ("Artist",), None, 5_000_000),
+        Confidence.HIGH,
+    )
+    calibration = SynchronizationCalibration(
+        AudioOutputLatency(100_000, 5_000, "test"),
+        LyricTimingCalibration(50_000),
+    )
+    current_estimate = estimate()
+
+    snapshot = build_sync_snapshot(
+        generation=1,
+        track=track,
+        document=rich,
+        estimate=current_estimate,
+        frame=synchronize(rich, current_estimate, calibration),
+        calibration=calibration,
+    )
+
+    assert tuple(line.line_id for line in snapshot.active) == ("two-a", "two-b")
+    projected = snapshot.active[0]
+    assert projected.source_timestamp_us == 2_000_000
+    assert projected.effective_transition_us == 2_050_000
+    assert snapshot.lyrics_timing_level == "word"
+    assert [segment.text for segment in projected.timing_segments] == ["second ", "A"]
+    assert projected.timing_segments[0].source_start_us == 2_000_000
+    assert projected.timing_segments[0].effective_start_us == 2_050_000
+    assert projected.timing_segments[0].effective_end_us == 2_450_000
+    assert projected.timing_segments[0].timing_provenance == "provider"
+    assert projected.timing_segments[1].timing_provenance == "estimated"
 
 
 def test_snapshot_retains_explained_missing_representation_diagnostics() -> None:

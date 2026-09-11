@@ -700,6 +700,82 @@ MIGRATIONS: tuple[Migration, ...] = (
             """,
         ),
     ),
+    Migration(
+        13,
+        "rich lyric timing hierarchy and provenance",
+        (
+            """
+            ALTER TABLE lyrics_documents ADD COLUMN timing_level TEXT NOT NULL
+            DEFAULT 'unsynchronized' CHECK (
+                timing_level IN ('unsynchronized', 'line', 'word', 'element')
+            )
+            """,
+            """
+            UPDATE lyrics_documents SET timing_level = 'line'
+            WHERE document_kind = 'synced'
+              AND EXISTS (
+                  SELECT 1 FROM lyric_lines
+                  WHERE lyric_lines.document_id = lyrics_documents.document_id
+                    AND lyric_lines.start_ms IS NOT NULL
+              )
+            """,
+            """
+            ALTER TABLE lyric_lines ADD COLUMN timing_provenance_detail TEXT
+            CHECK (
+                timing_provenance_detail IS NULL
+                OR timing_provenance_detail IN (
+                    'provider', 'imported', 'user-approved', 'user-edited',
+                    'generated', 'estimated'
+                )
+            )
+            """,
+            """
+            UPDATE lyric_lines SET timing_provenance_detail = CASE
+                WHEN timing_provenance = 'manual' THEN 'user-edited'
+                ELSE timing_provenance
+            END
+            WHERE timing_provenance IS NOT NULL
+            """,
+            """
+            CREATE TABLE lyric_timing_segments (
+                document_id TEXT NOT NULL,
+                line_id TEXT NOT NULL,
+                segment_id TEXT NOT NULL,
+                position INTEGER NOT NULL CHECK (position >= 0),
+                segment_text TEXT NOT NULL,
+                start_ms INTEGER NOT NULL CHECK (start_ms >= 0),
+                end_ms INTEGER CHECK (end_ms IS NULL OR end_ms >= 0),
+                timing_unit TEXT NOT NULL CHECK (
+                    timing_unit IN (
+                        'word', 'syllable', 'grapheme', 'provider-element'
+                    )
+                ),
+                timing_provenance TEXT CHECK (
+                    timing_provenance IS NULL
+                    OR timing_provenance IN (
+                        'provider', 'imported', 'user-approved', 'user-edited',
+                        'generated', 'estimated'
+                    )
+                ),
+                parent_segment_id TEXT,
+                provider_unit TEXT,
+                PRIMARY KEY (document_id, segment_id),
+                UNIQUE (document_id, line_id, position),
+                FOREIGN KEY (document_id, line_id)
+                    REFERENCES lyric_lines(document_id, line_id) ON DELETE CASCADE,
+                FOREIGN KEY (document_id, parent_segment_id)
+                    REFERENCES lyric_timing_segments(document_id, segment_id)
+                    DEFERRABLE INITIALLY DEFERRED,
+                CHECK (end_ms IS NULL OR end_ms >= start_ms),
+                CHECK (parent_segment_id IS NULL OR parent_segment_id != segment_id),
+                CHECK (
+                    timing_unit = 'provider-element'
+                    OR provider_unit IS NULL
+                )
+            )
+            """,
+        ),
+    ),
 )
 
 CURRENT_SCHEMA_VERSION = MIGRATIONS[-1].version

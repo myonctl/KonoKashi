@@ -25,6 +25,9 @@ from konokashi.domain.lyrics import (
     LyricsMatch,
     LyricsMatchConfidence,
     LyricsMatchDecision,
+    LyricTimingLevel,
+    LyricTimingSegment,
+    LyricTimingUnit,
     ProviderCacheEntry,
     RepresentationKind,
     TimingProvenance,
@@ -212,7 +215,36 @@ def _multilingual_document() -> LyricDocument:
                         "同じ行",
                         1_001,
                         2_002,
-                        TimingProvenance.MANUAL,
+                        TimingProvenance.USER_EDITED,
+                        timing_segments=(
+                            LyricTimingSegment(
+                                "phrase-1",
+                                "同じ行",
+                                1_001,
+                                2_002,
+                                LyricTimingUnit.PROVIDER_ELEMENT,
+                                TimingProvenance.PROVIDER,
+                                provider_unit="phrase",
+                            ),
+                            LyricTimingSegment(
+                                "syllable-1",
+                                "同じ",
+                                1_001,
+                                1_500,
+                                LyricTimingUnit.SYLLABLE,
+                                TimingProvenance.ESTIMATED,
+                                parent_segment_id="phrase-1",
+                            ),
+                            LyricTimingSegment(
+                                "syllable-2",
+                                "行",
+                                1_500,
+                                2_002,
+                                LyricTimingUnit.SYLLABLE,
+                                TimingProvenance.USER_APPROVED,
+                                parent_segment_id="phrase-1",
+                            ),
+                        ),
                     ),
                     LyricLine(
                         "original-2",
@@ -273,7 +305,13 @@ def test_lyrics_document_round_trip_preserves_all_foundation_semantics(
     assert original_lines[0].text == original_lines[1].text
     assert original_lines[0].line_id != original_lines[1].line_id
     assert original_lines[0].start_ms == 1_001
-    assert original_lines[0].timing_provenance is TimingProvenance.MANUAL
+    assert original_lines[0].timing_provenance is TimingProvenance.USER_EDITED
+    assert restored.timing_level is LyricTimingLevel.ELEMENT
+    assert original_lines[0].timing_segments[0].provider_unit == "phrase"
+    assert original_lines[0].timing_segments[1].parent_segment_id == "phrase-1"
+    assert original_lines[0].timing_segments[2].timing_provenance is (
+        TimingProvenance.USER_APPROVED
+    )
 
 
 def test_untimed_document_and_explicit_delete_round_trip(tmp_path: Path) -> None:
@@ -326,6 +364,45 @@ def test_lyrics_reject_unknown_inherited_timing_source(tmp_path: Path) -> None:
 
     with pytest.raises(StorageValidationError, match="unknown source line"):
         repository.put(document)
+
+
+def test_lyrics_reject_invalid_rich_timing_parent_graph(tmp_path: Path) -> None:
+    repository = open_storage(tmp_path / "invalid-rich-timing.sqlite3").lyrics
+
+    def document_with(segments: tuple[LyricTimingSegment, ...]) -> LyricDocument:
+        return LyricDocument(
+            "invalid-rich",
+            LyricDocumentKind.SYNCED,
+            "fixture",
+            "line",
+            None,
+            ApprovalState.UNREVIEWED,
+            NOW,
+            representations=(
+                LyricRepresentation(
+                    "original",
+                    RepresentationKind.ORIGINAL,
+                    ContentProvenance.PROVIDER,
+                    ApprovalState.UNREVIEWED,
+                    (LyricLine("line-1", "line", timing_segments=segments),),
+                ),
+            ),
+        )
+
+    missing_parent = document_with(
+        (LyricTimingSegment("segment-1", "line", 1_000, parent_segment_id="missing"),)
+    )
+    with pytest.raises(StorageValidationError, match="parent must exist"):
+        repository.put(missing_parent)
+
+    cyclic = document_with(
+        (
+            LyricTimingSegment("segment-1", "li", 1_000, parent_segment_id="segment-2"),
+            LyricTimingSegment("segment-2", "ne", 1_500, parent_segment_id="segment-1"),
+        )
+    )
+    with pytest.raises(StorageValidationError, match="must not form a cycle"):
+        repository.put(cyclic)
 
 
 def test_matches_and_provider_cache_remain_separate(tmp_path: Path) -> None:

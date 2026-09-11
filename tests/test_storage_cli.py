@@ -53,11 +53,11 @@ def test_storage_cli_migrates_historical_schema_ten_fixture(
 
     assert cli.main(["storage", "migrate"], database_path=path) == 0
     migrated = capsys.readouterr().out
-    assert "storage is current at schema version 12" in migrated
+    assert f"storage is current at schema version {CURRENT_SCHEMA_VERSION}" in migrated
 
     assert cli.main(["storage", "status"], database_path=path) == 0
     current = capsys.readouterr().out
-    assert "schema version: 12" in current
+    assert f"schema version: {CURRENT_SCHEMA_VERSION}" in current
     assert "migration status: current" in current
     assert "integrity: ok" in current
 

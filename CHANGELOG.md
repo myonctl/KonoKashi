@@ -4,6 +4,14 @@ All notable user-visible changes are recorded here.
 
 ## Unreleased
 
+### Added
+
+- Provider-neutral unsynchronized, line, word, and finer-element timing with
+  stable nested segment identities, explicit timing provenance, durable storage,
+  and frontend-neutral fallback to line synchronization.
+- Enhanced LRC word timing parsing that retains the original source while
+  exposing calibrated word segments to frontend snapshots.
+
 ### Changed
 
 - Python support is explicitly bounded to 3.11–3.14 and every advertised

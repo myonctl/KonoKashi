@@ -93,7 +93,9 @@ def test_lyrics_current_renders_bounded_preview_and_fresh_offline_cache(
     assert "lyrics source: LRCLIB" in first
     assert "provider record: 4242" in first
     assert "match confidence: High" in first
+    assert "timing level: line" in first
     assert "timed lines: 5" in first
+    assert "timed elements: 0" in first
     assert "plain lines: 5" in first
     assert "network: used" in first
     assert "[00:01.000] one" in first

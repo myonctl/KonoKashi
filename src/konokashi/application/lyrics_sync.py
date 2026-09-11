@@ -6,7 +6,11 @@ from bisect import bisect_right
 from dataclasses import dataclass, field
 
 from konokashi.application.representations import original_lines
-from konokashi.domain.lyrics import LyricDocument, LyricLine
+from konokashi.domain.lyrics import (
+    LyricDocument,
+    LyricLine,
+    lyric_line_timing_start_ms,
+)
 from konokashi.domain.synchronization import (
     LineTimingCalibration,
     LyricTimingCalibration,
@@ -180,9 +184,9 @@ def _timed_groups(
 ) -> tuple[_TimedGroup, ...]:
     timed = sorted(
         (
-            (line.start_ms * 1_000 + calibration.line_shift_us(line.line_id), line)
+            (start_ms * 1_000 + calibration.line_shift_us(line.line_id), line)
             for line in original_lines(document)
-            if line.start_ms is not None
+            if (start_ms := lyric_line_timing_start_ms(line)) is not None
         ),
         key=lambda item: item[0],
     )
