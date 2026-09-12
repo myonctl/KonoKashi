@@ -11,8 +11,9 @@ from threading import Event
 from typing import ClassVar, cast
 
 from textual import events, on
-from textual.app import App, ComposeResult
+from textual.app import App, ComposeResult, ScreenStackError
 from textual.binding import BindingType
+from textual.css.query import NoMatches
 from textual.theme import Theme
 from textual.widget import Widget
 from textual.widgets import (
@@ -258,7 +259,8 @@ class SettingsApp(App[int]):
         if message.change.current == self._snapshot:
             return
         self._snapshot = message.change.current
-        self._refresh_changed_values(message.change.changed_keys)
+        if not self._refresh_changed_values(message.change.changed_keys):
+            return
         if not self._mutation_busy:
             changed = ", ".join(message.change.changed_keys)
             self._set_status(f"Canonical settings updated: {changed}", success=True)
@@ -563,11 +565,16 @@ class SettingsApp(App[int]):
         options.highlighted = selected_index
         self._render_detail()
 
-    def _refresh_changed_values(self, changed_keys: tuple[str, ...]) -> None:
+    def _refresh_changed_values(self, changed_keys: tuple[str, ...]) -> bool:
         if not self._ui_ready or not changed_keys:
-            return
+            return False
         changed = frozenset(changed_keys)
-        options = self.query_one("#settings-list", OptionList)
+        try:
+            options = self.query_one("#settings-list", OptionList)
+        except (NoMatches, ScreenStackError):
+            # A service notification may already be queued while Textual is
+            # detaching the screen tree but before on_unmount clears _ui_ready.
+            return False
         for index, definition in enumerate(self._visible_definitions):
             if definition.key in changed:
                 options.replace_option_prompt_at_index(
@@ -576,6 +583,7 @@ class SettingsApp(App[int]):
                 )
         if self._selected_key in changed:
             self._render_detail()
+        return True
 
     def _setting_prompt(self, definition: SettingDefinition) -> str:
         resolved = self._snapshot.resolved(definition.key)

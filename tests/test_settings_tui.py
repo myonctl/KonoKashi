@@ -633,6 +633,13 @@ def test_tui_write_preserves_comments_symlink_and_clamps_mode(tmp_path: Path) ->
     _run_app(app, scenario)
 
 
+def test_late_snapshot_refresh_is_ignored_after_widgets_detach(tmp_path: Path) -> None:
+    app = SettingsApp(service=_service(tmp_path / "config.toml"), watch_interval=0)
+    app._ui_ready = True
+
+    assert app._refresh_changed_values(("lyrics.display.translated",)) is False
+
+
 def test_external_atomic_remove_and_recreate_refreshes_app(tmp_path: Path) -> None:
     path = tmp_path / "config.toml"
     service = _service(path)
