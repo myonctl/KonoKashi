@@ -15,10 +15,15 @@ from PySide6.QtWidgets import QApplication
 
 from konokashi.application.appearance import (
     APPEARANCE_PRESETS,
+    APPEARANCE_THEMES,
     AppearancePreset,
+    AppearanceTheme,
     TextAlignment,
+    color_contrast_ratio,
+    contrast_safe_artwork_tint,
     normalize_color,
 )
+from konokashi.application.artwork import ArtworkAsset
 from konokashi.application.desktop_state import (
     DesktopLyricGroup,
     DesktopLyricsState,
@@ -37,6 +42,7 @@ from konokashi.presentation.desktop.main_window import (
     DESKTOP_APPEARANCE_TARGETS,
     MainWindow,
 )
+from konokashi.presentation.desktop.window_surface import DesktopWindowMode
 
 
 @pytest.fixture(scope="module")
@@ -81,13 +87,16 @@ def test_default_profile_is_typed_complete_and_frontend_neutral() -> None:
     appearance = default_settings_snapshot().appearance
 
     assert appearance.preset is AppearancePreset.DEFAULT
+    assert appearance.theme is AppearanceTheme.MIDNIGHT
+    assert appearance.artwork.visible
+    assert appearance.artwork.dynamic_background
     assert appearance.original.size == 22
     assert appearance.romanization.size == 16
     assert appearance.translation.size == 15
     assert appearance.colors.accent == "#39B9C7"
     assert appearance.lyric_alignment is TextAlignment.CENTER
     assert appearance.context.previous == appearance.context.following == 2
-    assert len(SETTINGS_BY_KEY) == 81
+    assert len(SETTINGS_BY_KEY) == 84
 
 
 @pytest.mark.parametrize(
@@ -180,6 +189,124 @@ def test_explicit_customization_overrides_selected_preset() -> None:
     assert appearance.original.size == 51
     assert appearance.romanization.size == 28
     assert appearance.lyric_alignment is TextAlignment.RIGHT
+
+
+@pytest.mark.parametrize("theme", tuple(AppearanceTheme))
+def test_reviewed_themes_are_declarative_and_keep_primary_text_contrasting(
+    theme: AppearanceTheme,
+) -> None:
+    appearance = _snapshot(**{"appearance.theme": theme.value}).appearance
+
+    assert appearance.theme is theme
+    assert all(not callable(value) for value in APPEARANCE_THEMES[theme].values())
+    for foreground in (
+        appearance.colors.active_lyric,
+        appearance.colors.original_lyric,
+        appearance.colors.metadata_primary,
+        appearance.colors.status,
+    ):
+        assert color_contrast_ratio(foreground, appearance.colors.background) >= 4.5
+    if theme is AppearanceTheme.HIGH_CONTRAST:
+        assert not appearance.artwork.dynamic_background
+        assert appearance.opacity.inactive_line == 85
+        assert appearance.opacity.secondary_representation == 100
+
+
+def test_explicit_color_and_artwork_choice_override_selected_theme() -> None:
+    appearance = _snapshot(
+        **{
+            "appearance.theme": "paper",
+            "appearance.colors.background": "#101820",
+            "appearance.artwork.dynamic_background": False,
+        }
+    ).appearance
+
+    assert appearance.theme is AppearanceTheme.PAPER
+    assert appearance.colors.background == "#101820"
+    assert not appearance.artwork.dynamic_background
+
+
+def test_artwork_tint_never_reduces_the_existing_contrast_floor() -> None:
+    background = "#202124"
+    foregrounds = ("#F1F3F4", "#39B9C7", "#C9D1D9")
+    tinted = contrast_safe_artwork_tint(
+        background, "#FFCC00", foregrounds, strength_percent=60
+    )
+    baseline = min(color_contrast_ratio(value, background) for value in foregrounds)
+
+    assert tinted != "#FFCC00"
+    assert min(color_contrast_ratio(value, tinted) for value in foregrounds) >= min(
+        4.5, baseline
+    )
+    assert (
+        contrast_safe_artwork_tint(
+            background, "#FFFFFF", foregrounds, strength_percent=0
+        )
+        == background
+    )
+
+
+def test_local_artwork_is_responsive_optional_and_contrast_safe(
+    qt_app: QApplication,
+) -> None:
+    asset = ArtworkAsset(bytes((192, 64, 32, 255)) * 4, 2, 2, "#C04020")
+    window = MainWindow()
+    window.render_state(_state())
+    window.set_artwork(asset)
+    window.show()
+    qt_app.processEvents()
+
+    assert window.artwork.isVisible()
+    assert "Unicode 曲名" in window.artwork.accessibleDescription()
+    assert window._background_wash_color is not None
+    center = (
+        window.artwork.grab()
+        .toImage()
+        .pixelColor(window.artwork.width() // 2, window.artwork.height() // 2)
+    )
+    assert center == QColor("#C04020")
+
+    window.set_window_mode(DesktopWindowMode.COMPACT)
+    qt_app.processEvents()
+    assert not window.artwork.isVisible()
+    window.set_window_mode(DesktopWindowMode.NORMAL)
+    window.resize(500, 500)
+    qt_app.processEvents()
+    assert not window.artwork.isVisible()
+
+    window.resize(760, 720)
+    window.set_appearance_profile(
+        _snapshot(
+            **{
+                "appearance.artwork.visible": False,
+                "appearance.artwork.dynamic_background": False,
+            }
+        ).appearance
+    )
+    qt_app.processEvents()
+    assert not window.artwork.isVisible()
+    assert window._background_wash_color is None
+    window.close()
+
+
+@pytest.mark.parametrize("theme", tuple(AppearanceTheme))
+def test_theme_projects_a_contrasting_complete_control_palette(
+    qt_app: QApplication, theme: AppearanceTheme
+) -> None:
+    appearance = _snapshot(**{"appearance.theme": theme.value}).appearance
+    window = MainWindow(appearance=appearance)
+    palette = window.palette()
+    button_text = palette.color(QPalette.ColorRole.ButtonText).name()
+    button = palette.color(QPalette.ColorRole.Button).name()
+
+    assert color_contrast_ratio(button_text, button) >= 4.5
+    assert palette.color(QPalette.ColorRole.Text) == palette.color(
+        QPalette.ColorRole.WindowText
+    )
+    assert window.application_menu.palette().color(
+        QPalette.ColorRole.WindowText
+    ) == palette.color(QPalette.ColorRole.WindowText)
+    window.close()
 
 
 def test_reduced_motion_and_disabled_scrolling_resolve_to_zero_duration() -> None:

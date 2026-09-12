@@ -18,6 +18,11 @@ from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication, QCheckBox
 
 from konokashi import cli
+from konokashi.application.artwork import (
+    ArtworkAsset,
+    ArtworkLoadResult,
+    ArtworkLoadStatus,
+)
 from konokashi.application.clock_lifecycle import AdaptiveResampler
 from konokashi.application.frontend_session import FrontendLyricsBundle
 from konokashi.application.playback_clock import PlaybackClock
@@ -132,6 +137,26 @@ class _Runtime:
 
     def close(self) -> None:
         self.monitor.close()
+
+
+class _ArtworkLoader:
+    def __init__(self) -> None:
+        self.calls: list[str | None] = []
+
+    def load(self, uri: str | None) -> ArtworkLoadResult:
+        self.calls.append(uri)
+        color = "#AA2200" if uri is not None and uri.endswith("a.png") else "#0066CC"
+        red, green, blue = (int(color[index : index + 2], 16) for index in (1, 3, 5))
+        asset = ArtworkAsset(bytes((red, green, blue, 255)), 1, 1, color)
+        return ArtworkLoadResult(ArtworkLoadStatus.LOADED, asset)
+
+
+def _with_artwork(track: ResolvedTrack, uri: str) -> ResolvedTrack:
+    snapshot = replace(
+        track.raw_snapshot,
+        metadata=replace(track.raw_snapshot.metadata, art_url=uri),
+    )
+    return replace(track, raw_snapshot=snapshot)
 
 
 class _DeferredTiming:
@@ -1106,6 +1131,49 @@ def test_rapid_track_loads_accept_only_latest_generation(
     assert coordinator._bundle.track is track_c
     assert frontend.cancellations == 3
     assert frontend.correction_calls == []
+    coordinator.close()
+    window.close()
+
+
+def test_local_artwork_loads_through_the_background_boundary(
+    qt_app: QApplication,
+) -> None:
+    window = MainWindow()
+    loader = _ArtworkLoader()
+    coordinator = _ImmediateCoordinator(qt_app, window, artwork_loader=loader)
+    track = _with_artwork(_track("xa4WrgqI7q0", "Artwork Track"), "file:///a.png")
+    coordinator._frontend = _Frontend(track)
+
+    coordinator._begin_track(track)
+    qt_app.processEvents()
+
+    assert loader.calls == ["file:///a.png"]
+    assert window.artwork.has_artwork
+    assert "Artwork Track" in window.artwork.accessibleDescription()
+    assert window._background_wash_color is not None
+    coordinator.close()
+    window.close()
+
+
+def test_late_artwork_cannot_overwrite_a_new_track(qt_app: QApplication) -> None:
+    window = MainWindow()
+    coordinator = _ControlledCoordinator(qt_app, window)
+    loader = _ArtworkLoader()
+    coordinator._artwork_loader = loader
+    track_a = _with_artwork(_track("xa4WrgqI7q0", "Track A"), "file:///a.png")
+    track_b = _with_artwork(_track("kFqGyp60d8s", "Track B"), "file:///b.png")
+    coordinator._frontend = _Frontend(track_a)
+
+    coordinator._begin_track(track_a)
+    coordinator._begin_track(track_b)
+    assert len(coordinator.pending_work) == 4
+    coordinator.complete(0)  # stale artwork A
+    assert not window.artwork.has_artwork
+    coordinator.complete(1)  # current artwork B after stale artwork was removed
+    assert window.artwork.has_artwork
+    assert window._artwork_asset is not None
+    assert window._artwork_asset.palette_color == "#0066CC"
+
     coordinator.close()
     window.close()
 

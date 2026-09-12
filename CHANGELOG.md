@@ -36,6 +36,11 @@ All notable user-visible changes are recorded here.
   playback state, active line/word, next line, provenance, and timestamps.
 - A focused synchronized lyrics TUI over the same clock, timeline, correction,
   representation, and snapshot boundaries as the desktop renderer.
+- Midnight, Paper, and High Contrast color themes with explicit custom-color
+  precedence and live GUI/TUI/CLI configuration.
+- Bounded local MPRIS album art with responsive rounded presentation,
+  stale-result rejection, and an optional artwork-derived background tint that
+  preserves the configured primary-text contrast floor.
 
 ### Changed
 
@@ -54,6 +59,9 @@ All notable user-visible changes are recorded here.
   above-fullscreen layer-shell placement is not claimed when unavailable.
 - Resolved-track corrections now cover album as well as title and artists, while
   provider metadata and media tags remain unchanged.
+- Album art is decoded outside the Qt UI thread from local PNG/JPEG/WebP files
+  only; remote artwork is not fetched and source paths are not retained in the
+  frontend asset.
 
 ## 0.1.0-beta.1 — 2026-09-10
 

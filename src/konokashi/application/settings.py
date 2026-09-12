@@ -14,6 +14,7 @@ from konokashi.application.appearance import (
     DEFAULT_APPEARANCE_VALUES,
     AppearancePreset,
     AppearanceProfile,
+    AppearanceTheme,
     TextAlignment,
     normalize_color,
     resolve_appearance,
@@ -281,11 +282,32 @@ SETTINGS_SCHEMA: tuple[SettingDefinition, ...] = (
         maximum=8,
     ),
     _appearance_definition(
+        "appearance.theme",
+        "Color theme",
+        SettingCategory.APPEARANCE,
+        "Choose one reviewed KonoKashi color system; explicit color values "
+        "override it.",
+        choices=tuple(item.value for item in AppearanceTheme),
+    ),
+    _appearance_definition(
         "appearance.preset",
         "Appearance preset",
         SettingCategory.APPEARANCE,
         "Choose a declarative starting profile; explicit custom values override it.",
         choices=tuple(item.value for item in AppearancePreset),
+    ),
+    _appearance_definition(
+        "appearance.artwork.visible",
+        "Show album artwork",
+        SettingCategory.APPEARANCE,
+        "Show bounded local artwork supplied by the selected MPRIS player.",
+    ),
+    _appearance_definition(
+        "appearance.artwork.dynamic_background",
+        "Tint background from artwork",
+        SettingCategory.APPEARANCE,
+        "Add a restrained artwork-derived tint without reducing configured "
+        "text contrast.",
     ),
     *(
         _appearance_definition(

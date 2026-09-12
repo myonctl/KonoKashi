@@ -5,7 +5,14 @@ from __future__ import annotations
 from enum import Enum
 
 from PySide6.QtCore import QRect, Qt, Signal
-from PySide6.QtGui import QColor, QGuiApplication, QPainter, QPaintEvent, QScreen
+from PySide6.QtGui import (
+    QColor,
+    QGuiApplication,
+    QLinearGradient,
+    QPainter,
+    QPaintEvent,
+    QScreen,
+)
 from PySide6.QtWidgets import QMainWindow, QWidget
 
 
@@ -37,6 +44,7 @@ class DesktopWindowSurface(QMainWindow):
             Qt.WidgetAttribute.WA_TranslucentBackground, self._alpha_requested
         )
         self._background_color = QColor("#202124")
+        self._background_wash_color: QColor | None = None
         self._decorated_flags = self.windowFlags()
         self._window_mode = DesktopWindowMode.NORMAL
         self._mode_before_fullscreen = DesktopWindowMode.NORMAL
@@ -206,14 +214,31 @@ class DesktopWindowSurface(QMainWindow):
         handle = self.windowHandle()
         return handle is None or handle.format().alphaBufferSize() > 0
 
-    def set_background_color(self, color: QColor) -> None:
+    def set_background_color(
+        self, color: QColor, wash_color: QColor | None = None
+    ) -> None:
         self._background_color = QColor(color)
+        self._background_wash_color = None if wash_color is None else QColor(wash_color)
         self.update()
 
     def paintEvent(self, event: QPaintEvent) -> None:
         color = QColor(self._background_color)
+        wash = (
+            None
+            if self._background_wash_color is None
+            else QColor(self._background_wash_color)
+        )
         if not self.background_transparency_available:
             color.setAlpha(255)
+            if wash is not None:
+                wash.setAlpha(255)
         painter = QPainter(self)
         painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_Source)
-        painter.fillRect(event.rect(), color)
+        if wash is None:
+            painter.fillRect(event.rect(), color)
+            return
+        gradient = QLinearGradient(event.rect().topLeft(), event.rect().bottomRight())
+        gradient.setColorAt(0.0, wash)
+        gradient.setColorAt(0.62, color)
+        gradient.setColorAt(1.0, color)
+        painter.fillRect(event.rect(), gradient)

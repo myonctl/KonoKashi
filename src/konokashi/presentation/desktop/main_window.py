@@ -27,9 +27,11 @@ from PySide6.QtGui import (
     QFontMetrics,
     QGuiApplication,
     QHideEvent,
+    QImage,
     QKeySequence,
     QMouseEvent,
     QPainter,
+    QPainterPath,
     QPaintEvent,
     QPalette,
     QResizeEvent,
@@ -63,8 +65,11 @@ from konokashi.application.appearance import (
     AppearanceProfile,
     TextAlignment,
     TextStyle,
+    color_contrast_ratio,
+    contrast_safe_artwork_tint,
     default_appearance_profile,
 )
+from konokashi.application.artwork import ArtworkAsset
 from konokashi.application.desktop_state import (
     DesktopKaraokeSegment,
     DesktopLyricGroup,
@@ -95,6 +100,9 @@ from konokashi.presentation.desktop.workspace import DesktopWorkspace, PanelId
 DESKTOP_APPEARANCE_TARGETS = MappingProxyType(
     {
         "appearance.preset": "resolved AppearanceProfile",
+        "appearance.theme": "resolved color system",
+        "appearance.artwork.visible": "bounded local album-art surface",
+        "appearance.artwork.dynamic_background": "contrast-safe window tint",
         **{
             f"appearance.typography.{layer}.{attribute}": target
             for layer, target in (
@@ -284,6 +292,58 @@ class ElidingLabel(QLabel):
             int(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter),
             text,
         )
+
+
+class AlbumArtwork(QWidget):
+    """Rounded, aspect-cropped rendering of one already-decoded thumbnail."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self._image = QImage()
+        self.setAccessibleName("Album artwork")
+        self.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
+        self.setFixedSize(96, 96)
+
+    @property
+    def has_artwork(self) -> bool:
+        return not self._image.isNull()
+
+    def set_asset(self, asset: ArtworkAsset | None) -> None:
+        if asset is None:
+            self._image = QImage()
+            self.setAccessibleDescription("No local album artwork is available")
+        else:
+            self._image = QImage(
+                asset.rgba,
+                asset.width,
+                asset.height,
+                asset.width * 4,
+                QImage.Format.Format_RGBA8888,
+            ).copy()
+        self.update()
+
+    def paintEvent(self, _event: QPaintEvent) -> None:
+        if self._image.isNull():
+            return
+        target = QRectF(self.rect())
+        source = QRectF(self._image.rect())
+        target_ratio = target.width() / max(1.0, target.height())
+        source_ratio = source.width() / max(1.0, source.height())
+        if source_ratio > target_ratio:
+            width = source.height() * target_ratio
+            source.setLeft((source.width() - width) / 2)
+            source.setWidth(width)
+        elif source_ratio < target_ratio:
+            height = source.width() / target_ratio
+            source.setTop((source.height() - height) / 2)
+            source.setHeight(height)
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        path = QPainterPath()
+        radius = max(4.0, min(target.width(), target.height()) * 0.11)
+        path.addRoundedRect(target, radius, radius)
+        painter.setClipPath(path)
+        painter.drawImage(target, self._image, source)
 
 
 def _group_text(groups: tuple[DesktopLyricGroup, ...]) -> str:
@@ -1230,6 +1290,7 @@ class MainWindow(DesktopWindowSurface):
             interaction_settings or DesktopInteractionSettings()
         )
         self._appearance = appearance or default_appearance_profile()
+        self._artwork_asset: ArtworkAsset | None = None
         self._state = DesktopViewState(DesktopLyricsState.WAITING, "Waiting for media…")
         self._library_result: (
             tuple[LibraryScanSummary, tuple[LibraryReviewItem, ...]] | None
@@ -1299,6 +1360,9 @@ class MainWindow(DesktopWindowSurface):
         metadata.addWidget(self.title_label)
         metadata.addWidget(self.artist_label)
         metadata.addWidget(self.album_label)
+        self.artwork = AlbumArtwork()
+        self.artwork.setVisible(False)
+        header.addWidget(self.artwork)
         header.addWidget(metadata_widget, 1)
         actions_widget = QWidget()
         self._actions_widget = actions_widget
@@ -1605,6 +1669,7 @@ class MainWindow(DesktopWindowSurface):
 
         super().resizeEvent(event)
         self._set_header_direction(event.size().width())
+        self._apply_visibility()
         self._pending_typography_size = event.size()
         self._resize_typography_timer.start()
 
@@ -1647,6 +1712,8 @@ class MainWindow(DesktopWindowSurface):
         self.album_label.setFont(
             _styled_font(self.album_label, appearance.metadata, scale * 0.9)
         )
+        artwork_size = round(96 * min(1.65, max(0.82, scale)))
+        self.artwork.setFixedSize(artwork_size, artwork_size)
         for label in (
             self.status_label,
             self.static_status_label,
@@ -1727,6 +1794,46 @@ class MainWindow(DesktopWindowSurface):
         self._interaction_settings = settings
         self._apply_interaction_settings()
 
+    def set_artwork(self, asset: ArtworkAsset | None) -> None:
+        """Project one bounded thumbnail without retaining its source URI."""
+
+        self._artwork_asset = asset
+        self.artwork.set_asset(asset)
+        self._update_artwork_accessibility()
+        self._apply_background_surface()
+        self._apply_visibility()
+
+    def _update_artwork_accessibility(self) -> None:
+        if self._artwork_asset is None:
+            return
+        artists = " · ".join(self._state.artists)
+        description = f"Album artwork for {self._state.title or 'current track'}"
+        if artists:
+            description += f" by {artists}"
+        self.artwork.setAccessibleDescription(description)
+
+    def _apply_background_surface(self) -> None:
+        appearance = self._appearance
+        background = _semantic_color(
+            appearance.colors.background, appearance.opacity.background
+        )
+        wash: QColor | None = None
+        asset = self._artwork_asset
+        if asset is not None and appearance.artwork.dynamic_background:
+            safe_color = contrast_safe_artwork_tint(
+                appearance.colors.background,
+                asset.palette_color,
+                (
+                    appearance.colors.active_lyric,
+                    appearance.colors.original_lyric,
+                    appearance.colors.metadata_primary,
+                    appearance.colors.status,
+                ),
+            )
+            wash = QColor(safe_color)
+            wash.setAlpha(background.alpha())
+        self.set_background_color(background, wash)
+
     def set_appearance_profile(self, appearance: AppearanceProfile) -> None:
         """Apply one resolved semantic profile without touching playback state."""
 
@@ -1739,26 +1846,56 @@ class MainWindow(DesktopWindowSurface):
         self._apply_responsive_typography(scale)
 
         palette = QPalette(self.palette())
+        background = _semantic_color(
+            appearance.colors.background, appearance.opacity.background
+        )
+        foreground = _semantic_color(
+            appearance.colors.foreground, appearance.opacity.content
+        )
+        button = QColor(background)
+        button.setAlpha(255)
+        button = button.lighter(125) if button.lightness() < 128 else button.darker(106)
         palette.setColor(
             QPalette.ColorRole.Window,
-            _semantic_color(
-                appearance.colors.background, appearance.opacity.background
-            ),
+            background,
         )
-        palette.setColor(
+        for role in (
             QPalette.ColorRole.WindowText,
-            _semantic_color(appearance.colors.foreground, appearance.opacity.content),
+            QPalette.ColorRole.Text,
+            QPalette.ColorRole.ButtonText,
+        ):
+            palette.setColor(role, foreground)
+        palette.setColor(QPalette.ColorRole.Base, background)
+        palette.setColor(QPalette.ColorRole.AlternateBase, button)
+        palette.setColor(QPalette.ColorRole.Button, button)
+        palette.setColor(
+            QPalette.ColorRole.PlaceholderText,
+            _semantic_color(appearance.colors.muted, appearance.opacity.content),
         )
         palette.setColor(
             QPalette.ColorRole.Highlight,
             _semantic_color(appearance.colors.selection),
         )
+        highlighted_text = (
+            "#000000"
+            if color_contrast_ratio("#000000", appearance.colors.selection)
+            >= color_contrast_ratio("#FFFFFF", appearance.colors.selection)
+            else "#FFFFFF"
+        )
+        palette.setColor(
+            QPalette.ColorRole.HighlightedText, _semantic_color(highlighted_text)
+        )
         palette.setColor(
             QPalette.ColorRole.Link,
             _semantic_color(appearance.colors.accent),
         )
+        if hasattr(QPalette.ColorRole, "Accent"):
+            palette.setColor(
+                QPalette.ColorRole.Accent,
+                _semantic_color(appearance.colors.accent),
+            )
         self.setPalette(palette)
-        self.set_background_color(palette.color(QPalette.ColorRole.Window))
+        self._apply_background_surface()
         central = self.centralWidget()
         if central is not None:
             central.setAutoFillBackground(False)
@@ -1842,6 +1979,7 @@ class MainWindow(DesktopWindowSurface):
         previous_state = self._state
         if _desktop_layout_key(previous_state) == _desktop_layout_key(state):
             self._state = state
+            self._update_artwork_accessibility()
             self.active_band.set_groups(state.active)
             self.update_playback(state)
             return
@@ -1851,6 +1989,7 @@ class MainWindow(DesktopWindowSurface):
             adjacent=transition_direction != 0,
         )
         self._state = state
+        self._update_artwork_accessibility()
         self.title_label.setText(state.title or "KonoKashi")
         self.artist_label.setText(" · ".join(state.artists))
         self.artist_label.setVisible(bool(state.artists))
@@ -2018,13 +2157,21 @@ class MainWindow(DesktopWindowSurface):
         show_album = (
             show_metadata and not compact and visibility.album and bool(state.album)
         )
+        show_artwork = (
+            show_metadata
+            and not compact
+            and self.width() >= 600
+            and self._appearance.artwork.visible
+            and self.artwork.has_artwork
+        )
         show_actions = mode is DesktopWindowMode.NORMAL and visibility.chrome
+        self.artwork.setVisible(show_artwork)
         self.title_label.setVisible(show_title)
         self.artist_label.setVisible(show_artist)
         self.album_label.setVisible(show_album)
         self._actions_widget.setVisible(show_actions)
         self._header_rule.setVisible(
-            show_actions or show_title or show_artist or show_album
+            show_actions or show_title or show_artist or show_album or show_artwork
         )
         self._metadata_widget.setVisible(show_title or show_artist or show_album)
         show_context = visibility.inactive_context and not compact

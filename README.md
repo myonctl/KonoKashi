@@ -26,8 +26,9 @@ local-first, deeply customizable, and source-available.
   lyrics, and durable cached matches before making a live provider request.
 - **Stay in control.** Review uncertain matches and retain corrections locally;
   low-confidence results are not silently approved.
-- **Make it fit your desktop.** Tune typography, colors, transparency, spacing,
-  visible layers, motion, and progress presentation.
+- **Make it fit your desktop.** Start from a coherent color theme, add local
+  album-art context, then tune typography, transparency, spacing, visible
+  layers, motion, and progress presentation.
 
 ## Features
 
@@ -52,6 +53,9 @@ local-first, deeply customizable, and source-available.
   canonical TOML configuration.
 - **Four desktop modes:** normal window, compact companion, lyric-only desktop
   overlay, and focused fullscreen, all using the same synchronized renderer.
+- **Restrained visual identity:** Midnight, Paper, and High Contrast color
+  themes plus local MPRIS album art and an optional contrast-guarded background
+  tint—without remote theme code, shaders, or a marketplace.
 
 Local reading support covers Japanese and Mandarin with language-aware limits,
 Korean romanization, and generic transliteration for Cyrillic, Greek, Arabic,
@@ -129,10 +133,22 @@ Open **Settings** in the desktop app for discoverable controls, or run
 the same validated configuration as the CLI and
 `$XDG_CONFIG_HOME/konokashi/config.toml`.
 
-Built-in presets provide quick starting points, while typography, layer
-visibility, colors, background opacity, spacing, alignment, lyric scale, smooth
-motion, and progress styling remain independently adjustable. Unavailable fonts
-fall back through Qt/fontconfig without replacing the configured choice.
+Three reviewed color themes and five layout presets provide quick starting
+points, while typography, album-art visibility/tint, layer visibility, colors,
+background opacity, spacing, alignment, lyric scale, smooth motion, and progress
+styling remain independently adjustable. Explicit color choices override a
+theme. High Contrast disables artwork tint by default, and all artwork-derived
+tints are reduced as needed so they never lower the theme's primary-text
+contrast floor. Unavailable fonts fall back through Qt/fontconfig without
+replacing the configured choice.
+
+Album art is loaded only from a local `file:` URI supplied by the selected MPRIS
+player and accessible to the process or application sandbox. It is decoded off
+the UI thread, restricted to PNG/JPEG/WebP, bounded before decode, and reduced
+to a 512-pixel RGBA thumbnail. KonoKashi does not fetch remote artwork URLs or
+retain the source path in the rendered asset or ordinary
+diagnostics. Artwork disappears immediately on source change, and an older slow
+decode cannot overwrite the current track.
 
 The **Online lyric sources** setting controls the source order. LRCLIB and
 Unison are enabled by default; order is only a tie-break after KonoKashi's own

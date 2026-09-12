@@ -18,6 +18,8 @@
       stored locally. Normal, compact, lyric-overlay, and fullscreen modes reuse
       the same synchronized renderer. A focused terminal view and versioned
       JSON Lines stream reuse the same playback and lyric state for local tools.
+      Three built-in color themes, bounded local album art, and a contrast-safe
+      artwork tint provide visual context without fetching remote artwork.
     </p>
   </description>
   <launchable type="desktop-id">io.github.myonctl.KonoKashi.desktop</launchable>

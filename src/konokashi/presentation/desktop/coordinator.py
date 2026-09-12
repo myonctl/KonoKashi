@@ -15,6 +15,11 @@ from PySide6.QtCore import QObject, QTimer, Signal, Slot
 from PySide6.QtWidgets import QApplication
 
 from konokashi.application.appearance import AppearanceProfile
+from konokashi.application.artwork import (
+    ArtworkLoaderPort,
+    ArtworkLoadResult,
+    ArtworkLoadStatus,
+)
 from konokashi.application.clock_lifecycle import AdaptiveResampler
 from konokashi.application.desktop_state import DesktopStateController
 from konokashi.application.frontend_session import (
@@ -73,6 +78,7 @@ from konokashi.domain.synchronization import (
     SynchronizationCalibration,
 )
 from konokashi.domain.tracks import PlayerSelectionResult, ResolvedTrack
+from konokashi.infrastructure.artwork import LocalArtworkLoader
 from konokashi.infrastructure.configuration.bootstrap import open_settings
 from konokashi.infrastructure.configuration.paths import default_config_path
 from konokashi.infrastructure.configuration.qt_watcher import QtSettingsWatcher
@@ -238,6 +244,7 @@ class DesktopCoordinator(QObject):
         runtime: MprisRuntimePort | None = None,
         player_override: str | None = None,
         lyrics_offset_us: int = 0,
+        artwork_loader: ArtworkLoaderPort | None = None,
     ) -> None:
         super().__init__(application)
         self._application = application
@@ -246,6 +253,7 @@ class DesktopCoordinator(QObject):
         self._config_path = config_path
         self._player_override = player_override
         self._lyrics_offset_us = lyrics_offset_us
+        self._artwork_loader = artwork_loader or LocalArtworkLoader()
         self._runtime: MprisRuntimePort = runtime or create_qt_mpris_runtime()
         self._desktop_runtime: DesktopMprisRuntimePort = self._runtime.desktop
         self._controller = DesktopStateController()
@@ -272,6 +280,7 @@ class DesktopCoordinator(QObject):
         self._closed = False
         self._selection_serial = 0
         self._load_serial = 0
+        self._artwork_serial = 0
         self._review_serial = 0
         self._library_cancellation: Event | None = None
         self._player_suggestions: tuple[str, ...] = ()
@@ -562,7 +571,13 @@ class DesktopCoordinator(QObject):
                     # Selection-affecting events can still resolve to the current
                     # source. Refresh its raw playback context without flashing a
                     # resolving state or performing provider/storage work again.
+                    artwork_changed = (
+                        current_track.raw_snapshot.metadata.art_url
+                        != selected_track.raw_snapshot.metadata.art_url
+                    )
                     self._track = selected_track
+                    if artwork_changed:
+                        self._load_artwork(selected_track)
                     session.replace_source(
                         selected_track.raw_snapshot,
                         _session_id(selected_track),
@@ -591,6 +606,7 @@ class DesktopCoordinator(QObject):
             self._frontend.cancel_inflight()
         self._clear_sync_only()
         self._track = track
+        self._load_artwork(track)
         token = self._controller.begin_resolution(track)
         self._window.render_state(self._controller.state)
         self._load_serial += 1
@@ -630,6 +646,38 @@ class DesktopCoordinator(QObject):
             self._window.set_representation_settings(result.display_settings)
             self._window.render_state(self._controller.state)
             self._start_playback_session(result)
+
+        self._start_job(load, loaded)
+
+    def _load_artwork(self, track: ResolvedTrack) -> None:
+        """Decode local MPRIS artwork off-thread and reject every stale result."""
+
+        self._artwork_serial += 1
+        serial = self._artwork_serial
+        uri = track.raw_snapshot.metadata.art_url
+        self._window.set_artwork(None)
+        if uri is None or not uri.strip():
+            return
+
+        def load() -> ArtworkLoadResult:
+            return self._artwork_loader.load(uri)
+
+        def loaded(result: object | None, _error: BaseException | None) -> None:
+            current = self._track
+            if (
+                serial != self._artwork_serial
+                or self._closed
+                or current is None
+                or current.raw_snapshot.metadata.art_url != uri
+            ):
+                return
+            asset = (
+                result.asset
+                if isinstance(result, ArtworkLoadResult)
+                and result.status is ArtworkLoadStatus.LOADED
+                else None
+            )
+            self._window.set_artwork(asset)
 
         self._start_job(load, loaded)
 
@@ -824,6 +872,7 @@ class DesktopCoordinator(QObject):
                 if self._frontend is not None:
                     self._frontend.cancel_inflight()
                 self._track = None
+                self._clear_artwork()
                 self._window.render_state(self._controller.source_changed())
             self._schedule_selection()
             return
@@ -840,6 +889,7 @@ class DesktopCoordinator(QObject):
         )
         if selected_source_invalidated:
             self._load_serial += 1
+            self._clear_artwork()
             self._window.render_state(self._controller.source_changed())
             self._clear_sync_only()
             self._schedule_selection()
@@ -1165,6 +1215,11 @@ class DesktopCoordinator(QObject):
         self._review_serial += 1
         self._clear_sync_only()
         self._track = None
+        self._clear_artwork()
+
+    def _clear_artwork(self) -> None:
+        self._artwork_serial += 1
+        self._window.set_artwork(None)
 
     def _start_library_scan(self) -> None:
         """Run a configured library scan on the bounded desktop worker pool."""

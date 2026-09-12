@@ -18,6 +18,14 @@ class AppearancePreset(Enum):
     LARGE_DISPLAY = "large-display"
 
 
+class AppearanceTheme(Enum):
+    """Small, reviewed color systems rather than arbitrary theme code."""
+
+    MIDNIGHT = "midnight"
+    PAPER = "paper"
+    HIGH_CONTRAST = "high-contrast"
+
+
 class TextAlignment(Enum):
     LEFT = "left"
     CENTER = "center"
@@ -131,10 +139,19 @@ class ProgressAppearance:
 
 
 @dataclass(frozen=True, slots=True)
+class ArtworkAppearance:
+    """Privacy-safe artwork presentation choices shared with the desktop."""
+
+    visible: bool
+    dynamic_background: bool
+
+
+@dataclass(frozen=True, slots=True)
 class AppearanceProfile:
     """Resolved immutable semantics shared by every current/future frontend."""
 
     preset: AppearancePreset
+    theme: AppearanceTheme
     original: TextStyle
     romanization: TextStyle
     translation: TextStyle
@@ -151,6 +168,7 @@ class AppearanceProfile:
     context: LyricContext
     motion: MotionPreferences
     progress: ProgressAppearance
+    artwork: ArtworkAppearance
     lyric_scale_percent: int
 
 
@@ -168,6 +186,9 @@ def normalize_color(value: str) -> str:
 DEFAULT_APPEARANCE_VALUES: Mapping[str, bool | int | str] = MappingProxyType(
     {
         "appearance.preset": "default",
+        "appearance.theme": "midnight",
+        "appearance.artwork.visible": True,
+        "appearance.artwork.dynamic_background": True,
         "appearance.typography.lyric_scale_percent": 100,
         "appearance.progress.thickness": 4,
         "appearance.progress.track_color": "#FFFFFF20",
@@ -239,6 +260,56 @@ DEFAULT_APPEARANCE_VALUES: Mapping[str, bool | int | str] = MappingProxyType(
         "appearance.motion.emphasis_transition_ms": 120,
         "appearance.motion.reduced": False,
     }
+)
+
+
+APPEARANCE_THEMES: Mapping[AppearanceTheme, Mapping[str, bool | int | str]] = (
+    MappingProxyType(
+        {
+            AppearanceTheme.MIDNIGHT: MappingProxyType({}),
+            AppearanceTheme.PAPER: MappingProxyType(
+                {
+                    "appearance.colors.active_lyric": "#006D77",
+                    "appearance.colors.inactive_lyric": "#536169",
+                    "appearance.colors.original_lyric": "#1B242A",
+                    "appearance.colors.romanization": "#365B61",
+                    "appearance.colors.translation": "#4B5660",
+                    "appearance.colors.metadata_primary": "#172027",
+                    "appearance.colors.metadata_secondary": "#536169",
+                    "appearance.colors.background": "#F6F0E6",
+                    "appearance.colors.foreground": "#1B242A",
+                    "appearance.colors.accent": "#006D77",
+                    "appearance.colors.progress": "#006D77",
+                    "appearance.colors.status": "#35434A",
+                    "appearance.colors.muted": "#65727A",
+                    "appearance.colors.selection": "#006D77",
+                    "appearance.progress.track_color": "#1720272E",
+                }
+            ),
+            AppearanceTheme.HIGH_CONTRAST: MappingProxyType(
+                {
+                    "appearance.artwork.dynamic_background": False,
+                    "appearance.colors.active_lyric": "#67F3FF",
+                    "appearance.colors.inactive_lyric": "#E5E5E5",
+                    "appearance.colors.original_lyric": "#FFFFFF",
+                    "appearance.colors.romanization": "#E8F8FF",
+                    "appearance.colors.translation": "#FFF0A6",
+                    "appearance.colors.metadata_primary": "#FFFFFF",
+                    "appearance.colors.metadata_secondary": "#F2F2F2",
+                    "appearance.colors.background": "#000000",
+                    "appearance.colors.foreground": "#FFFFFF",
+                    "appearance.colors.accent": "#67F3FF",
+                    "appearance.colors.progress": "#67F3FF",
+                    "appearance.colors.status": "#FFFFFF",
+                    "appearance.colors.muted": "#E5E5E5",
+                    "appearance.colors.selection": "#FFFF00",
+                    "appearance.progress.track_color": "#FFFFFF52",
+                    "appearance.opacity.inactive_line": 85,
+                    "appearance.opacity.secondary_representation": 100,
+                }
+            ),
+        }
+    )
 )
 
 
@@ -314,12 +385,15 @@ def resolve_appearance(
     """Resolve defaults, one declarative preset, then explicit user overrides."""
 
     preset = AppearancePreset(cast(str, values.get("appearance.preset", "default")))
+    theme = AppearanceTheme(cast(str, values.get("appearance.theme", "midnight")))
     resolved = dict(DEFAULT_APPEARANCE_VALUES)
+    resolved.update(APPEARANCE_THEMES[theme])
     resolved.update(APPEARANCE_PRESETS[preset])
     for key in explicit_keys:
         if key in DEFAULT_APPEARANCE_VALUES and key in values:
             resolved[key] = cast(bool | int | str, values[key])
     resolved["appearance.preset"] = preset.value
+    resolved["appearance.theme"] = theme.value
 
     def text_style(name: str, *, italic: bool = True) -> TextStyle:
         prefix = f"appearance.typography.{name}"
@@ -332,6 +406,7 @@ def resolve_appearance(
 
     return AppearanceProfile(
         preset,
+        theme,
         text_style("original"),
         text_style("romanization"),
         text_style("translation"),
@@ -420,8 +495,69 @@ def resolve_appearance(
             cast(int, resolved["appearance.progress.opacity"]),
             cast(int, resolved["appearance.progress.corner_radius"]),
         ),
+        ArtworkAppearance(
+            cast(bool, resolved["appearance.artwork.visible"]),
+            cast(bool, resolved["appearance.artwork.dynamic_background"]),
+        ),
         cast(int, resolved["appearance.typography.lyric_scale_percent"]),
     )
+
+
+def color_contrast_ratio(first: str, second: str) -> float:
+    """Return WCAG relative contrast for two validated RGB/RGBA colors."""
+
+    def luminance(value: str) -> float:
+        color = normalize_color(value)
+        channels = tuple(int(color[index : index + 2], 16) / 255 for index in (1, 3, 5))
+
+        def linear(channel: float) -> float:
+            return (
+                channel / 12.92
+                if channel <= 0.04045
+                else ((channel + 0.055) / 1.055) ** 2.4
+            )
+
+        red, green, blue = (linear(channel) for channel in channels)
+        return 0.2126 * red + 0.7152 * green + 0.0722 * blue
+
+    lighter, darker = sorted((luminance(first), luminance(second)), reverse=True)
+    return (lighter + 0.05) / (darker + 0.05)
+
+
+def contrast_safe_artwork_tint(
+    background: str,
+    artwork_color: str,
+    foregrounds: tuple[str, ...],
+    *,
+    strength_percent: int = 18,
+) -> str:
+    """Blend an artwork tint without reducing the profile's contrast guarantee."""
+
+    if not 0 <= strength_percent <= 100:
+        raise ValueError("artwork tint strength must be between 0 and 100")
+    base = normalize_color(background)
+    tint = normalize_color(artwork_color)
+    if not foregrounds or strength_percent == 0:
+        return base[:7]
+    normalized_foregrounds = tuple(normalize_color(value) for value in foregrounds)
+    baseline = min(
+        color_contrast_ratio(value, base) for value in normalized_foregrounds
+    )
+    required = min(4.5, baseline)
+    base_channels = tuple(int(base[index : index + 2], 16) for index in (1, 3, 5))
+    tint_channels = tuple(int(tint[index : index + 2], 16) for index in (1, 3, 5))
+    for strength in range(strength_percent, -1, -1):
+        mixed = tuple(
+            round((base_value * (100 - strength) + tint_value * strength) / 100)
+            for base_value, tint_value in zip(base_channels, tint_channels, strict=True)
+        )
+        candidate = "#" + "".join(f"{channel:02X}" for channel in mixed)
+        if all(
+            color_contrast_ratio(value, candidate) + 1e-9 >= required
+            for value in normalized_foregrounds
+        ):
+            return candidate
+    return base[:7]
 
 
 def default_appearance_profile() -> AppearanceProfile:
