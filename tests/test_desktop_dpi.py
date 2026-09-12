@@ -111,7 +111,6 @@ assert all(
 )
 assert window.previous_band.visible_group_count == 0
 assert window.next_band.visible_group_count == 0
-assert not window.active_band.captions_visible
 assert window._lyric_column.adaptive_fit_scale < 1.0
 assert window._lyric_column.verticalScrollBar().maximum() == 0
 settings = SettingsWindow(Path("/tmp/konokashi-dpi-config.toml"), window)

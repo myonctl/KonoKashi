@@ -14,7 +14,7 @@ All notable user-visible changes are recorded here.
 - Trust-gated desktop karaoke highlighting for exact word-timed lyrics, with
   wrapped multilingual text, clock-driven interpolation, and line-sync fallback.
 - Independent reading and translation identities through synchronized frontend
-  state, with compact active-line captions for romaji, pinyin, Korean readings,
+  state, with semantic accessible roles for romaji, pinyin, Korean readings,
   generic transliteration, and provider/imported/user/generated provenance.
 - Normal, compact, desktop-overlay, and fullscreen lyric modes over one shared
   renderer, with screen targeting and explicit overlay move/resize/exit controls.
@@ -47,10 +47,14 @@ All notable user-visible changes are recorded here.
 
 ### Changed
 
+- The listening surface now presents multilingual content as a quiet visual
+  hierarchy of original, reading, and optional translation. Layer type remains
+  accessible, while provenance, generator/provider identity, approval state,
+  language, script, and uncertainty have moved to Lyrics details.
 - Timed lyrics now adapt from real wrapped geometry: distant context is removed
-  before active-layer captions or typography are reduced, nearby lines return
-  when room does, and extreme content scrolls at a readable floor instead of
-  clipping glyphs or colliding multilingual layers.
+  before active typography is reduced, nearby lines return when room does, and
+  extreme content scrolls at a readable floor instead of clipping glyphs or
+  colliding multilingual layers.
 - The normal desktop header now prioritizes track identity and lyrics, keeps one
   quiet review/correction action visible, moves settings, lyric details, and
   library scanning into a discoverable overflow menu, and promotes recovery

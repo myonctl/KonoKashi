@@ -379,19 +379,19 @@ def _lyric_group_layout_key(group: DesktopLyricGroup) -> tuple[object, ...]:
     )
 
 
-def _provenance_caption(provenance: str | None) -> str | None:
+def _provenance_name(provenance: str | None) -> str:
     if provenance is None:
-        return None
+        return "unavailable"
     return {
         "provider": "Provider",
         "imported": "Imported",
         "local": "Local",
         "user": "Your version",
         "generated": "Generated",
-    }.get(provenance)
+    }.get(provenance, provenance)
 
 
-def _reading_caption(group: DesktopLyricGroup) -> str:
+def _reading_layer_name(group: DesktopLyricGroup) -> str:
     metadata = group.reading_metadata
     language = ("" if metadata is None else metadata.language or "").casefold()
     if metadata is not None and metadata.kind == "transliterated":
@@ -404,26 +404,61 @@ def _reading_caption(group: DesktopLyricGroup) -> str:
         layer = "Korean reading"
     else:
         layer = "Reading"
-    provenance = _provenance_caption(None if metadata is None else metadata.provenance)
-    return layer if provenance is None else f"{layer} · {provenance}"
+    return layer
 
 
-def _translation_caption(group: DesktopLyricGroup) -> str:
-    provenance = _provenance_caption(
-        None
-        if group.translation_metadata is None
-        else group.translation_metadata.provenance
-    )
-    return "Translation" if provenance is None else f"Translation · {provenance}"
+def _representation_details(state: DesktopViewState) -> tuple[str, ...]:
+    """Describe active layer identity without repeating lyric text."""
 
-
-def _layer_tooltip(
-    caption: str, source_name: str | None, source_version: str | None
-) -> str:
-    source = source_name or "Source unavailable"
-    if source_version:
-        source = f"{source} {source_version}"
-    return escape(f"{caption}. {source}")
+    details: list[str] = []
+    seen: set[tuple[object, ...]] = set()
+    for group in state.active or state.static_lines:
+        for layer, text, metadata in (
+            (
+                _reading_layer_name(group),
+                group.romanized_or_transliterated,
+                group.reading_metadata,
+            ),
+            ("Translation", group.translation, group.translation_metadata),
+        ):
+            if text is None:
+                continue
+            identity = (
+                layer,
+                None if metadata is None else metadata.kind,
+                None if metadata is None else metadata.provenance,
+                None if metadata is None else metadata.approval_state,
+                None if metadata is None else metadata.source_name,
+                None if metadata is None else metadata.source_version,
+                None if metadata is None else metadata.language,
+                None if metadata is None else metadata.script,
+                None if metadata is None else metadata.uncertainty,
+            )
+            if identity in seen:
+                continue
+            seen.add(identity)
+            source = "unavailable" if metadata is None else metadata.source_name
+            if metadata is not None and metadata.source_version:
+                source = f"{source or 'unavailable'} {metadata.source_version}"
+            provenance = _provenance_name(
+                None if metadata is None else metadata.provenance
+            )
+            parts = [
+                f"provenance {provenance}",
+                f"source {source or 'unavailable'}",
+            ]
+            if metadata is not None:
+                for name, value in (
+                    ("kind", metadata.kind),
+                    ("approval", metadata.approval_state),
+                    ("language", metadata.language),
+                    ("script", metadata.script),
+                    ("uncertainty", metadata.uncertainty),
+                ):
+                    if value:
+                        parts.append(f"{name} {value}")
+            details.append(f"- {layer}: {'; '.join(parts)}")
+    return tuple(details)
 
 
 def _desktop_layout_key(state: DesktopViewState) -> tuple[object, ...]:
@@ -648,13 +683,12 @@ def _lyric_layer_label(accessible_name: str) -> _WrappedLyricLabel:
 
 
 class _LyricGroupWidget(QWidget):
-    """Reusable original, reading, translation, and provenance labels."""
+    """Reusable original, reading, and translation hierarchy."""
 
     def __init__(self, *, active: bool) -> None:
         super().__init__()
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
         self._active = active
-        self._captions_visible = True
         self._appearance = default_appearance_profile()
         self._scale = 1.0
         layout = QVBoxLayout(self)
@@ -664,14 +698,10 @@ class _LyricGroupWidget(QWidget):
         region = "current" if active else "nearby"
         self._region = region
         self.original = _lyric_layer_label(f"Original {region} lyric")
-        self.reading_caption = _lyric_layer_label("Reading provenance")
         self.romanized = _lyric_layer_label(f"Romanized {region} lyric")
-        self.translation_caption = _lyric_layer_label("Translation provenance")
         self.translation = _lyric_layer_label(f"Translated {region} lyric")
         layout.addWidget(self.original)
-        layout.addWidget(self.reading_caption)
         layout.addWidget(self.romanized)
-        layout.addWidget(self.translation_caption)
         layout.addWidget(self.translation)
 
     def set_group(self, group: DesktopLyricGroup) -> None:
@@ -689,83 +719,15 @@ class _LyricGroupWidget(QWidget):
             if label.isHidden() == visible:
                 label.setVisible(visible)
                 layout_changed = True
-        reading_caption = _reading_caption(group)
-        translation_caption = _translation_caption(group)
-        for label, text, visible in (
-            (
-                self.reading_caption,
-                reading_caption,
-                self._active
-                and self._captions_visible
-                and group.romanized_or_transliterated is not None,
-            ),
-            (
-                self.translation_caption,
-                translation_caption,
-                self._active
-                and self._captions_visible
-                and group.translation is not None,
-            ),
-        ):
-            if label.text() != text:
-                label.setText(text)
-                layout_changed = True
-            if label.isHidden() == visible:
-                label.setVisible(visible)
-                layout_changed = True
-        self.reading_caption.setToolTip(
-            _layer_tooltip(
-                reading_caption,
-                (
-                    None
-                    if group.reading_metadata is None
-                    else group.reading_metadata.source_name
-                ),
-                (
-                    None
-                    if group.reading_metadata is None
-                    else group.reading_metadata.source_version
-                ),
-            )
+        self.romanized.setAccessibleName(
+            f"{_reading_layer_name(group)} {self._region} lyric"
         )
-        self.translation_caption.setToolTip(
-            _layer_tooltip(
-                translation_caption,
-                (
-                    None
-                    if group.translation_metadata is None
-                    else group.translation_metadata.source_name
-                ),
-                (
-                    None
-                    if group.translation_metadata is None
-                    else group.translation_metadata.source_version
-                ),
-            )
-        )
-        self.romanized.setAccessibleName(f"{reading_caption} {self._region} lyric")
-        self.translation.setAccessibleName(
-            f"{translation_caption} {self._region} lyric"
-        )
+        self.translation.setAccessibleName(f"Translation {self._region} lyric")
         self.original.set_karaoke_segments(
             group.karaoke_segments if self._active else ()
         )
         if layout_changed:
             self.updateGeometry()
-
-    def set_captions_visible(self, visible: bool) -> None:
-        """Keep layer meaning accessible while shedding labels in tight layouts."""
-
-        if visible == self._captions_visible:
-            return
-        self._captions_visible = visible
-        self.reading_caption.setVisible(
-            self._active and visible and not self.romanized.isHidden()
-        )
-        self.translation_caption.setVisible(
-            self._active and visible and not self.translation.isHidden()
-        )
-        self.updateGeometry()
 
     def hasHeightForWidth(self) -> bool:
         return True
@@ -777,9 +739,7 @@ class _LyricGroupWidget(QWidget):
             label
             for label in (
                 self.original,
-                self.reading_caption,
                 self.romanized,
-                self.translation_caption,
                 self.translation,
             )
             if not label.isHidden()
@@ -846,18 +806,6 @@ class _LyricGroupWidget(QWidget):
                 )
             _apply_text_palette(label, semantic_color)
             label.setAlignment(_qt_alignment(appearance.lyric_alignment))
-        caption_color = _semantic_color(
-            appearance.colors.muted,
-            round(
-                appearance.opacity.secondary_representation
-                * appearance.opacity.content
-                / 100
-            ),
-        )
-        for caption in (self.reading_caption, self.translation_caption):
-            caption.setFont(_styled_font(caption, appearance.status, scale * 0.9))
-            _apply_text_palette(caption, caption_color)
-            caption.setAlignment(_qt_alignment(appearance.lyric_alignment))
         active_color = _semantic_color(
             appearance.colors.active_lyric, appearance.opacity.content
         )
@@ -902,7 +850,6 @@ class LyricBand(QWidget):
         self._rendered_groups: tuple[DesktopLyricGroup, ...] = ()
         self._group_widgets: list[_LyricGroupWidget] = []
         self._visible_group_limit = self._MAX_VISIBLE_GROUPS
-        self._captions_visible = True
         self._selection_enabled = False
         self._appearance = default_appearance_profile()
         self._scale = 1.0
@@ -997,24 +944,12 @@ class LyricBand(QWidget):
     def visible_group_count(self) -> int:
         return len(self._rendered_groups)
 
-    @property
-    def captions_visible(self) -> bool:
-        return self._captions_visible
-
     def set_visible_group_limit(self, limit: int) -> None:
         bounded = min(self._MAX_VISIBLE_GROUPS, max(0, limit))
         if bounded == self._visible_group_limit:
             return
         self._visible_group_limit = bounded
         self._render_groups()
-
-    def set_captions_visible(self, visible: bool) -> None:
-        if visible == self._captions_visible:
-            return
-        self._captions_visible = visible
-        for widget in self._group_widgets:
-            widget.set_captions_visible(visible)
-        self.updateGeometry()
 
     def hasHeightForWidth(self) -> bool:
         return True
@@ -1089,7 +1024,6 @@ class LyricBand(QWidget):
         while len(self._group_widgets) < len(visible_groups):
             widget = _LyricGroupWidget(active=self._active)
             widget.apply_appearance(self._appearance, self._scale * self._fit_scale)
-            widget.set_captions_visible(self._captions_visible)
             widget.set_selection_enabled(self._selection_enabled)
             self._layout.addWidget(widget)
             self._group_widgets.append(widget)
@@ -1330,7 +1264,6 @@ class LyricTransitionViewport(QScrollArea):
         """Reduce distant context before making one bounded typography adjustment."""
 
         self._active.set_fit_scale(1.0)
-        self._active.set_captions_visible(True)
         previous_count = (
             self._previous.available_group_count if self._previous_requested else 0
         )
@@ -1356,10 +1289,6 @@ class LyricTransitionViewport(QScrollArea):
 
         if self._document_height_for_width(width) <= available_height:
             return
-        self._active.set_captions_visible(False)
-        if self._document_height_for_width(width) <= available_height:
-            return
-
         minimum_scale = 0.35
         self._active.set_fit_scale(minimum_scale)
         if self._document_height_for_width(width) > available_height:
@@ -1413,6 +1342,17 @@ class DiagnosticsDialog(QDialog):
             + (state.sync_health.value if state.sync_health else "unavailable"),
             f"document display delay: {state.display_delay_us / 1000:+.0f} ms",
         ]
+        representation_details = _representation_details(state)
+        lines.extend(
+            (
+                "",
+                "Representation layers:",
+                *(
+                    representation_details
+                    or ("- No active reading or translation layer is available.",)
+                ),
+            )
+        )
         if state.diagnostics:
             lines.extend(("", "Limitations / diagnostics:"))
             lines.extend(f"- {item}" for item in state.diagnostics[:20])

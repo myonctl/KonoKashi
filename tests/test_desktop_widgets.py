@@ -186,13 +186,13 @@ def test_line_only_active_and_context_colors_keep_their_visual_hierarchy(
 @pytest.mark.parametrize(
     ("kind", "language", "provenance", "expected"),
     (
-        ("romanized", "ja-Latn", "generated", "Romaji · Generated"),
-        ("romanized", "zh-Latn-pinyin", "provider", "Pinyin · Provider"),
-        ("romanized", "ko-Latn", "user", "Korean reading · Your version"),
-        ("transliterated", None, "imported", "Transliteration · Imported"),
+        ("romanized", "ja-Latn", "generated", "Romaji"),
+        ("romanized", "zh-Latn-pinyin", "provider", "Pinyin"),
+        ("romanized", "ko-Latn", "user", "Korean reading"),
+        ("transliterated", None, "imported", "Transliteration"),
     ),
 )
-def test_active_reading_caption_names_language_kind_and_provenance(
+def test_active_reading_names_kind_without_visual_provenance_noise(
     qt_app: QApplication,
     kind: str,
     language: str | None,
@@ -218,25 +218,65 @@ def test_active_reading_caption_names_language_kind_and_provenance(
     qt_app.processEvents()
 
     group = window.active_band._group_widgets[0]
-    assert group.reading_caption.text() == expected
-    assert group.reading_caption.isVisible()
-    assert group.reading_caption.toolTip() == (
-        f"{expected}. &lt;local engine&gt; 1 &amp; 2"
-    )
     assert group.romanized.accessibleName() == f"{expected} current lyric"
-    assert group.translation_caption.text() == "Translation · Provider"
-    assert (
-        group.original.font().pointSizeF() > group.reading_caption.font().pointSizeF()
-    )
+    assert group.translation.accessibleName() == "Translation current lyric"
+    assert len(group.findChildren(QLabel)) == 3
     assert all(
-        caption.isHidden()
-        for context in (
-            window.previous_band._group_widgets[0],
-            window.next_band._group_widgets[0],
+        word
+        not in "\n".join(
+            label.text() for label in group.findChildren(QLabel) if label.isVisible()
         )
-        for caption in (context.reading_caption, context.translation_caption)
+        for word in ("Generated", "Provider", "Imported", "Your version")
+    )
+    assert (
+        group.original.font().pointSizeF()
+        > group.romanized.font().pointSizeF()
+        > group.translation.font().pointSizeF()
     )
     window.close()
+
+
+def test_lyrics_details_retain_reading_and_translation_provenance(
+    qt_app: QApplication,
+) -> None:
+    active = replace(
+        _state().active[0],
+        reading_metadata=DesktopRepresentationMetadata(
+            "romanized",
+            "generated",
+            approval_state="automatic",
+            source_name="local reading engine",
+            source_version="1.2",
+            language="ja-Latn",
+            script="Latn",
+            uncertainty="low",
+        ),
+        translation_metadata=DesktopRepresentationMetadata(
+            "translated",
+            "user",
+            approval_state="approved",
+            source_name="local correction",
+            language="en",
+            script="Latn",
+        ),
+    )
+    dialog = DiagnosticsDialog(replace(_state(), active=(active,)))
+    dialog.show()
+    qt_app.processEvents()
+
+    details = dialog.findChild(QPlainTextEdit)
+    assert details is not None
+    text = details.toPlainText()
+    assert "Romaji: provenance Generated" in text
+    assert "source local reading engine 1.2" in text
+    assert "approval automatic" in text
+    assert "language ja-Latn" in text
+    assert "script Latn" in text
+    assert "uncertainty low" in text
+    assert "Translation: provenance Your version" in text
+    assert "source local correction" in text
+    assert "approval approved" in text
+    dialog.close()
 
 
 def test_word_timing_remains_bound_to_original_not_shorter_translation(
@@ -267,7 +307,7 @@ def test_word_timing_remains_bound_to_original_not_shorter_translation(
     assert group.original.karaoke_segments == active.karaoke_segments
     assert group.romanized.karaoke_segments == ()
     assert group.translation.karaoke_segments == ()
-    assert group.translation_caption.text() == "Translation · Your version"
+    assert group.translation.accessibleName() == "Translation current lyric"
     window.close()
 
 

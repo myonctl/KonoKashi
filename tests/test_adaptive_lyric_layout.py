@@ -112,9 +112,7 @@ def _visible_labels(window: MainWindow) -> tuple[QLabel, ...]:
         if not group.isHidden()
         for label in (
             group.original,
-            group.reading_caption,
             group.romanized,
-            group.translation_caption,
             group.translation,
         )
         if not label.isHidden()
@@ -196,7 +194,6 @@ def test_multilingual_lyrics_adapt_without_label_clipping_or_collision(
         # own their complete measured height, so scrolling never reveals cut glyphs.
         assert window.previous_band.visible_group_count == 0
         assert window.next_band.visible_group_count == 0
-        assert not window.active_band.captions_visible
         assert window._lyric_column.adaptive_fit_scale == pytest.approx(0.35)
     window.close()
 
@@ -229,7 +226,6 @@ def test_context_reduction_preserves_nearest_lines_and_restores_roomy_layout(
     previous_count = window.previous_band.visible_group_count
     following_count = window.next_band.visible_group_count
     assert previous_count + following_count < 8
-    assert window.active_band.captions_visible
     assert window._lyric_column.adaptive_fit_scale == pytest.approx(1.0)
     assert tuple(group.line_id for group in window.previous_band._rendered_groups) == (
         tuple(f"previous-{index}" for index in range(4))[-previous_count:]
@@ -248,7 +244,7 @@ def test_context_reduction_preserves_nearest_lines_and_restores_roomy_layout(
     window.close()
 
 
-def test_active_layers_outlive_context_and_captions_before_typography_fits(
+def test_active_layers_outlive_context_before_typography_fits(
     qt_app: QApplication,
 ) -> None:
     _, original, reading, translation = MULTILINGUAL_CASES[0]
@@ -263,7 +259,6 @@ def test_active_layers_outlive_context_and_captions_before_typography_fits(
 
     assert window.previous_band.visible_group_count == 0
     assert window.next_band.visible_group_count == 0
-    assert not window.active_band.captions_visible
     assert 0.35 < window._lyric_column.adaptive_fit_scale < 1.0
     assert len(_semantic_active_labels(window)) == 3
     assert window._lyric_column.verticalScrollBar().maximum() == 0

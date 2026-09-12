@@ -70,9 +70,7 @@ def _layer_labels(window: MainWindow) -> tuple[QLabel, ...]:
         if not group.isHidden()
         for label in (
             group.original,
-            group.reading_caption,
             group.romanized,
-            group.translation_caption,
             group.translation,
         )
         if not label.isHidden()
@@ -128,9 +126,7 @@ def test_wrapped_layers_have_disjoint_measured_geometry_at_supported_scales(
         if not group.isHidden()
         for label in (
             group.original,
-            group.reading_caption,
             group.romanized,
-            group.translation_caption,
             group.translation,
         )
         if not label.isHidden()
@@ -138,7 +134,6 @@ def test_wrapped_layers_have_disjoint_measured_geometry_at_supported_scales(
     if any(not viewport.contains(rect) for rect in active_rectangles):
         assert window.previous_band.visible_group_count == 0
         assert window.next_band.visible_group_count == 0
-        assert not window.active_band.captions_visible
         assert window._lyric_column.adaptive_fit_scale == pytest.approx(0.35)
         assert window._lyric_column.verticalScrollBar().maximum() > 0
         assert window._lyric_column.verticalScrollBar().isVisible()
@@ -358,9 +353,7 @@ def test_two_original_lines_share_one_measured_transition_anchor(
         for group in window.active_band._group_widgets
         for label in (
             group.original,
-            group.reading_caption,
             group.romanized,
-            group.translation_caption,
             group.translation,
         )
         if not label.isHidden()
