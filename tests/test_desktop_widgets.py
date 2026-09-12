@@ -10,7 +10,7 @@ from pathlib import Path
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 import pytest
-from PySide6.QtCore import QRect, Qt, QTimer
+from PySide6.QtCore import QPoint, QRect, Qt, QTimer
 from PySide6.QtGui import QColor, QFontMetrics, QPalette
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import (
@@ -606,6 +606,30 @@ def test_compact_header_preserves_track_metadata_above_actions(
     window.resize(760, 720)
     qt_app.processEvents()
     assert window._header_layout.direction() is QBoxLayout.Direction.LeftToRight
+    window.close()
+
+
+def test_no_result_recovery_actions_remain_reachable_with_long_metadata(
+    qt_app: QApplication,
+) -> None:
+    window = MainWindow()
+    window.render_state(replace(_state(), state=DesktopLyricsState.NO_RESULT))
+    window.resize(600, 720)
+    window.show()
+    qt_app.processEvents()
+
+    assert window._header_layout.direction() is QBoxLayout.Direction.LeftToRight
+    for button in (
+        window.settings_button,
+        window.review_button,
+        window.details_button,
+        window.library_button,
+    ):
+        top_left = button.mapTo(window, QPoint())
+        assert button.isVisible()
+        assert top_left.x() >= 0
+        assert top_left.x() + button.width() <= window.width()
+
     window.close()
 
 
