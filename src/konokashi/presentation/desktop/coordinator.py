@@ -1051,6 +1051,7 @@ class DesktopCoordinator(QObject):
                 title=title,
                 artists=artists,
                 enrich_youtube=enrich_youtube,
+                find_alternatives=True,
             )
 
         def loaded(result: object | None, error: BaseException | None) -> None:

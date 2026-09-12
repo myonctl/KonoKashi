@@ -1,4 +1,4 @@
-"""Passive Stage 8 review dialog over frontend-neutral correction values."""
+"""Review and local-correction dialogs over frontend-neutral values."""
 
 from __future__ import annotations
 
@@ -21,6 +21,7 @@ from PySide6.QtWidgets import (
     QPlainTextEdit,
     QPushButton,
     QScrollArea,
+    QSizePolicy,
     QSpinBox,
     QVBoxLayout,
     QWidget,
@@ -39,7 +40,13 @@ from konokashi.domain.lyric_corrections import (
     LyricEditorSnapshot,
     LyricLineEdit,
 )
-from konokashi.domain.lyrics import LyricsAlternative
+from konokashi.domain.lyrics import (
+    ContentProvenance,
+    LyricsAlternative,
+    LyricsMatchConfidence,
+    LyricsMatchDecision,
+    LyricTimingLevel,
+)
 
 
 class CorrectionActionKind(Enum):
@@ -94,6 +101,108 @@ def _artists(values: tuple[str, ...] | None) -> str:
     if values is None:
         return "<unavailable>"
     return " · ".join(values) if values else "<empty>"
+
+
+def _provenance_text(value: ContentProvenance | None) -> str:
+    return {
+        ContentProvenance.LOCAL: "Local lyrics",
+        ContentProvenance.IMPORTED: "Imported lyrics",
+        ContentProvenance.PROVIDER: "Provider lyrics",
+        ContentProvenance.USER: "Your corrected lyrics",
+        ContentProvenance.GENERATED: "Generated lyrics",
+        None: "Origin unavailable",
+    }.get(value, "Origin unavailable")
+
+
+def _timing_text(value: LyricTimingLevel | None) -> str:
+    return {
+        LyricTimingLevel.UNSYNCHRONIZED: "Not synchronized",
+        LyricTimingLevel.LINE: "Line synchronized",
+        LyricTimingLevel.WORD: "Word synchronized",
+        LyricTimingLevel.ELEMENT: "Fine synchronized",
+        None: "Timing unavailable",
+    }[value]
+
+
+def _current_review_copy(snapshot: ReviewCorrectionSnapshot) -> tuple[str, str]:
+    """Translate retained matching evidence into a calm primary explanation."""
+
+    if snapshot.current_document_id is None:
+        if snapshot.current_match_decision is LyricsMatchDecision.REJECTED:
+            return (
+                "Lyrics need attention",
+                "The previous lyrics were rejected for this recording. Find a "
+                "different result or reset the saved choice.",
+            )
+        return (
+            "No lyrics are active",
+            "KonoKashi has not found a usable lyric document for this recording.",
+        )
+    if snapshot.current_match_decision is LyricsMatchDecision.APPROVED:
+        return (
+            "Lyrics are ready",
+            "These are your saved lyrics for this exact recording.",
+        )
+    if snapshot.current_lyrics_provenance is ContentProvenance.LOCAL:
+        return (
+            "Lyrics are ready",
+            "A local lyric source attached to this recording takes priority over "
+            "provider search.",
+        )
+    if snapshot.current_lyrics_provenance is ContentProvenance.USER:
+        return (
+            "Lyrics are ready",
+            "Your local corrections take priority while the source lyrics remain "
+            "unchanged.",
+        )
+    if snapshot.current_match_confidence in {
+        LyricsMatchConfidence.APPROVED,
+        LyricsMatchConfidence.HIGH,
+    }:
+        return (
+            "Lyrics are ready",
+            "The recording identity and provider result form a strong match.",
+        )
+    if snapshot.current_match_confidence is LyricsMatchConfidence.MEDIUM:
+        return (
+            "Review suggested",
+            "The result is plausible, but some recording evidence is incomplete or "
+            "different.",
+        )
+    return (
+        "Lyrics need attention",
+        "The current result has weak matching evidence. It was not silently approved.",
+    )
+
+
+def _alternative_strength(value: LyricsMatchConfidence) -> str:
+    return {
+        LyricsMatchConfidence.APPROVED: "Saved match",
+        LyricsMatchConfidence.HIGH: "Strong match",
+        LyricsMatchConfidence.MEDIUM: "Possible match",
+        LyricsMatchConfidence.LOW: "Weak match",
+    }[value]
+
+
+def _duration_text(value_ms: int | None) -> str:
+    if value_ms is None:
+        return "unknown length"
+    total_seconds = max(0, value_ms // 1_000)
+    minutes, seconds = divmod(total_seconds, 60)
+    hours, minutes = divmod(minutes, 60)
+    if hours:
+        return f"{hours}:{minutes:02d}:{seconds:02d}"
+    return f"{minutes}:{seconds:02d}"
+
+
+def _alternative_text(value: LyricsAlternative) -> str:
+    candidate = value.candidate
+    duration = _duration_text(candidate.duration_ms)
+    rejected = " · previously rejected" if value.rejected else ""
+    return (
+        f"{_alternative_strength(value.confidence)} — {candidate.artist_name} — "
+        f"{candidate.track_name} · {candidate.provider} · {duration}{rejected}"
+    )
 
 
 class LyricEditorDialog(QDialog):
@@ -460,8 +569,8 @@ class ReviewCorrectionDialog(QDialog):
         self._position_ms = position_ms or (lambda: None)
         self._action: CorrectionActionRequest | None = None
         self._editor_dialog: LyricEditorDialog | None = None
-        self.setWindowTitle("Possible lyrics matches")
-        self.resize(760, 680)
+        self.setWindowTitle("Review lyrics")
+        self.resize(820, 700 if snapshot.alternatives_searched else 430)
         outer = QVBoxLayout(self)
         self.scroll_area = QScrollArea()
         self.scroll_area.setWidgetResizable(True)
@@ -471,14 +580,80 @@ class ReviewCorrectionDialog(QDialog):
         self.scroll_area.setWidget(scroll_content)
         outer.addWidget(self.scroll_area, 1)
 
-        intro = _plain_label(
-            "Corrections apply only to this stable source or exact lyric document. "
-            "Raw player metadata, provider values, lyric text, timestamps, and audio "
-            "tags remain unchanged."
+        current_group = QGroupBox("Current lyrics")
+        current_group.setSizePolicy(
+            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Maximum
         )
-        root.addWidget(intro)
+        current_layout = QVBoxLayout(current_group)
+        current_heading, current_reason = _current_review_copy(snapshot)
+        self.current_status = _plain_label(current_heading)
+        status_font = self.current_status.font()
+        status_font.setBold(True)
+        status_font.setPointSizeF(max(12.0, status_font.pointSizeF() + 2.0))
+        self.current_status.setFont(status_font)
+        self.current_status.setAccessibleName("Current lyrics status")
+        current_layout.addWidget(self.current_status)
+        summary_parts = [
+            snapshot.current_lyrics_source or "No lyric source",
+            _provenance_text(snapshot.current_lyrics_provenance),
+            _timing_text(snapshot.current_timing_level),
+            (
+                "Confidence unavailable"
+                if snapshot.current_match_confidence is None
+                else (
+                    "User approved"
+                    if snapshot.current_match_confidence
+                    is LyricsMatchConfidence.APPROVED
+                    else f"{snapshot.current_match_confidence.value} confidence"
+                )
+            ),
+        ]
+        if snapshot.current_match_decision is LyricsMatchDecision.APPROVED:
+            summary_parts.append("Your saved choice")
+        elif snapshot.current_match_decision is LyricsMatchDecision.REJECTED:
+            summary_parts.append("Rejected")
+        self.current_summary = _plain_label(" · ".join(summary_parts))
+        self.current_summary.setAccessibleName("Current lyric source summary")
+        current_layout.addWidget(self.current_summary)
+        self.current_reason = _plain_label(current_reason)
+        self.current_reason.setAccessibleName("Why these lyrics are active")
+        current_layout.addWidget(self.current_reason)
 
-        metadata_group = QGroupBox("Resolved track")
+        primary_actions = QHBoxLayout()
+        self.edit_lyrics_button = QPushButton("Edit lyrics…")
+        self.adjust_timing_button = QPushButton("Adjust timing…")
+        self.find_different_button = QPushButton("Find different lyrics…")
+        primary_actions.addWidget(self.edit_lyrics_button)
+        primary_actions.addWidget(self.adjust_timing_button)
+        primary_actions.addWidget(self.find_different_button)
+        primary_actions.addStretch(1)
+        current_layout.addLayout(primary_actions)
+        secondary_actions = QHBoxLayout()
+        self.change_metadata_button = QPushButton("Change recording metadata…")
+        self.other_corrections_button = QPushButton("Language and translation…")
+        self.why_match_button = QPushButton("Details / Why this match?")
+        for button in (
+            self.change_metadata_button,
+            self.other_corrections_button,
+            self.why_match_button,
+        ):
+            button.setFlat(True)
+            secondary_actions.addWidget(button)
+        secondary_actions.addStretch(1)
+        current_layout.addLayout(secondary_actions)
+        current_layout.addWidget(
+            _plain_label(
+                "Any correction is stored only for this recording or lyric document; "
+                "the original metadata and provider content stay unchanged."
+            )
+        )
+        root.addWidget(current_group)
+
+        metadata_group = QGroupBox("Recording metadata correction")
+        metadata_group.setSizePolicy(
+            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Maximum
+        )
+        self.metadata_group = metadata_group
         metadata_layout = QFormLayout(metadata_group)
         self.title_edit = QLineEdit(snapshot.track.effective_title or "")
         self.title_edit.setAccessibleName("Corrected track title")
@@ -507,26 +682,20 @@ class ReviewCorrectionDialog(QDialog):
         metadata_buttons.addWidget(self.reset_track_button)
         metadata_layout.addRow(metadata_buttons)
         root.addWidget(metadata_group)
+        metadata_group.setVisible(False)
 
-        lyrics_group = QGroupBox("Possible lyrics matches…")
+        lyrics_group = QGroupBox("Find different lyrics")
+        lyrics_group.setSizePolicy(
+            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Maximum
+        )
+        self.lyrics_group = lyrics_group
         lyrics_layout = QVBoxLayout(lyrics_group)
-        current = _plain_label(
-            "Current: "
-            + (snapshot.current_lyrics_source or "no lyric document")
-            + " · "
-            + (
-                "unknown"
-                if snapshot.current_match_confidence is None
-                else snapshot.current_match_confidence.value
-            )
-            + " · "
-            + (
-                "no durable decision"
-                if snapshot.current_match_decision is None
-                else snapshot.current_match_decision.value
+        lyrics_layout.addWidget(
+            _plain_label(
+                "Search deliberately when the current lyrics are wrong or missing. "
+                "A search never replaces the current result until you choose one."
             )
         )
-        lyrics_layout.addWidget(current)
         search_layout = QFormLayout()
         self.search_title_edit = QLineEdit(
             snapshot.search_title or snapshot.track.effective_title or ""
@@ -566,30 +735,50 @@ class ReviewCorrectionDialog(QDialog):
         search_buttons.addWidget(self.enrich_button)
         search_buttons.addStretch(1)
         lyrics_layout.addLayout(search_buttons)
+        visible_alternatives = tuple(
+            item
+            for item in snapshot.alternatives
+            if not item.current
+            and item.confidence
+            in {
+                LyricsMatchConfidence.APPROVED,
+                LyricsMatchConfidence.HIGH,
+                LyricsMatchConfidence.MEDIUM,
+            }
+        )
+        weak_alternatives = tuple(
+            item
+            for item in snapshot.alternatives
+            if not item.current and item.confidence is LyricsMatchConfidence.LOW
+        )
+        self._visible_alternatives = visible_alternatives
+        self._weak_alternatives = weak_alternatives
+        if snapshot.alternatives_searched:
+            result_text = (
+                "No strong or possible alternatives were found."
+                if not visible_alternatives
+                else (
+                    f"{len(visible_alternatives)} useful alternative"
+                    + ("" if len(visible_alternatives) == 1 else "s")
+                    + " found."
+                )
+            )
+        else:
+            result_text = "Alternative search has not been run."
+        self.results_status = _plain_label(result_text)
+        self.results_status.setAccessibleName("Alternative lyric search status")
+        lyrics_layout.addWidget(self.results_status)
         self.alternatives = QComboBox()
         self.alternatives.setAccessibleName("Alternative lyric results")
-        for item in snapshot.alternatives:
-            flags = []
-            if item.current:
-                flags.append("current")
-            if item.rejected:
-                flags.append("rejected")
-            suffix = "" if not flags else f" [{', '.join(flags)}]"
-            duration = (
-                "unknown duration"
-                if item.candidate.duration_ms is None
-                else f"{item.candidate.duration_ms / 1000:.1f} s"
-            )
-            self.alternatives.addItem(
-                f"{item.candidate.artist_name} — {item.candidate.track_name} · "
-                f"{duration} · {item.candidate.provider} "
-                f"#{item.candidate.record_id} · overall {item.confidence.value} · "
-                f"text {item.text_confidence.value} · "
-                f"timing {item.timing_confidence.value}{suffix}",
-                item,
-            )
-        self.alternatives.setEnabled(bool(snapshot.alternatives))
+        self._populate_alternatives(include_weak=False)
         lyrics_layout.addWidget(self.alternatives)
+        self.show_weak_results_button = QPushButton(
+            f"Show weak results ({len(weak_alternatives)})"
+        )
+        self.show_weak_results_button.setCheckable(True)
+        self.show_weak_results_button.setVisible(bool(weak_alternatives))
+        self.show_weak_results_button.toggled.connect(self._toggle_weak_results)
+        lyrics_layout.addWidget(self.show_weak_results_button)
         self.alternative_details = _plain_label("")
         self.alternative_details.setAccessibleName("Selected lyric match evidence")
         lyrics_layout.addWidget(self.alternative_details)
@@ -602,10 +791,8 @@ class ReviewCorrectionDialog(QDialog):
         self.reject_button = QPushButton("Reject current")
         self.reset_match_button = QPushButton("Reset match choices")
         has_document = snapshot.current_document_id is not None
-        self.choose_button.setEnabled(snapshot.durable and bool(snapshot.alternatives))
-        self.reject_alternative_button.setEnabled(
-            snapshot.durable and bool(snapshot.alternatives)
-        )
+        self.choose_button.setEnabled(False)
+        self.reject_alternative_button.setEnabled(False)
         self.approve_button.setEnabled(snapshot.durable and has_document)
         self.reject_button.setEnabled(snapshot.durable and has_document)
         self.reset_match_button.setEnabled(
@@ -625,15 +812,18 @@ class ReviewCorrectionDialog(QDialog):
         for button in (
             self.choose_button,
             self.reject_alternative_button,
-            self.approve_button,
-            self.reject_button,
-            self.reset_match_button,
         ):
             match_buttons.addWidget(button)
+        match_buttons.addStretch(1)
         lyrics_layout.addLayout(match_buttons)
         root.addWidget(lyrics_group)
+        lyrics_group.setVisible(snapshot.alternatives_searched)
 
         language_group = QGroupBox("Han-language routing")
+        language_group.setSizePolicy(
+            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Maximum
+        )
+        self.language_group = language_group
         language_layout = QVBoxLayout(language_group)
         routing_text = (
             "No lyric document is loaded."
@@ -668,8 +858,13 @@ class ReviewCorrectionDialog(QDialog):
         language_buttons.addWidget(self.automatic_language_button)
         language_layout.addLayout(language_buttons)
         root.addWidget(language_group)
+        language_group.setVisible(False)
 
         translation_group = QGroupBox("Local aligned translation")
+        translation_group.setSizePolicy(
+            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Maximum
+        )
+        self.translation_group = translation_group
         translation_layout = QVBoxLayout(translation_group)
         translation_layout.addWidget(
             _plain_label(
@@ -706,8 +901,13 @@ class ReviewCorrectionDialog(QDialog):
         )
         self._update_translation_line()
         root.addWidget(translation_group)
+        translation_group.setVisible(False)
 
         editor_group = QGroupBox("Original lyric text and line timing")
+        editor_group.setSizePolicy(
+            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Maximum
+        )
+        self.editor_group = editor_group
         editor_layout = QVBoxLayout(editor_group)
         editor = snapshot.lyric_editor
         if editor is None:
@@ -721,7 +921,7 @@ class ReviewCorrectionDialog(QDialog):
             )
         editor_layout.addWidget(_plain_label(editor_summary))
         editor_buttons = QHBoxLayout()
-        self.open_editor_button = QPushButton("Open line editor…")
+        self.open_editor_button = self.edit_lyrics_button
         self.reset_lyrics_button = QPushButton("Revert all line edits")
         can_edit = snapshot.durable and editor is not None and bool(editor.lines)
         self.open_editor_button.setEnabled(can_edit)
@@ -733,13 +933,17 @@ class ReviewCorrectionDialog(QDialog):
         self.reset_lyrics_button.clicked.connect(
             lambda: self._finish(CorrectionActionKind.RESET_LYRIC_EDITS)
         )
-        editor_buttons.addWidget(self.open_editor_button)
         editor_buttons.addWidget(self.reset_lyrics_button)
         editor_buttons.addStretch(1)
         editor_layout.addLayout(editor_buttons)
         root.addWidget(editor_group)
+        editor_group.setVisible(False)
 
         delay_group = QGroupBox("Recording lyric timing")
+        delay_group.setSizePolicy(
+            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Maximum
+        )
+        self.delay_group = delay_group
         delay_layout = QHBoxLayout(delay_group)
         self.delay_ms = QSpinBox()
         self.delay_ms.setRange(-60_000, 60_000)
@@ -765,12 +969,63 @@ class ReviewCorrectionDialog(QDialog):
         delay_layout.addWidget(self.save_delay_button)
         delay_layout.addWidget(self.reset_delay_button)
         root.addWidget(delay_group)
+        delay_group.setVisible(False)
 
+        details_group = QGroupBox("Details / Why this match?")
+        details_group.setSizePolicy(
+            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Maximum
+        )
+        self.details_group = details_group
+        details_layout = QVBoxLayout(details_group)
+        details_layout.addWidget(
+            _plain_label(
+                "Technical evidence is retained here for diagnosis. It does not "
+                "change the current lyrics or select a provider result."
+            )
+        )
+        current_match_buttons = QHBoxLayout()
+        for button in (
+            self.approve_button,
+            self.reject_button,
+            self.reset_match_button,
+        ):
+            current_match_buttons.addWidget(button)
+        current_match_buttons.addStretch(1)
+        details_layout.addLayout(current_match_buttons)
         audit = QPlainTextEdit()
         audit.setReadOnly(True)
+        audit.setMinimumHeight(240)
         audit.setAccessibleName("Raw metadata and interpretation evidence")
         audit.setPlainText(self._audit_text(snapshot))
-        root.addWidget(audit, 1)
+        details_layout.addWidget(audit, 1)
+        root.addWidget(details_group, 1)
+        details_group.setVisible(False)
+        root.addStretch(1)
+
+        for button in (
+            self.adjust_timing_button,
+            self.find_different_button,
+            self.change_metadata_button,
+            self.other_corrections_button,
+            self.why_match_button,
+        ):
+            button.setCheckable(True)
+        self.adjust_timing_button.toggled.connect(
+            lambda visible: self._set_panel_visible(delay_group, visible)
+        )
+        self.find_different_button.toggled.connect(
+            lambda visible: self._set_panel_visible(lyrics_group, visible)
+        )
+        self.change_metadata_button.toggled.connect(
+            lambda visible: self._set_panel_visible(metadata_group, visible)
+        )
+        self.other_corrections_button.toggled.connect(
+            lambda visible: self._set_correction_panels_visible(visible)
+        )
+        self.why_match_button.toggled.connect(
+            lambda visible: self._set_panel_visible(details_group, visible)
+        )
+        self.find_different_button.setChecked(snapshot.alternatives_searched)
 
         buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
         buttons.rejected.connect(self.reject)
@@ -780,6 +1035,48 @@ class ReviewCorrectionDialog(QDialog):
         """Return the single deliberate action selected before the dialog closed."""
 
         return self._action
+
+    def _set_correction_panels_visible(self, visible: bool) -> None:
+        for panel in (
+            self.language_group,
+            self.translation_group,
+            self.editor_group,
+        ):
+            panel.setVisible(visible)
+        if visible:
+            QTimer.singleShot(
+                0, lambda: self.scroll_area.ensureWidgetVisible(self.language_group)
+            )
+
+    def _set_panel_visible(self, panel: QWidget, visible: bool) -> None:
+        panel.setVisible(visible)
+        if visible:
+            QTimer.singleShot(0, lambda: self.scroll_area.ensureWidgetVisible(panel))
+
+    def _populate_alternatives(self, *, include_weak: bool) -> None:
+        self.alternatives.blockSignals(True)
+        self.alternatives.clear()
+        values = self._visible_alternatives + (
+            self._weak_alternatives if include_weak else ()
+        )
+        for item in values:
+            self.alternatives.addItem(_alternative_text(item), item)
+        self.alternatives.setEnabled(bool(values))
+        self.alternatives.setCurrentIndex(-1)
+        self.alternatives.blockSignals(False)
+        if hasattr(self, "choose_button"):
+            self.choose_button.setEnabled(False)
+            self.reject_alternative_button.setEnabled(False)
+        if hasattr(self, "alternative_details"):
+            self._update_alternative_details()
+
+    def _toggle_weak_results(self, visible: bool) -> None:
+        self.show_weak_results_button.setText(
+            "Hide weak results"
+            if visible
+            else f"Show weak results ({len(self._weak_alternatives)})"
+        )
+        self._populate_alternatives(include_weak=visible)
 
     def _save_track(self) -> None:
         artists = tuple(
@@ -822,27 +1119,51 @@ class ReviewCorrectionDialog(QDialog):
 
     def _update_alternative_details(self) -> None:
         value = self.alternatives.currentData()
+        selection_available = isinstance(value, LyricsAlternative)
+        if hasattr(self, "choose_button"):
+            enabled = self._snapshot.durable and selection_available
+            self.choose_button.setEnabled(enabled)
+            self.reject_alternative_button.setEnabled(enabled)
         if not isinstance(value, LyricsAlternative):
-            self.alternative_details.setText(
-                "No provider candidates are available. Edit the bounded search "
-                "above or refresh the provider cache."
-            )
+            if self.alternatives.count():
+                text = (
+                    "Select an alternative to inspect it. Nothing changes until you "
+                    "choose one."
+                )
+            elif not self._snapshot.alternatives_searched:
+                text = "Search has not been run for this review."
+            elif self._weak_alternatives:
+                text = (
+                    "No strong or possible alternatives are available. Weak results "
+                    "remain hidden unless you deliberately show them."
+                )
+            else:
+                text = (
+                    "No alternative result was useful enough to show. Try corrected "
+                    "title or artist text if the recording metadata is wrong."
+                )
+            self.alternative_details.setText(text)
             return
         candidate = value.candidate
-        duration = (
-            "unknown"
-            if candidate.duration_ms is None
-            else f"{candidate.duration_ms} ms"
-        )
-        evidence = "; ".join(value.evidence) if value.evidence else "none"
+        duration = _duration_text(candidate.duration_ms)
+        explanation = {
+            LyricsMatchConfidence.APPROVED: "You previously saved this match.",
+            LyricsMatchConfidence.HIGH: (
+                "Its recording metadata forms a strong alternative match."
+            ),
+            LyricsMatchConfidence.MEDIUM: (
+                "Some recording details differ or are missing, so review it before "
+                "choosing."
+            ),
+            LyricsMatchConfidence.LOW: (
+                "This result has weak evidence and is shown only because you asked "
+                "to see weak results."
+            ),
+        }[value.confidence]
+        rejected = " You previously rejected this result." if value.rejected else ""
         self.alternative_details.setText(
-            f"Provider: {candidate.provider} · Record: {candidate.record_id}\n"
-            f"Artist: {candidate.artist_name}\n"
-            f"Title: {candidate.track_name}\n"
-            f"Duration: {duration}\n"
-            f"Text confidence: {value.text_confidence.value} · "
-            f"Timing confidence: {value.timing_confidence.value}\n"
-            f"Strategy: {value.strategy}\nEvidence: {evidence}"
+            f"{candidate.artist_name} — {candidate.track_name}\n"
+            f"{candidate.provider} · {duration}\n{explanation}{rejected}"
         )
 
     def _update_translation_line(self) -> None:
@@ -973,6 +1294,19 @@ class ReviewCorrectionDialog(QDialog):
             *(f"- {item}" for item in track.warnings or ("none",)),
             "Lyric match evidence:",
             *(f"- {item}" for item in snapshot.current_match_evidence or ("none",)),
+            "Alternative diagnostics:",
+            *(
+                (
+                    f"- {item.candidate.provider} #{item.candidate.record_id}: "
+                    f"overall {item.confidence.value}; "
+                    f"text {item.text_confidence.value}; "
+                    f"timing {item.timing_confidence.value}; "
+                    f"strategy {item.strategy}; current {item.current}; "
+                    f"rejected {item.rejected}; evidence "
+                    f"{'; '.join(item.evidence) or 'none'}"
+                )
+                for item in snapshot.alternatives
+            ),
             "",
             "Representation routing:",
             "state: "

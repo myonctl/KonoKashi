@@ -28,6 +28,7 @@ from konokashi.domain.lyrics import (
     LyricsProviderCandidate,
     LyricsResolutionResult,
     LyricsResolutionStatus,
+    LyricTimingLevel,
 )
 from konokashi.domain.models import PlayerCapabilities, PlayerSnapshot, RawTrackMetadata
 from konokashi.domain.synchronization import LyricDocumentTiming
@@ -163,6 +164,9 @@ def test_snapshot_keeps_raw_automatic_effective_and_provider_evidence_separate(
     assert snapshot.current_provider_duration_ms == 180_000
     assert snapshot.current_match_decision is LyricsMatchDecision.CANDIDATE
     assert snapshot.current_match_evidence == ("normalized title matches",)
+    assert snapshot.current_lyrics_provenance is ContentProvenance.PROVIDER
+    assert snapshot.current_timing_level is LyricTimingLevel.LINE
+    assert snapshot.alternatives_searched
     assert snapshot.alternatives == (alternative,)
 
 

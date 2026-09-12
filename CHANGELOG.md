@@ -47,6 +47,13 @@ All notable user-visible changes are recorded here.
 
 ### Changed
 
+- Review now opens on a reassuring current-source summary without contacting
+  lyric providers. Alternative lookup is a deliberate action, High and Medium
+  matches use plain-language explanations, Low matches stay behind an explicit
+  “Show weak results” control, and no alternative is preselected.
+- Exact provider IDs, score components, query strategy, and raw matching evidence
+  remain available under “Details / Why this match?” instead of dominating the
+  correction workflow.
 - The listening surface now presents multilingual content as a quiet visual
   hierarchy of original, reading, and optional translation. Layer type remains
   accessible, while provenance, generator/provider identity, approval state,

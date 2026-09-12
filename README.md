@@ -157,11 +157,14 @@ On a cache miss, each enabled source receives only the provider-safe resolved
 title, musical artist, and available album/duration—not the local media path,
 raw MPRIS URL, player identity, or playback history.
 
-Open **Review** from the active lyric view to repair the current
-match, identity, offset, translation, lyric text, or line timing. The compact
-line editor can stamp each plain lyric line from the current playback position
-with `Ctrl+Space`, preview the active corrected line, undo editor changes, and
-revert the complete local overlay. Provider and imported source documents stay
+Open **Review lyrics** from the active lyric view to understand the current
+source or repair its match, identity, offset, translation, lyric text, or line
+timing. Opening Review does not contact providers; **Find different lyrics** is
+a deliberate search, and weak matches remain hidden until explicitly requested.
+No alternative is selected or applied automatically. The compact line editor
+can stamp each plain lyric line from the current playback position with
+`Ctrl+Space`, preview the active corrected line, undo editor changes, and revert
+the complete local overlay. Provider and imported source documents stay
 unchanged; corrections are stored separately and are ignored safely if their
 captured source line no longer matches.
 

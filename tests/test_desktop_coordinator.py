@@ -657,6 +657,7 @@ def test_review_load_and_track_correction_dispatch_through_application_boundary(
     coordinator._load_review()
 
     assert len(frontend.review_calls) == 1
+    assert frontend.review_options == [{}]
     assert window.reviews == [_review_snapshot()]
 
     coordinator._apply_correction(
@@ -668,6 +669,7 @@ def test_review_load_and_track_correction_dispatch_through_application_boundary(
         "title": None,
         "artists": (),
         "enrich_youtube": True,
+        "find_alternatives": True,
     }
 
     coordinator._apply_correction(

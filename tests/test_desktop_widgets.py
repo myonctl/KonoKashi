@@ -61,6 +61,7 @@ from konokashi.domain.lyrics import (
     LyricsProviderCandidate,
     LyricsResolutionResult,
     LyricsResolutionStatus,
+    LyricTimingLevel,
     RepresentationKind,
 )
 from konokashi.domain.representations import (
@@ -1042,6 +1043,9 @@ def _review_snapshot() -> ReviewCorrectionSnapshot:
             ),
         ),
         ("provider diagnostic <literal>",),
+        current_lyrics_provenance=ContentProvenance.PROVIDER,
+        current_timing_level=LyricTimingLevel.LINE,
+        alternatives_searched=True,
     )
 
 
@@ -1057,12 +1061,30 @@ def test_review_dialog_exposes_bounded_audit_and_explicit_actions(
     assert 'Raw <title> & "video"' in audit.toPlainText()
     assert "Automatic interpretation" in audit.toPlainText()
     assert "Effective interpretation" in audit.toPlainText()
+    assert "LRCLIB #42: overall Medium" in audit.toPlainText()
+    assert not audit.isVisible()
+    assert dialog.current_status.text() == "Lyrics are ready"
+    assert "LRCLIB · Provider lyrics · Line synchronized · High confidence" in (
+        dialog.current_summary.text()
+    )
+    assert "strong match" in dialog.current_reason.text()
+    assert dialog.lyrics_group.isVisible()
     assert dialog.alternatives.count() == 1
+    assert dialog.alternatives.currentIndex() == -1
+    assert not dialog.choose_button.isEnabled()
+    assert "Nothing changes until you choose one" in dialog.alternative_details.text()
+    assert dialog.alternatives.itemText(0).startswith("Possible match —")
     assert "Provider <title>" in dialog.alternatives.itemText(0)
-    assert "Record: 42" in dialog.alternative_details.text()
-    assert "Text confidence:" in dialog.alternative_details.text()
-    assert "Timing confidence:" in dialog.alternative_details.text()
+    dialog.alternatives.setCurrentIndex(0)
+    assert "Some recording details differ" in dialog.alternative_details.text()
+    assert "Record:" not in dialog.alternative_details.text()
+    assert "Text confidence:" not in dialog.alternative_details.text()
     assert dialog.reset_delay_button.isEnabled()
+
+    QTest.mouseClick(dialog.why_match_button, Qt.MouseButton.LeftButton)
+    qt_app.processEvents()
+    assert dialog.details_group.isVisible()
+    assert audit.isVisible()
 
     QTest.mouseClick(dialog.choose_button, Qt.MouseButton.LeftButton)
     action = dialog.action()
@@ -1072,6 +1094,7 @@ def test_review_dialog_exposes_bounded_audit_and_explicit_actions(
     assert action.alternative.candidate.record_id == "42"
 
     reject_dialog = ReviewCorrectionDialog(_review_snapshot())
+    reject_dialog.alternatives.setCurrentIndex(0)
     QTest.mouseClick(
         reject_dialog.reject_alternative_button,
         Qt.MouseButton.LeftButton,
@@ -1081,6 +1104,76 @@ def test_review_dialog_exposes_bounded_audit_and_explicit_actions(
     assert reject_action.kind is CorrectionActionKind.REJECT_ALTERNATIVE
     assert reject_action.alternative is not None
     assert reject_action.alternative.candidate.record_id == "42"
+
+
+def test_healthy_local_review_is_reassuring_without_running_or_showing_search(
+    qt_app: QApplication,
+) -> None:
+    snapshot = replace(
+        _review_snapshot(),
+        current_lyrics_source="Local sidecar",
+        current_match_confidence=LyricsMatchConfidence.APPROVED,
+        current_lyrics_provenance=ContentProvenance.LOCAL,
+        alternatives=(),
+        alternatives_searched=False,
+    )
+    dialog = ReviewCorrectionDialog(snapshot)
+    dialog.show()
+    qt_app.processEvents()
+
+    assert dialog.windowTitle() == "Review lyrics"
+    assert dialog.current_status.text() == "Lyrics are ready"
+    assert "Local sidecar · Local lyrics" in dialog.current_summary.text()
+    assert "takes priority over provider search" in dialog.current_reason.text()
+    assert dialog.lyrics_group.isHidden()
+    assert not dialog.find_different_button.isChecked()
+    assert dialog.results_status.text() == "Alternative search has not been run."
+
+    QTest.mouseClick(dialog.find_different_button, Qt.MouseButton.LeftButton)
+    qt_app.processEvents()
+    assert dialog.lyrics_group.isVisible()
+    assert dialog.alternatives.count() == 0
+    dialog.close()
+
+
+def test_low_alternatives_are_hidden_until_weak_results_are_requested(
+    qt_app: QApplication,
+) -> None:
+    baseline = _review_snapshot().alternatives[0]
+    current = replace(
+        baseline,
+        confidence=LyricsMatchConfidence.HIGH,
+        current=True,
+    )
+    weak = replace(
+        baseline,
+        document_id="document-weak",
+        candidate=replace(
+            baseline.candidate,
+            record_id="weak-7",
+            track_name="Unrelated weak result",
+        ),
+        confidence=LyricsMatchConfidence.LOW,
+    )
+    snapshot = replace(_review_snapshot(), alternatives=(current, baseline, weak))
+    dialog = ReviewCorrectionDialog(snapshot)
+    dialog.show()
+    qt_app.processEvents()
+
+    assert dialog.alternatives.count() == 1
+    assert "Unrelated weak result" not in dialog.alternatives.itemText(0)
+    assert dialog.show_weak_results_button.isVisible()
+    assert dialog.show_weak_results_button.text() == "Show weak results (1)"
+
+    QTest.mouseClick(dialog.show_weak_results_button, Qt.MouseButton.LeftButton)
+    assert dialog.alternatives.count() == 2
+    assert "Unrelated weak result" in dialog.alternatives.itemText(1)
+    dialog.alternatives.setCurrentIndex(1)
+    assert "shown only because you asked" in dialog.alternative_details.text()
+    QTest.mouseClick(dialog.choose_button, Qt.MouseButton.LeftButton)
+    action = dialog.action()
+    assert action is not None
+    assert action.alternative is weak
 
 
 def test_review_maps_recording_and_provider_title_artist_semantics_end_to_end(
@@ -1144,10 +1237,11 @@ def test_review_maps_recording_and_provider_title_artist_semantics_end_to_end(
     assert "Aoi Test Artist & Second Test Artist — Moonlit Circuit" in (
         dialog.alternatives.itemText(0)
     )
-    assert "Artist: Aoi Test Artist & Second Test Artist" in (
+    dialog.alternatives.setCurrentIndex(0)
+    assert "Aoi Test Artist & Second Test Artist — Moonlit Circuit" in (
         dialog.alternative_details.text()
     )
-    assert "Title: Moonlit Circuit" in dialog.alternative_details.text()
+    assert "strong alternative match" in dialog.alternative_details.text()
     assert track.raw_snapshot.metadata.title == "Moonlit Circuit"
     assert track.raw_snapshot.metadata.artists == (
         "Aoi Test Artist",
@@ -1356,6 +1450,10 @@ def test_review_dialog_keeps_actions_reachable_in_narrow_geometry(
     buttons = dialog.findChild(QDialogButtonBox)
     assert buttons is not None
     assert buttons.isVisible()
+    assert dialog.scroll_area.verticalScrollBar().maximum() == 0
+    QTest.mouseClick(dialog.adjust_timing_button, Qt.MouseButton.LeftButton)
+    qt_app.processEvents()
+    assert dialog.delay_group.isVisible()
     assert dialog.scroll_area.verticalScrollBar().maximum() > 0
     dialog.scroll_area.ensureWidgetVisible(dialog.save_delay_button)
     qt_app.processEvents()

@@ -29,6 +29,8 @@ from konokashi.domain.lyrics import (
     LyricsMatchConfidence,
     LyricsMatchDecision,
     LyricsResolutionResult,
+    LyricTimingLevel,
+    RepresentationKind,
 )
 from konokashi.domain.representations import (
     LanguageRoutingStatus,
@@ -106,6 +108,9 @@ class ReviewCorrectionSnapshot:
     layer_statuses: tuple[RepresentationLayerStatus, ...] = field(default_factory=tuple)
     translation_lines: tuple[TranslationReviewLine, ...] = field(default_factory=tuple)
     lyric_editor: LyricEditorSnapshot | None = None
+    current_lyrics_provenance: ContentProvenance | None = None
+    current_timing_level: LyricTimingLevel | None = None
+    alternatives_searched: bool = False
 
 
 class ReviewCorrectionService:
@@ -133,6 +138,8 @@ class ReviewCorrectionService:
         track: ResolvedTrack,
         resolution: LyricsResolutionResult,
         alternatives: LyricsAlternativeResult,
+        *,
+        alternatives_searched: bool = True,
     ) -> ReviewCorrectionSnapshot:
         """Build bounded audit evidence for the exact source currently reviewed."""
 
@@ -149,6 +156,18 @@ class ReviewCorrectionService:
             None
             if document_id is None
             else self._timing.get_document_timing(document_id)
+        )
+        original_provenance = next(
+            (
+                representation.provenance
+                for representation in (
+                    ()
+                    if resolution.document is None
+                    else resolution.document.representations
+                )
+                if representation.kind is RepresentationKind.ORIGINAL
+            ),
+            None,
         )
         return ReviewCorrectionSnapshot(
             source_identity=track.source_identity,
@@ -215,6 +234,13 @@ class ReviewCorrectionService:
                 else (() if match is None else match.evidence)
             ),
             display_delay_us=(0 if timing is None else timing.lyrics_display_delay_us),
+            current_lyrics_provenance=original_provenance,
+            current_timing_level=(
+                None
+                if resolution.document is None
+                else resolution.document.timing_level
+            ),
+            alternatives_searched=alternatives_searched,
             alternatives=alternatives.alternatives,
             diagnostics=(*resolution.diagnostics, *alternatives.diagnostics),
             search_title=alternatives.search_title,

@@ -33,6 +33,7 @@ from konokashi.domain.lyric_corrections import (
 from konokashi.domain.lyrics import (
     LyricDocument,
     LyricsAlternative,
+    LyricsAlternativeResult,
     LyricsResolutionResult,
     RepresentationKind,
 )
@@ -104,8 +105,9 @@ class FrontendSessionPort(Protocol):
         title: str | None = None,
         artists: tuple[str, ...] = (),
         enrich_youtube: bool = False,
+        find_alternatives: bool = False,
     ) -> ReviewCorrectionSnapshot:
-        """Load alternatives and audit evidence for one exact current source."""
+        """Load audit evidence, searching alternatives only when requested."""
 
     def put_track_override(
         self,
@@ -332,9 +334,17 @@ class FrontendSessionService:
         title: str | None = None,
         artists: tuple[str, ...] = (),
         enrich_youtube: bool = False,
+        find_alternatives: bool = False,
     ) -> ReviewCorrectionSnapshot:
-        """Return source-bound alternatives and raw/effective audit evidence."""
+        """Return audit evidence without making review itself a provider search."""
 
+        search_requested = (
+            find_alternatives
+            or refresh
+            or title is not None
+            or bool(artists)
+            or enrich_youtube
+        )
         search_track = bundle.track
         enrichment_diagnostics: tuple[str, ...] = ()
         enrichment_cache_hit = False
@@ -359,12 +369,16 @@ class FrontendSessionService:
                         *enrichment.candidates,
                     ),
                 )
-        alternatives = self._lyrics.alternatives(
-            search_track,
-            offline=offline,
-            refresh=refresh,
-            title=title,
-            artists=artists,
+        alternatives = (
+            self._lyrics.alternatives(
+                search_track,
+                offline=offline,
+                refresh=refresh,
+                title=title,
+                artists=artists,
+            )
+            if search_requested
+            else LyricsAlternativeResult(bundle.track.source_identity)
         )
         if enrichment_diagnostics or enrichment_cache_hit or enrichment_network_used:
             alternatives = replace(
@@ -377,7 +391,10 @@ class FrontendSessionService:
                 network_used=(alternatives.network_used or enrichment_network_used),
             )
         snapshot = self._corrections.snapshot(
-            bundle.track, bundle.resolution, alternatives
+            bundle.track,
+            bundle.resolution,
+            alternatives,
+            alternatives_searched=search_requested,
         )
         document = bundle.resolution.document
         if document is None:

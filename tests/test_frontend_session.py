@@ -222,6 +222,39 @@ def test_frontend_session_combines_existing_services_without_adapter_values() ->
     assert cancellations == ["cancelled"]
 
 
+def test_opening_review_builds_audit_without_requesting_provider_alternatives() -> None:
+    track = _track()
+    lyrics = _Lyrics(track)
+
+    class Corrections:
+        def snapshot(  # type: ignore[no-untyped-def]
+            self, snapshot_track, resolution, alternatives, **kwargs
+        ):
+            assert snapshot_track is track
+            assert resolution.status is LyricsResolutionStatus.NO_RESULT
+            assert alternatives == LyricsAlternativeResult(track.source_identity)
+            assert kwargs == {"alternatives_searched": False}
+            return "review without search"
+
+    service = FrontendSessionService(
+        _Selection(track),  # type: ignore[arg-type]
+        lyrics,  # type: ignore[arg-type]
+        _Representations(),  # type: ignore[arg-type]
+        _Settings(),  # type: ignore[arg-type]
+        _Timing(),  # type: ignore[arg-type]
+        Corrections(),  # type: ignore[arg-type]
+    )
+    bundle = FrontendLyricsBundle(
+        track,
+        LyricsResolutionResult(track.source_identity, LyricsResolutionStatus.NO_RESULT),
+        (),
+        RepresentationDisplaySettings(),
+        None,
+    )
+
+    assert service.review_track(bundle) == "review without search"
+
+
 def test_review_only_youtube_enrichment_feeds_bounded_interpretations() -> None:
     track = _track()
     native = TrackCandidate(
@@ -257,9 +290,12 @@ def test_review_only_youtube_enrichment_feeds_bounded_interpretations() -> None:
     class Corrections:
         alternatives = None
 
-        def snapshot(self, snapshot_track, resolution, alternatives):  # type: ignore[no-untyped-def]
+        def snapshot(  # type: ignore[no-untyped-def]
+            self, snapshot_track, resolution, alternatives, **kwargs
+        ):
             assert snapshot_track is track
             assert resolution.source_identity == track.source_identity
+            assert kwargs == {"alternatives_searched": True}
             self.alternatives = alternatives
             return "review"
 
