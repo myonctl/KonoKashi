@@ -20,5 +20,7 @@ authorization.
 - Restore safe cross-session window sizes and preferred screen names after
   validating compositor behavior; do not persist unsupported Wayland global
   coordinates as truth.
+- Reassess the PlaybackClock native experiment after real release maintenance;
+  do not authorize another C++ migration from benchmark results alone.
 
 Priorities are refined through focused issues as public-beta feedback arrives.

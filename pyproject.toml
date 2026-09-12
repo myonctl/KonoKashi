@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools==84.0.0"]
+requires = ["setuptools==84.0.0", "pybind11==3.1.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -46,6 +46,7 @@ dev = [
     "build>=1.3,<2",
     "mypy>=1.15,<2",
     "pytest>=8.3,<10",
+    "pybind11==3.1.0",
     "ruff>=0.11,<1",
     "setuptools==84.0.0",
 ]
@@ -58,6 +59,9 @@ package-dir = { "" = "src" }
 
 [tool.setuptools.package-data]
 konokashi = ["resources/*.desktop.in", "resources/*.metainfo.xml", "resources/*.svg"]
+
+[tool.setuptools.exclude-package-data]
+"konokashi.native" = ["*.cpp"]
 
 [tool.setuptools.packages.find]
 where = ["src"]

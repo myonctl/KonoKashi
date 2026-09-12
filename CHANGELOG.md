@@ -41,6 +41,9 @@ All notable user-visible changes are recorded here.
 - Bounded local MPRIS album art with responsive rounded presentation,
   stale-result rejection, and an optional artwork-derived background tint that
   preserves the configured primary-text contrast floor.
+- One bounded C++20/pybind11 PlaybackClock implementation behind the unchanged
+  Python-facing API, with the prior Python implementation retained as a
+  differential reference oracle.
 
 ### Changed
 
@@ -62,6 +65,9 @@ All notable user-visible changes are recorded here.
 - Album art is decoded outside the Qt UI thread from local PNG/JPEG/WebP files
   only; remote artwork is not fetched and source paths are not retained in the
   frontend asset.
+- Linux wheels are now interpreter- and architecture-specific because they
+  contain the native PlaybackClock module; source builds require a C++20
+  compiler and pinned pybind11 build input.
 
 ## 0.1.0-beta.1 — 2026-09-10
 

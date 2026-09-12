@@ -124,6 +124,8 @@ def test_github_actions_runs_the_required_quality_gate() -> None:
         "/tmp/gitleaks dir",
         "GITLEAKS_SHA256",
         "QT_QPA_PLATFORM: offscreen",
+        "PlaybackClock is NativePlaybackClock",
+        "--yes g++ libegl1",
     )
 
     assert all(command in content for command in required_commands)
@@ -141,6 +143,7 @@ def test_advertised_python_versions_are_bounded_and_exercised_in_ci() -> None:
     aur = (REPOSITORY_ROOT / "packaging/aur/PKGBUILD").read_text(encoding="utf-8")
 
     assert pyproject["project"]["requires-python"] == ">=3.11,<3.15"
+    assert "pybind11==3.1.0" in pyproject["build-system"]["requires"]
     for version in ("3.11", "3.12", "3.13", "3.14"):
         assert f'"Programming Language :: Python :: {version}"' in (
             REPOSITORY_ROOT / "pyproject.toml"
@@ -151,6 +154,8 @@ def test_advertised_python_versions_are_bounded_and_exercised_in_ci() -> None:
     assert "Python 3.11 through 3.14" in contributing
     assert "'python>=3.11'" in aur
     assert "'python<3.15'" in aur
+    assert "'pybind11'" in aur
+    assert "arch=('x86_64' 'aarch64')" in aur
 
 
 def test_security_policy_uses_enabled_private_reporting_route() -> None:
@@ -289,6 +294,7 @@ def test_release_copy_excludes_maintainer_and_flatpak_worktrees() -> None:
         ".maintainer-private",
         ".release-readiness-work",
         ".flatpak-builder",
+        "*.so",
     ):
         assert f'"{excluded}"' in build_script
 
@@ -306,6 +312,12 @@ def test_flatpak_manifest_uses_narrow_runtime_permissions() -> None:
     assert "type: archive" in manifest
     assert "name: portal-parent-bridge" in manifest
     assert "path: portal-parent-bridge" in manifest
+    assert "name: python3-pybind11-build" in manifest
+    assert "pybind11-3.1.0-py3-none-any.whl" in manifest
+    assert (
+        "sha256: b8488090f8acffbcb6b5d6a85571a6827a0a2981ffb75e5a0b27b87c4a6b7dd0"
+        in manifest
+    )
     assert (
         "https://github.com/myonctl/KonoKashi/releases/download/"
         "v0.1.0-beta.1/konokashi-0.1.0b1.tar.gz"

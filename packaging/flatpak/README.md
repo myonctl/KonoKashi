@@ -21,6 +21,11 @@ its PyPI source build reported version `0.0.0` in this SDK. MeCab is also built
 from a pinned upstream commit. Preserve these adjustments when regenerating
 the Python dependency manifest.
 
+The application sdist now compiles its one authorized C++ PlaybackClock module.
+The manifest pins pybind11 3.1.0 as a build input; the KDE SDK supplies the C++20
+compiler and Python headers. Keep that pin aligned with `pyproject.toml`, and do
+not turn this build exception into a general native migration.
+
 ## Permissions
 
 - `--share=network`: query configured LRCLIB/Unison sources when local lyrics and

@@ -35,6 +35,9 @@ local-first, deeply customizable, and source-available.
 - **Synchronized lyrics:** timed line changes plus progressive highlighting for
   trustworthy word-timed lyrics, with exact pause, seek, rate, and track-change
   handling; line-only, plain, and instrumental states remain explicit.
+- **Disciplined native clock:** the deterministic playback clock uses one narrow
+  C++20 module, continuously checked against its retained Python reference
+  implementation; matching, parsing, providers, storage, and UI remain Python.
 - **Multilingual layers:** original text plus aligned romanization or
   transliteration and optional translation, with each active secondary layer's
   identity and provenance visible without displacing the original script.
@@ -85,9 +88,10 @@ is exercised in CI. For the current beta, install the immutable public release
 with your distribution's `pipx` package. Pipx creates and manages the isolated
 environment for you:
 
-A desktop session needs a Qt/EGL runtime and session D-Bus. If PyICU has no
-wheel for your Python version, install ICU development headers, `pkg-config`,
-and a C++ compiler first.
+A desktop session needs a Qt/EGL runtime and session D-Bus. A source install
+compiles KonoKashi's narrow playback-clock module and may also compile PyICU, so
+install a C++20 compiler, Python development headers, ICU development headers,
+and `pkg-config` when your distribution does not provide compatible wheels.
 
 ```bash
 pipx install 'https://github.com/myonctl/KonoKashi/releases/download/v0.1.0-beta.1/konokashi-0.1.0b1.tar.gz'

@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from math import isqrt
 from statistics import median
 
+from konokashi import _playback_clock_native as _native
 from konokashi.domain.synchronization import (
     ClockCorrectionClass,
     ClockHealth,
@@ -103,7 +104,7 @@ class _DriftFit:
     trusted: bool
 
 
-class PlaybackClock:
+class PythonPlaybackClock:
     """Derive media position from an integer anchor and sparse observations.
 
     No wall clock, D-Bus, sleep, or frame-delta accumulator enters this class.
@@ -773,3 +774,290 @@ class PlaybackClock:
         if fit is not None and not fit.trusted:
             return ClockQuality.DEGRADED
         return ClockQuality.WARMING
+
+
+_STATES = (
+    PlaybackState.PLAYING,
+    PlaybackState.PAUSED,
+    PlaybackState.STOPPED,
+    PlaybackState.UNKNOWN,
+)
+_REASONS = (
+    ObservationReason.INITIAL,
+    ObservationReason.PERIODIC,
+    ObservationReason.SEEK,
+    ObservationReason.STATUS,
+    ObservationReason.RATE,
+    ObservationReason.TRACK,
+    ObservationReason.SUSPEND_RESUME,
+)
+_SOURCES = (
+    PositionSampleSource.POSITION_PROPERTY,
+    PositionSampleSource.SEEKED_SIGNAL,
+    PositionSampleSource.LOCAL_STATE_TRANSITION,
+)
+_UPDATE_KINDS = (
+    ClockUpdateKind.INITIALIZED,
+    ClockUpdateKind.CORRECTED,
+    ClockUpdateKind.RESET,
+    ClockUpdateKind.REJECTED_STALE,
+    ClockUpdateKind.REJECTED_OUTLIER,
+    ClockUpdateKind.REJECTED_DUPLICATE,
+)
+_CORRECTION_CLASSES = (
+    ClockCorrectionClass.INITIAL,
+    ClockCorrectionClass.WITHIN_NOISE,
+    ClockCorrectionClass.PHASE_SLEW,
+    ClockCorrectionClass.DISCONTINUITY,
+    ClockCorrectionClass.REJECTED,
+)
+_QUALITIES = (
+    ClockQuality.UNAVAILABLE,
+    ClockQuality.WARMING,
+    ClockQuality.STABLE,
+    ClockQuality.DEGRADED,
+    ClockQuality.HELD,
+)
+_HEALTH = (
+    ClockHealth.LOCKED,
+    ClockHealth.CONVERGING,
+    ClockHealth.DEGRADED,
+    ClockHealth.STALE,
+    ClockHealth.UNAVAILABLE,
+    ClockHealth.DISCONTINUITY,
+    ClockHealth.PAUSED,
+)
+
+
+def _native_policy(policy: PlaybackClockPolicy) -> _native.Policy:
+    return _native.Policy(
+        policy.discontinuity_us,
+        policy.tiny_phase_floor_us,
+        policy.maximum_phase_step_us,
+        policy.phase_correction_horizon_us,
+        policy.drift_min_samples,
+        policy.drift_min_span_us,
+        policy.drift_pair_min_span_us,
+        policy.drift_max_abs_ppm,
+        policy.drift_max_residual_p95_us,
+        policy.warming_drift_allowance_ppm,
+        policy.rtt_quality_min_samples,
+        policy.slow_rtt_absolute_us,
+        policy.slow_rtt_median_multiplier,
+        policy.slow_rtt_minimum_multiplier,
+        policy.degraded_after_us,
+        policy.stale_after_us,
+        policy.history_size,
+    )
+
+
+def _native_observation(observation: PositionObservation) -> _native.Observation:
+    return _native.Observation(
+        observation.session_id,
+        observation.position_us,
+        _STATES.index(observation.state),
+        observation.rate_ppb,
+        observation.request_started_ns,
+        observation.response_received_ns,
+        _REASONS.index(observation.reason),
+        _SOURCES.index(observation.source),
+        observation.trusted,
+    )
+
+
+def _clock_update(update: _native.Update) -> ClockUpdate:
+    return ClockUpdate(
+        _UPDATE_KINDS[update.kind],
+        update.reason,
+        update.residual_us,
+        update.scheduled_correction_us,
+        _CORRECTION_CLASSES[update.correction_class],
+    )
+
+
+class PlaybackClock:
+    """Public PlaybackClock semantics backed by the bounded C++ experiment."""
+
+    def __init__(
+        self,
+        monotonic_ns: Callable[[], int],
+        policy: PlaybackClockPolicy | None = None,
+    ) -> None:
+        self._now = monotonic_ns
+        self._policy = policy or PlaybackClockPolicy()
+        self._core = _native.PlaybackClockCore(_native_policy(self._policy))
+
+    @property
+    def available(self) -> bool:
+        """Return whether at least one position observation was accepted."""
+
+        return self._core.available
+
+    @property
+    def policy(self) -> PlaybackClockPolicy:
+        """Expose immutable policy values for diagnostics and tests."""
+
+        return self._policy
+
+    def observe(self, observation: PositionObservation) -> ClockUpdate:
+        """Classify and discipline from one quality-bearing observation."""
+
+        return _clock_update(self._core.observe(_native_observation(observation)))
+
+    def reanchor_seek(
+        self,
+        session_id: str,
+        position_us: int,
+        state: PlaybackState,
+        rate: float,
+        *,
+        monotonic_ns: int | None = None,
+    ) -> ClockUpdate:
+        """Apply the newest valid Seeked position immediately at callback time."""
+
+        now_ns = self._now() if monotonic_ns is None else monotonic_ns
+        observation = PositionObservation(
+            session_id,
+            position_us,
+            state,
+            rate,
+            now_ns,
+            now_ns,
+            ObservationReason.SEEK,
+            PositionSampleSource.SEEKED_SIGNAL,
+        )
+        return _clock_update(
+            self._core.reanchor_seek(
+                observation.session_id,
+                observation.position_us,
+                _STATES.index(observation.state),
+                observation.rate_ppb,
+                now_ns,
+                _SOURCES.index(observation.source),
+            )
+        )
+
+    def transition_state(
+        self,
+        state: PlaybackState,
+        *,
+        monotonic_ns: int | None = None,
+    ) -> ClockUpdate | None:
+        """Freeze/resume immediately, then require authoritative convergence."""
+
+        now_ns = self._now() if monotonic_ns is None else monotonic_ns
+        update = self._core.transition_state(_STATES.index(state), now_ns)
+        return None if update is None else _clock_update(update)
+
+    def transition_rate(
+        self,
+        rate: float,
+        *,
+        monotonic_ns: int | None = None,
+    ) -> ClockUpdate | None:
+        """Preserve phase at a Rate signal and apply the new rate thereafter."""
+
+        if not self.available:
+            return None
+        probe = PositionObservation(
+            "native-rate-validation",
+            0,
+            PlaybackState.UNKNOWN,
+            rate,
+            0,
+            0,
+            source=PositionSampleSource.LOCAL_STATE_TRANSITION,
+        )
+        now_ns = self._now() if monotonic_ns is None else monotonic_ns
+        update = self._core.transition_rate(probe.rate_ppb, now_ns)
+        return None if update is None else _clock_update(update)
+
+    def mark_suspend_resume(self, *, monotonic_ns: int | None = None) -> None:
+        """Invalidate interpolation discipline until a fresh sample arrives."""
+
+        now_ns = self._now() if monotonic_ns is None else monotonic_ns
+        self._core.mark_suspend_resume(now_ns)
+
+    def mark_sampling_failure(self, reason: str) -> ClockUpdate:
+        """Keep interpolating temporarily but make failed authority visible."""
+
+        detail = reason.strip() or "authoritative Position sampling failed"
+        return _clock_update(self._core.mark_sampling_failure(detail))
+
+    def estimate(
+        self,
+        *,
+        now_ns: int | None = None,
+        duration_us: int | None = None,
+    ) -> PlaybackPositionEstimate | None:
+        """Return the derived position with quantified and unknown error terms."""
+
+        current_ns = self._now() if now_ns is None else now_ns
+        estimate = self._core.estimate(current_ns, duration_us)
+        if estimate is None:
+            return None
+        native_diagnostics = estimate.diagnostics
+        diagnostics = PlaybackClockDiagnostics(
+            quality=_QUALITIES[native_diagnostics.quality],
+            sample_count=native_diagnostics.sample_count,
+            sample_age_us=native_diagnostics.sample_age_us,
+            last_round_trip_us=native_diagnostics.last_round_trip_us,
+            last_residual_us=native_diagnostics.last_residual_us,
+            residual_jitter_us=native_diagnostics.residual_jitter_us,
+            phase_error_remaining_us=native_diagnostics.phase_error_remaining_us,
+            observed_error_bound_us=native_diagnostics.observed_error_bound_us,
+            drift_ppm=native_diagnostics.drift_ppm,
+            drift_correction_active=native_diagnostics.drift_correction_active,
+            unquantified_error_sources=(
+                "the MPRIS player does not specify when or how precisely "
+                "Position was sampled",
+                "D-Bus scheduling can be asymmetric, so half round-trip is "
+                "only a lower bound",
+            ),
+            health=_HEALTH[native_diagnostics.health],
+            last_rtt_us=native_diagnostics.last_rtt_us,
+            minimum_recent_rtt_us=native_diagnostics.minimum_recent_rtt_us,
+            median_recent_rtt_us=native_diagnostics.median_recent_rtt_us,
+            p95_recent_rtt_us=native_diagnostics.p95_recent_rtt_us,
+            maximum_recent_rtt_us=native_diagnostics.maximum_recent_rtt_us,
+            accepted_sample_count=native_diagnostics.accepted_sample_count,
+            rejected_sample_count=native_diagnostics.rejected_sample_count,
+            discontinuity_count=native_diagnostics.discontinuity_count,
+            last_sample_source=(
+                None
+                if native_diagnostics.last_sample_source is None
+                else _SOURCES[native_diagnostics.last_sample_source]
+            ),
+            median_absolute_residual_us=(
+                native_diagnostics.median_absolute_residual_us
+            ),
+            p95_absolute_residual_us=native_diagnostics.p95_absolute_residual_us,
+            maximum_absolute_residual_us=(
+                native_diagnostics.maximum_absolute_residual_us
+            ),
+            last_correction_class=(
+                None
+                if native_diagnostics.last_correction_class is None
+                else _CORRECTION_CLASSES[native_diagnostics.last_correction_class]
+            ),
+        )
+        return PlaybackPositionEstimate(
+            estimate.session_id,
+            estimate.position_us,
+            _STATES[estimate.state],
+            estimate.reported_rate_ppb / _RATE_SCALE,
+            estimate.effective_rate_ppb / _RATE_SCALE,
+            estimate.base_rate_ppb / _RATE_SCALE,
+            estimate.slew_remaining_us,
+            estimate.slew_remaining_duration_us,
+            estimate.monotonic_ns,
+            diagnostics,
+            estimate.base_rate_ppb,
+            estimate.effective_rate_ppb,
+            estimate.latest_authoritative_position_us,
+        )
+
+
+# Retain an explicit implementation name for differential validation while the
+# long-standing public ``PlaybackClock`` name and class identity stay stable.
+NativePlaybackClock = PlaybackClock

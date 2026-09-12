@@ -5,7 +5,8 @@ pkgver=0.1.0beta1
 pkgrel=1
 _sdistver=0.1.0b1
 pkgdesc='Local-first synchronized multilingual lyrics for Linux MPRIS players'
-arch=('any')
+arch=('x86_64' 'aarch64')
+options=('!debug')
 url='https://github.com/myonctl/KonoKashi'
 license=('PolyForm-Noncommercial-1.0.0')
 depends=(
@@ -23,7 +24,7 @@ depends=(
   'python-tomlkit>=0.15.1'
   'python-unidic-lite>=1.0.8'
 )
-makedepends=('python-build' 'python-installer' 'python-setuptools' 'python-wheel')
+makedepends=('pybind11' 'python-build' 'python-installer' 'python-setuptools' 'python-wheel')
 checkdepends=('python-pytest')
 optdepends=('playerctl: optional MPRIS debugging' 'pipewire: optional audio timing diagnostics')
 source=("$pkgname-$_sdistver.tar.gz::https://github.com/myonctl/KonoKashi/releases/download/v0.1.0-beta.1/$pkgname-$_sdistver.tar.gz")
@@ -36,9 +37,13 @@ build() {
 
 check() {
   cd "$pkgname-$_sdistver"
+  python -m installer --destdir="$srcdir/test-root" --prefix=/usr dist/*.whl
+  local test_site
+  test_site="$(find "$srcdir/test-root/usr/lib" -type d -name site-packages -print -quit)"
   # Package smoke/regressions independent of Git-only repository documentation.
-  PYTHONPATH=src QT_QPA_PLATFORM=offscreen python -m pytest \
-    tests/test_package.py tests/test_lrc_parser.py tests/test_romanization_adapters.py
+  PYTHONPATH="$test_site" QT_QPA_PLATFORM=offscreen python -m pytest \
+    tests/test_package.py tests/test_lrc_parser.py tests/test_playback_clock.py \
+    tests/test_playback_clock_native.py tests/test_romanization_adapters.py
 }
 
 package() {

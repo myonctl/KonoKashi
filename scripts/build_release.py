@@ -22,6 +22,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 APP_ID = "io.github.myonctl.KonoKashi"
 REQUIRED_PYTHON_BOUNDS = frozenset({">=3.11", "<3.15"})
 REQUIRED_WHEEL_SUFFIXES = (
+    "konokashi/_playback_clock_native.pyi",
     "konokashi/cli.py",
     "konokashi/infrastructure/desktop_portal.py",
     "konokashi/presentation/tui/settings_app.py",
@@ -29,13 +30,16 @@ REQUIRED_WHEEL_SUFFIXES = (
     f"konokashi/resources/{APP_ID}.metainfo.xml",
     f"konokashi/resources/{APP_ID}.svg",
 )
+REQUIRED_WHEEL_NATIVE_PREFIX = "konokashi/_playback_clock_native."
 REQUIRED_SDIST_SUFFIXES = (
     "LICENSE",
     "README.md",
     "pyproject.toml",
+    "setup.py",
     "assets/readme/konokashi-demo.gif",
     "scripts/__init__.py",
     "scripts/evaluate_matching.py",
+    "src/konokashi/native/playback_clock.cpp",
     "src/konokashi/infrastructure/desktop_portal.py",
     "tests/fixtures/matching_evaluation/synthetic_cases.json",
     "tests/fixtures/matching_evaluation/README.md",
@@ -115,6 +119,8 @@ def _build(output: Path, environment: dict[str, str], epoch: int) -> None:
                 ".ruff_cache",
                 "__pycache__",
                 "*.egg-info",
+                "*.pyd",
+                "*.so",
                 "build",
                 "dist",
                 ".flatpak-builder",
@@ -191,6 +197,15 @@ def _verify_contents(artifacts: dict[str, Path]) -> None:
         for suffix in REQUIRED_WHEEL_SUFFIXES
         if not any(name.endswith(suffix) for name in wheel_names)
     ]
+    native_modules = [
+        name
+        for name in wheel_names
+        if name.startswith(REQUIRED_WHEEL_NATIVE_PREFIX) and name.endswith(".so")
+    ]
+    if len(native_modules) != 1:
+        missing_wheel.append("one native PlaybackClock extension")
+    if any(name.endswith(".cpp") for name in wheel_names):
+        raise ReleaseBuildError("wheel must not contain C++ source files")
     with tarfile.open(source, "r:gz") as archive:
         source_names = set(archive.getnames())
     missing_source = [

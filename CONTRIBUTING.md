@@ -19,8 +19,10 @@ python -m venv .venv
 .venv/bin/konokashi doctor
 ```
 
-Qt needs a working EGL/OpenGL runtime for desktop use. Building PyICU from source
-may require ICU development headers, `pkg-config`, and a C++ compiler.
+Qt needs a working EGL/OpenGL runtime for desktop use. The authorized native
+PlaybackClock experiment requires a C++20 compiler and the pinned pybind11 build
+input; building PyICU from source may additionally require ICU development
+headers and `pkg-config`.
 
 ## Making a change
 
@@ -64,5 +66,9 @@ needed.
 
 Review feedback may request smaller commits or additional evidence. Do not weaken
 tests, linting, formatting, typing, or security checks to obtain a green result.
+
+The PlaybackClock is the only authorized native migration. Keep its Python
+reference and differential tests intact; migrating another subsystem requires a
+separate decision based on real maintenance and packaging evidence.
 
 Use `SECURITY.md` for vulnerabilities rather than opening a public issue.

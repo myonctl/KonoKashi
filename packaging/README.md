@@ -7,7 +7,9 @@ the target package manager. The current routes are:
 - The supported beta install path is `pipx install` from the immutable GitHub
   release archive documented in the root README. It is independently validated
   and requires neither a repository clone nor a manually managed virtual
-  environment.
+  environment. Current-development wheels are platform-specific because of the
+  one bounded native PlaybackClock module; source installs require a C++20
+  toolchain and the pinned pybind11 build input.
 
 - [`flatpak/`](flatpak/): a reproducible local-build candidate for the current
   beta. Flathub submission is intentionally deferred until a stable release.
