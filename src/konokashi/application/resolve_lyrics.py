@@ -5,10 +5,12 @@ from __future__ import annotations
 import json
 import time
 from collections.abc import Callable, Sequence
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, wait
 from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime, timedelta
+from functools import partial
 from hashlib import sha256
+from threading import Lock
 
 from konokashi.application.ports import (
     LocalLyricsProviderPort,
@@ -50,6 +52,12 @@ _CONFIDENCE_RANK = {
 _RESULTS_CACHE_TTL = timedelta(days=7)
 _NO_RESULT_CACHE_TTL = timedelta(hours=12)
 _MAX_PARALLEL_PROVIDERS = 4
+# A 2026-09-12 privacy-safe sample of the two default public providers produced
+# healthy request durations of 113-395 ms and a largest cross-provider gap of
+# 259 ms (one additional request returned HTTP 503). Four hundred milliseconds
+# therefore gives a normally responsive competitor time to contribute evidence
+# without inheriting the adapters' 15-second read timeout.
+_PROVIDER_EVIDENCE_WINDOW_SECONDS = 0.4
 
 
 @dataclass(frozen=True, slots=True)
@@ -89,6 +97,7 @@ class LyricsResolver:
         sleeper: Callable[[float], None] = time.sleep,
         monotonic: Callable[[], float] = time.monotonic,
         title_aliases: Callable[[str], tuple[str, ...]] | None = None,
+        evidence_window_seconds: float = _PROVIDER_EVIDENCE_WINDOW_SECONDS,
     ) -> None:
         self._local_sources = tuple(local_sources)
         self._providers = (
@@ -110,14 +119,29 @@ class LyricsResolver:
         self._sleeper = sleeper
         self._monotonic = monotonic
         self._title_aliases = title_aliases or (lambda _title: ())
+        if evidence_window_seconds <= 0:
+            raise ValueError("provider evidence window must be positive")
+        self._evidence_window_seconds = evidence_window_seconds
+        self._cancellation_lock = Lock()
+        self._cancellation_generation = 0
 
     def cancel_inflight(self) -> None:
         """Cancel every provider request that exposes the optional cancellation API."""
 
+        with self._cancellation_lock:
+            self._cancellation_generation += 1
         for provider in self._providers:
             cancellation = getattr(provider, "cancel_inflight", None)
             if callable(cancellation):
                 cancellation()
+
+    def _cancellation_token(self) -> int:
+        with self._cancellation_lock:
+            return self._cancellation_generation
+
+    def _is_current(self, token: int) -> bool:
+        with self._cancellation_lock:
+            return token == self._cancellation_generation
 
     def _assess(
         self, query: LyricsQuery, candidate: LyricsProviderCandidate
@@ -133,6 +157,7 @@ class LyricsResolver:
     ) -> LyricsResolutionResult:
         """Resolve lyrics without letting network or refresh displace approved data."""
 
+        cancellation_token = self._cancellation_token()
         source = track.source_identity
         diagnostics: list[str] = []
         invalid_local_seen = False
@@ -183,13 +208,15 @@ class LyricsResolver:
                     "lyrics came from an exact-path local recording source",
                     "local source outranks provider and automatic cache results",
                 )
-                self._persist(
+                if not self._persist_if_current(
+                    cancellation_token,
                     track,
                     local.document,
                     LyricsMatchConfidence.HIGH,
                     evidence,
                     ContentProvenance.LOCAL,
-                )
+                ):
+                    return self._cancelled_resolution(track, diagnostics, False)
                 return self._from_document(
                     track,
                     local.document,
@@ -245,7 +272,16 @@ class LyricsResolver:
         exact_possible = query.album is not None and query.duration_ms is not None
         if exact_possible:
             for exact, exact_cached, exact_network in self._provider_results(
-                query, search=False, offline=offline, refresh=refresh
+                query,
+                search=False,
+                offline=offline,
+                refresh=refresh,
+                evidence_sufficient=partial(
+                    self._results_are_sufficient,
+                    query,
+                    rejected_document_ids=rejected_document_ids,
+                ),
+                observations=diagnostics,
             ):
                 provider_outcomes.append(exact)
                 cache_hit |= exact_cached
@@ -258,6 +294,18 @@ class LyricsResolver:
                         if self._provider_documents.document_id(candidate)
                         not in rejected_document_ids
                     )
+            if not self._is_current(cancellation_token):
+                return self._cancelled_resolution(track, diagnostics, network_used)
+            accepted = self._unique_high(_deduplicate_assessments(all_assessments))
+            if accepted is not None:
+                return self._accept_provider(
+                    track,
+                    accepted,
+                    diagnostics,
+                    cache_hit=cache_hit,
+                    network_used=network_used,
+                    cancellation_token=cancellation_token,
+                )
         else:
             missing = []
             if query.album is None:
@@ -281,6 +329,12 @@ class LyricsResolver:
                 search=True,
                 offline=offline,
                 refresh=False if offline else refresh,
+                evidence_sufficient=partial(
+                    self._results_are_sufficient,
+                    assessment_query,
+                    rejected_document_ids=rejected_document_ids,
+                ),
+                observations=diagnostics,
             ):
                 provider_outcomes.append(search)
                 network_used |= search_network
@@ -294,10 +348,22 @@ class LyricsResolver:
                         if self._provider_documents.document_id(candidate)
                         not in rejected_document_ids
                     )
+            if not self._is_current(cancellation_token):
+                return self._cancelled_resolution(track, diagnostics, network_used)
             diagnostics.append(
                 f"provider strategy {strategy!r} returned "
                 f"{strategy_candidates} candidates"
             )
+            accepted = self._unique_high(_deduplicate_assessments(all_assessments))
+            if accepted is not None:
+                return self._accept_provider(
+                    track,
+                    accepted,
+                    diagnostics,
+                    cache_hit=cache_hit,
+                    network_used=network_used,
+                    cancellation_token=cancellation_token,
+                )
         assessments = _deduplicate_assessments(all_assessments)
         accepted = self._unique_high(assessments)
         if accepted is not None:
@@ -307,6 +373,7 @@ class LyricsResolver:
                 diagnostics,
                 cache_hit=cache_hit,
                 network_used=network_used,
+                cancellation_token=cancellation_token,
             )
         if assessments:
             diagnostics.extend(
@@ -565,11 +632,17 @@ class LyricsResolver:
         search: bool,
         offline: bool,
         refresh: bool,
+        evidence_sufficient: Callable[
+            [Sequence[tuple[LyricsProviderResult, bool, bool]]], bool
+        ]
+        | None = None,
+        observations: list[str] | None = None,
     ) -> tuple[tuple[LyricsProviderResult, bool, bool], ...]:
-        """Query configured sources concurrently while preserving preference order."""
+        """Collect providers until complete or bounded evidence is sufficient."""
 
         if not self._providers:
             return ()
+        collection_started = self._monotonic()
 
         def load(
             provider: LyricsProviderPort,
@@ -583,12 +656,145 @@ class LyricsResolver:
             )
 
         if len(self._providers) == 1:
-            return (load(self._providers[0]),)
-        with ThreadPoolExecutor(
+            result = (load(self._providers[0]),)
+            elapsed_ms = max(0, round((self._monotonic() - collection_started) * 1000))
+            if observations is not None:
+                if evidence_sufficient is not None and evidence_sufficient(result):
+                    observations.append(
+                        f"provider evidence: first viable candidate in {elapsed_ms} ms"
+                    )
+                observations.append(
+                    f"provider evidence: final decision in {elapsed_ms} ms; "
+                    "all providers completed"
+                )
+            return result
+
+        executor = ThreadPoolExecutor(
             max_workers=min(len(self._providers), _MAX_PARALLEL_PROVIDERS),
             thread_name_prefix="konokashi-lyrics",
-        ) as executor:
-            return tuple(executor.map(load, self._providers))
+        )
+        futures: dict[
+            Future[tuple[LyricsProviderResult, bool, bool]],
+            tuple[int, LyricsProviderPort],
+        ] = {
+            executor.submit(load, provider): (index, provider)
+            for index, provider in enumerate(self._providers)
+        }
+        pending = set(futures)
+        collected: dict[int, tuple[LyricsProviderResult, bool, bool]] = {}
+        first_viable_at: float | None = None
+        sufficiency_since: float | None = None
+        cancelled_queued = 0
+        detached_running = 0
+        try:
+            while pending:
+                timeout = None
+                if sufficiency_since is not None:
+                    timeout = max(
+                        0.0,
+                        self._evidence_window_seconds
+                        - (self._monotonic() - sufficiency_since),
+                    )
+                completed, pending = wait(
+                    pending, timeout=timeout, return_when=FIRST_COMPLETED
+                )
+                if not completed:
+                    break
+                for future in sorted(completed, key=lambda item: futures[item][0]):
+                    index, provider = futures[future]
+                    try:
+                        collected[index] = future.result()
+                    except Exception as error:
+                        collected[index] = (
+                            self._observed(
+                                provider.name,
+                                LyricsProviderResult(
+                                    LyricsProviderStatus.UNAVAILABLE,
+                                    diagnostics=(
+                                        "provider worker failed as "
+                                        f"{error.__class__.__name__}",
+                                    ),
+                                ),
+                                collection_started,
+                                "queried",
+                            ),
+                            False,
+                            not offline,
+                        )
+                ordered = tuple(collected[index] for index in sorted(collected))
+                sufficient = evidence_sufficient is not None and evidence_sufficient(
+                    ordered
+                )
+                if sufficient:
+                    now = self._monotonic()
+                    if first_viable_at is None:
+                        first_viable_at = now
+                        if observations is not None:
+                            elapsed_ms = max(
+                                0, round((now - collection_started) * 1000)
+                            )
+                            observations.append(
+                                "provider evidence: first viable candidate in "
+                                f"{elapsed_ms} ms"
+                            )
+                    if sufficiency_since is None:
+                        sufficiency_since = now
+                else:
+                    # A competing result can invalidate an apparently unique
+                    # candidate. In that case conservatism wins and collection
+                    # resumes without a deadline.
+                    sufficiency_since = None
+
+            ordered = tuple(collected[index] for index in sorted(collected))
+            if (
+                pending
+                and evidence_sufficient is not None
+                and evidence_sufficient(ordered)
+            ):
+                for future in pending:
+                    if future.cancel():
+                        cancelled_queued += 1
+                    else:
+                        detached_running += 1
+        finally:
+            # Adapter cancellation is intentionally reserved for an explicit
+            # frontend supersession because it is provider-wide and could also
+            # close a concurrent manual search. Detached requests may still warm
+            # their provider-query cache, but cannot alter this decision.
+            executor.shutdown(wait=False, cancel_futures=True)
+
+        if observations is not None:
+            elapsed_ms = max(0, round((self._monotonic() - collection_started) * 1000))
+            if cancelled_queued or detached_running:
+                window_ms = round(self._evidence_window_seconds * 1000)
+                observations.append(
+                    f"provider evidence: final decision in {elapsed_ms} ms; "
+                    f"{window_ms} ms competition window; cancelled "
+                    f"{cancelled_queued} queued and detached "
+                    f"{detached_running} running provider request(s)"
+                )
+            else:
+                observations.append(
+                    f"provider evidence: final decision in {elapsed_ms} ms; "
+                    "all providers completed"
+                )
+        return ordered
+
+    def _results_are_sufficient(
+        self,
+        query: LyricsQuery,
+        outcomes: Sequence[tuple[LyricsProviderResult, bool, bool]],
+        rejected_document_ids: set[str],
+    ) -> bool:
+        assessments = [
+            self._assess(query, candidate)
+            for result, _cached, _network in outcomes
+            if result.status is LyricsProviderStatus.RESULTS
+            for candidate in result.candidates
+            if self._provider_documents.document_id(candidate)
+            not in rejected_document_ids
+        ]
+        return self._unique_high(_deduplicate_assessments(assessments)) is not None
 
     def _provider_result(
         self,
@@ -723,7 +929,10 @@ class LyricsResolver:
         *,
         cache_hit: bool,
         network_used: bool,
+        cancellation_token: int,
     ) -> LyricsResolutionResult:
+        if not self._is_current(cancellation_token):
+            return self._cancelled_resolution(track, diagnostics, network_used)
         diagnostics.append("chosen " + _assessment_diagnostic(assessment))
         candidate = assessment.candidate
         if (
@@ -763,13 +972,15 @@ class LyricsResolver:
                 cache_hit=cache_hit,
                 network_used=network_used,
             )
-        self._persist(
+        if not self._persist_if_current(
+            cancellation_token,
             track,
             document,
             assessment.confidence,
             assessment.evidence,
             ContentProvenance.PROVIDER,
-        )
+        ):
+            return self._cancelled_resolution(track, diagnostics, network_used)
         return self._from_document(
             track,
             document,
@@ -778,6 +989,37 @@ class LyricsResolver:
             evidence=assessment.evidence,
             diagnostics=tuple(diagnostics),
             cache_hit=cache_hit,
+            network_used=network_used,
+        )
+
+    def _persist_if_current(
+        self,
+        cancellation_token: int,
+        track: ResolvedTrack,
+        document: LyricDocument,
+        confidence: LyricsMatchConfidence,
+        evidence: tuple[str, ...],
+        provenance: ContentProvenance,
+    ) -> bool:
+        """Serialize cancellation with the only automatic match mutation."""
+
+        with self._cancellation_lock:
+            if cancellation_token != self._cancellation_generation:
+                return False
+            self._persist(track, document, confidence, evidence, provenance)
+            return True
+
+    @staticmethod
+    def _cancelled_resolution(
+        track: ResolvedTrack, diagnostics: list[str], network_used: bool
+    ) -> LyricsResolutionResult:
+        return LyricsResolutionResult(
+            track.source_identity,
+            LyricsResolutionStatus.NO_RESULT,
+            diagnostics=(
+                *diagnostics,
+                "provider resolution was superseded by a newer frontend request",
+            ),
             network_used=network_used,
         )
 

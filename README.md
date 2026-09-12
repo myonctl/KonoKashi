@@ -154,6 +154,16 @@ Unison are enabled by default; order is only a tie-break after KonoKashi's own
 recording-match evidence, and an empty list disables online lookup. Provider
 diagnostics report source, cache/network path, duration, status, and result count
 without recording titles, artists, local paths, URLs, or credentials.
+Automatic resolution starts enabled providers together. Once the collected
+evidence identifies one unique High-confidence recording, KonoKashi allows a
+measured 400 ms competition window for another source to agree or conflict; a
+conflict removes the deadline and restores full conservative collection.
+Irrelevant queued work is then cancelled; already-running requests are detached
+so they cannot disrupt a concurrent search and may warm only their provider-query
+cache. Frontend generation guards and explicit resolver cancellation prevent a
+late response from attaching lyrics to a superseded track. Diagnostics expose
+first-viable and final-decision latency as well as each provider's request
+duration and cancellation/detachment counts.
 On a cache miss, each enabled source receives only the provider-safe resolved
 title, musical artist, and available album/duration—not the local media path,
 raw MPRIS URL, player identity, or playback history.

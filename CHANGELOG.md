@@ -49,6 +49,12 @@ All notable user-visible changes are recorded here.
 
 ### Changed
 
+- Provider collection now decides from evidence rather than configuration-order
+  completion. A unique High-confidence result gives competitors a measured
+  400 ms opportunity to agree or conflict, then cancels queued work and detaches
+  already-running requests; conflicts resume full collection, late responses can
+  only warm query cache, and superseded resolutions cannot persist an automatic
+  match.
 - Current-lyrics JSONL is intentionally versioned to schema v2: the previously
   ambiguous `active_word` payload is now `active_segment` with an explicit unit,
   while `active_word` is emitted only for a genuine word or word parent.

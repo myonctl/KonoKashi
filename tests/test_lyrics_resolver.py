@@ -5,7 +5,8 @@ from __future__ import annotations
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from threading import Barrier
+from threading import Barrier, Event, Thread
+from time import monotonic, sleep
 
 from konokashi.application.resolve_lyrics import (
     LyricsResolver,
@@ -29,6 +30,7 @@ from konokashi.domain.lyrics import (
     LyricsProviderResult,
     LyricsProviderStatus,
     LyricsQuery,
+    LyricsResolutionResult,
     LyricsResolutionStatus,
     ProviderCacheEntry,
     RepresentationKind,
@@ -208,6 +210,7 @@ def _resolver(
     *,
     local_sources: tuple[_LocalSource, ...] = (),
     title_aliases: object | None = None,
+    evidence_window_seconds: float = 0.4,
 ) -> LyricsResolver:
     storage = open_storage(path)
     return LyricsResolver(
@@ -220,6 +223,7 @@ def _resolver(
         now=lambda: NOW,
         sleeper=lambda _seconds: None,
         title_aliases=(title_aliases if callable(title_aliases) else None),
+        evidence_window_seconds=evidence_window_seconds,
     )
 
 
@@ -961,6 +965,262 @@ def test_configured_providers_begin_each_lookup_in_bounded_parallel(
 
     assert result.status is LyricsResolutionStatus.FOUND_TIMED
     assert first.exact_queries and second.exact_queries
+
+
+def test_slow_provider_cannot_hold_sufficient_evidence_hostage(
+    tmp_path: Path,
+) -> None:
+    slow_started = Event()
+    slow_released = Event()
+
+    class SlowProvider(_FakeProvider):
+        def exact(self, query: LyricsQuery) -> LyricsProviderResult:
+            self.exact_queries.append(query)
+            slow_started.set()
+            slow_released.wait(timeout=2)
+            return self.exact_result
+
+    fast = _FakeProvider(
+        exact=LyricsProviderResult(
+            LyricsProviderStatus.RESULTS,
+            (_candidate("fast"),),
+        )
+    )
+    slow = SlowProvider(name="Unison")
+    resolver = _resolver(
+        tmp_path / "bounded-evidence.sqlite3",
+        (fast, slow),
+        evidence_window_seconds=0.05,
+    )
+
+    started = monotonic()
+    result = resolver.resolve(_track())
+    elapsed = monotonic() - started
+    slow_released.set()
+
+    assert slow_started.is_set()
+    assert elapsed < 0.5
+    assert result.status is LyricsResolutionStatus.FOUND_TIMED
+    assert any("first viable candidate" in item for item in result.diagnostics)
+    assert any("detached 1 running" in item for item in result.diagnostics)
+
+
+def test_sufficient_evidence_cancels_only_provider_work_that_has_not_started(
+    tmp_path: Path,
+) -> None:
+    release_blockers = Event()
+
+    class BlockingProvider(_FakeProvider):
+        def exact(self, query: LyricsQuery) -> LyricsProviderResult:
+            self.exact_queries.append(query)
+            release_blockers.wait(timeout=2)
+            return self.exact_result
+
+    fast = _FakeProvider(
+        exact=LyricsProviderResult(
+            LyricsProviderStatus.RESULTS,
+            (_candidate("fast"),),
+        )
+    )
+    blockers = tuple(
+        BlockingProvider(name=f"Blocking {index}") for index in range(1, 5)
+    )
+    queued = _FakeProvider(name="Queued")
+    resolver = _resolver(
+        tmp_path / "queued-cancellation.sqlite3",
+        (fast, *blockers, queued),
+        evidence_window_seconds=0.05,
+    )
+
+    result = resolver.resolve(_track())
+    release_blockers.set()
+
+    assert result.status is LyricsResolutionStatus.FOUND_TIMED
+    assert queued.exact_queries == []
+    assert any("cancelled 1 queued" in item for item in result.diagnostics)
+    assert any("detached 4 running" in item for item in result.diagnostics)
+
+
+def test_preferred_conflict_inside_evidence_window_prevents_automatic_choice(
+    tmp_path: Path,
+) -> None:
+    release_preferred = Event()
+
+    class DelayedPreferredProvider(_FakeProvider):
+        def exact(self, query: LyricsQuery) -> LyricsProviderResult:
+            self.exact_queries.append(query)
+            release_preferred.wait(timeout=1)
+            return self.exact_result
+
+    preferred = DelayedPreferredProvider(
+        exact=LyricsProviderResult(
+            LyricsProviderStatus.RESULTS,
+            (
+                _candidate(
+                    "preferred",
+                    plain="Conflicting",
+                    synced="[00:01.00]Conflicting",
+                ),
+            ),
+        )
+    )
+    fast_backup = _FakeProvider(
+        name="Unison",
+        exact=LyricsProviderResult(
+            LyricsProviderStatus.RESULTS,
+            (_candidate("backup", provider="Unison"),),
+        ),
+    )
+    resolver = _resolver(
+        tmp_path / "window-conflict.sqlite3",
+        (preferred, fast_backup),
+        evidence_window_seconds=0.2,
+    )
+
+    def release_after_delay() -> None:
+        sleep(0.03)
+        release_preferred.set()
+
+    timer = Thread(target=release_after_delay)
+    timer.start()
+
+    result = resolver.resolve(_track())
+    timer.join(timeout=1)
+
+    assert result.status is LyricsResolutionStatus.AMBIGUOUS
+    assert {item.provider for item in result.alternatives} == {"LRCLIB", "Unison"}
+    assert not any("detached" in item for item in result.diagnostics)
+
+
+def test_fast_garbage_does_not_start_the_evidence_deadline(tmp_path: Path) -> None:
+    release_good = Event()
+
+    class DelayedGoodProvider(_FakeProvider):
+        def exact(self, query: LyricsQuery) -> LyricsProviderResult:
+            self.exact_queries.append(query)
+            release_good.wait(timeout=1)
+            return self.exact_result
+
+    garbage = _FakeProvider(
+        exact=LyricsProviderResult(
+            LyricsProviderStatus.RESULTS,
+            (_candidate("garbage", title="Wrong", artist="Someone else"),),
+        )
+    )
+    good = DelayedGoodProvider(
+        name="Unison",
+        exact=LyricsProviderResult(
+            LyricsProviderStatus.RESULTS,
+            (_candidate("good", provider="Unison"),),
+        ),
+    )
+    resolver = _resolver(
+        tmp_path / "garbage-first.sqlite3",
+        (garbage, good),
+        evidence_window_seconds=0.02,
+    )
+
+    def release_after_delay() -> None:
+        sleep(0.08)
+        release_good.set()
+
+    timer = Thread(target=release_after_delay)
+    timer.start()
+
+    result = resolver.resolve(_track())
+    timer.join(timeout=1)
+
+    assert result.status is LyricsResolutionStatus.FOUND_TIMED
+    assert result.source_label == "Unison"
+    assert good.exact_queries
+    assert not any("detached" in item for item in result.diagnostics)
+
+
+def test_uncancellable_late_provider_can_still_warm_its_query_cache(
+    tmp_path: Path,
+) -> None:
+    slow_started = Event()
+    release_slow = Event()
+
+    class SlowCacheProvider(_FakeProvider):
+        def exact(self, query: LyricsQuery) -> LyricsProviderResult:
+            self.exact_queries.append(query)
+            slow_started.set()
+            release_slow.wait(timeout=2)
+            return self.exact_result
+
+    path = tmp_path / "late-cache.sqlite3"
+    fast = _FakeProvider(
+        exact=LyricsProviderResult(
+            LyricsProviderStatus.RESULTS,
+            (_candidate("fast"),),
+        )
+    )
+    slow = SlowCacheProvider(
+        name="Unison",
+        exact=LyricsProviderResult(
+            LyricsProviderStatus.NO_RESULT,
+            raw_payload=b"late-no-result",
+        ),
+    )
+    resolver = _resolver(path, (fast, slow), evidence_window_seconds=0.02)
+
+    result = resolver.resolve(_track())
+    assert result.status is LyricsResolutionStatus.FOUND_TIMED
+    assert slow_started.is_set()
+    release_slow.set()
+
+    cache_key = provider_cache_key("Unison", slow.exact_queries[0], search=False)
+    deadline = monotonic() + 1
+    cached = None
+    while cached is None and monotonic() < deadline:
+        cached = open_storage(path).provider_cache.get("Unison", cache_key)
+        if cached is None:
+            sleep(0.01)
+    assert cached is not None
+    assert cached.payload == b"late-no-result"
+
+
+def test_superseded_uncancellable_completion_cannot_persist_a_match(
+    tmp_path: Path,
+) -> None:
+    request_started = Event()
+    release_request = Event()
+
+    class UncancellableProvider(_FakeProvider):
+        def exact(self, query: LyricsQuery) -> LyricsProviderResult:
+            self.exact_queries.append(query)
+            request_started.set()
+            release_request.wait(timeout=2)
+            return self.exact_result
+
+        def cancel_inflight(self) -> None:
+            pass
+
+    path = tmp_path / "superseded.sqlite3"
+    provider = UncancellableProvider(
+        exact=LyricsProviderResult(
+            LyricsProviderStatus.RESULTS,
+            (_candidate("late"),),
+        )
+    )
+    resolver = _resolver(path, provider)
+    track = _track()
+    completed: list[LyricsResolutionResult] = []
+    worker = Thread(target=lambda: completed.append(resolver.resolve(track)))
+    worker.start()
+    assert request_started.wait(timeout=1)
+
+    resolver.cancel_inflight()
+    release_request.set()
+    worker.join(timeout=2)
+
+    assert not worker.is_alive()
+    assert completed
+    result = completed[0]
+    assert result.status is LyricsResolutionStatus.NO_RESULT
+    assert any("superseded" in item for item in result.diagnostics)
+    assert open_storage(path).lyrics_matches.get(track.source_identity) is None
 
 
 def test_equivalent_cross_provider_results_use_preference_only_as_tie_break(
