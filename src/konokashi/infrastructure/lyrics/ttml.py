@@ -26,7 +26,7 @@ _BARE_SECONDS = re.compile(r"^(\d+(?:\.\d{1,9})?)$")
 
 
 def parse_ttml_text(text: str) -> ParsedLyricsText:
-    """Parse media-clock TTML into stable line and word timing identities."""
+    """Parse media-clock TTML without guessing the semantics of timed spans."""
 
     if len(text) > MAX_TTML_CHARS:
         return _invalid("TTML lyrics exceed the bounded parser size")
@@ -60,6 +60,7 @@ def parse_ttml_text(text: str) -> ParsedLyricsText:
             normalized=normalized,
             checksum=checksum,
         )
+    timing_mode = (_attribute(root, "timing") or "").strip().casefold()
 
     lines: list[LyricLine] = []
     diagnostics: list[str] = []
@@ -89,7 +90,13 @@ def parse_ttml_text(text: str) -> ParsedLyricsText:
         source_line_id = _attribute(paragraph, "id")
         line_id = _line_id(checksum, source_position, start_ms, source_line_id)
         segments: list[LyricTimingSegment] = []
-        for element_position, span in enumerate(_timed_leaf_spans(paragraph)):
+        timed_spans = () if timing_mode == "line" else _timed_spans(paragraph)
+        segment_ids = {
+            span: _segment_id(line_id, element_position, _safe_start_ms(span))
+            for element_position, span in enumerate(timed_spans)
+        }
+        parents = {child: parent for parent in paragraph.iter() for child in parent}
+        for element_position, span in enumerate(timed_spans):
             try:
                 segment_start = _time_ms(_attribute(span, "begin"))
                 segment_end = _optional_time_ms(_attribute(span, "end"))
@@ -107,15 +114,32 @@ def parse_ttml_text(text: str) -> ParsedLyricsText:
                 )
                 segments.clear()
                 break
-            segment_text = "".join(span.itertext()) + _semantic_tail(span.tail)
+            timed_children = tuple(
+                descendant
+                for descendant in span.iter()
+                if descendant is not span and descendant in segment_ids
+            )
+            segment_text = "".join(span.itertext())
+            if not timed_children:
+                segment_text += _semantic_tail(span.tail)
+            unit, provider_unit = _timing_unit(
+                span,
+                has_timed_children=bool(timed_children),
+                timing_mode=timing_mode,
+            )
+            parent = parents.get(span)
+            while parent is not None and parent not in segment_ids:
+                parent = parents.get(parent)
             segments.append(
                 LyricTimingSegment(
-                    _segment_id(line_id, element_position, segment_start),
+                    segment_ids[span],
                     segment_text,
                     segment_start,
                     segment_end,
-                    LyricTimingUnit.WORD,
+                    unit,
                     TimingProvenance.PROVIDER,
+                    parent_segment_id=(None if parent is None else segment_ids[parent]),
+                    provider_unit=provider_unit,
                 )
             )
         starts = [segment.start_ms for segment in segments]
@@ -155,11 +179,13 @@ def parse_ttml_text(text: str) -> ParsedLyricsText:
             checksum=checksum,
         )
     lines.sort(key=lambda line: (line.start_ms or 0, line.line_id))
-    timing_level = (
-        LyricTimingLevel.WORD
-        if any(line.timing_segments for line in lines)
-        else LyricTimingLevel.LINE
-    )
+    all_segments = tuple(segment for line in lines for segment in line.timing_segments)
+    if not all_segments:
+        timing_level = LyricTimingLevel.LINE
+    elif all(segment.unit is LyricTimingUnit.WORD for segment in all_segments):
+        timing_level = LyricTimingLevel.WORD
+    else:
+        timing_level = LyricTimingLevel.ELEMENT
     return ParsedLyricsText(
         LyricsTextParseStatus.SYNCED,
         tuple(lines),
@@ -170,22 +196,66 @@ def parse_ttml_text(text: str) -> ParsedLyricsText:
     )
 
 
-def _timed_leaf_spans(paragraph: ET.Element) -> tuple[ET.Element, ...]:
-    result: list[ET.Element] = []
-    for span in paragraph.iter():
-        if span is paragraph or _local_name(span.tag) != "span":
-            continue
-        if _attribute(span, "begin") is None:
-            continue
-        if any(
-            descendant is not span
-            and _local_name(descendant.tag) == "span"
-            and _attribute(descendant, "begin") is not None
-            for descendant in span.iter()
-        ):
-            continue
-        result.append(span)
-    return tuple(result)
+def _timed_spans(paragraph: ET.Element) -> tuple[ET.Element, ...]:
+    """Return timed spans in source order, including meaningful containers."""
+
+    return tuple(
+        span
+        for span in paragraph.iter()
+        if span is not paragraph
+        and _local_name(span.tag) == "span"
+        and _attribute(span, "begin") is not None
+    )
+
+
+def _safe_start_ms(span: ET.Element) -> int:
+    """Provide deterministic ID input before detailed timing validation."""
+
+    try:
+        return _time_ms(_attribute(span, "begin"))
+    except ValueError:
+        return 0
+
+
+def _timing_unit(
+    span: ET.Element,
+    *,
+    has_timed_children: bool,
+    timing_mode: str,
+) -> tuple[LyricTimingUnit, str | None]:
+    """Honor explicit units and retain all ambiguous TTML as provider elements."""
+
+    explicit_unit = next(
+        (
+            value.strip()
+            for name, value in span.attrib.items()
+            if _local_name(name).casefold() in {"unit", "timing-unit", "timingunit"}
+            and value.strip()
+        ),
+        None,
+    )
+    role = (_attribute(span, "role") or "").strip()
+    declared = (explicit_unit or role).casefold()
+    semantic_units = {
+        "word": LyricTimingUnit.WORD,
+        "x-word": LyricTimingUnit.WORD,
+        "syllable": LyricTimingUnit.SYLLABLE,
+        "x-syllable": LyricTimingUnit.SYLLABLE,
+        "grapheme": LyricTimingUnit.GRAPHEME,
+        "x-grapheme": LyricTimingUnit.GRAPHEME,
+    }
+    semantic = semantic_units.get(declared)
+    if semantic is not None:
+        return semantic, None
+    if explicit_unit is not None:
+        return LyricTimingUnit.PROVIDER_ELEMENT, explicit_unit
+    if role:
+        return LyricTimingUnit.PROVIDER_ELEMENT, role
+    if has_timed_children:
+        return LyricTimingUnit.PROVIDER_ELEMENT, "ttml-container"
+    if timing_mode == "word":
+        return LyricTimingUnit.PROVIDER_ELEMENT, "itunes-word-span"
+    return LyricTimingUnit.PROVIDER_ELEMENT, "ttml-span"
 
 
 def _semantic_tail(value: str | None) -> str:

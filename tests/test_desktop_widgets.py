@@ -585,7 +585,7 @@ def test_karaoke_overlay_preserves_plain_wrapped_multiscript_text(
     assert any(color.red() > color.blue() for color in colors_seen)
     assert any(color.blue() > color.red() for color in colors_seen)
     assert label.text() == text
-    assert label.accessibleDescription() == "Word-timed lyric highlighting"
+    assert label.accessibleDescription() == "Fine-timed lyric highlighting"
     window.close()
 
 

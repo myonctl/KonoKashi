@@ -33,8 +33,9 @@ local-first, deeply customizable, and source-available.
 ## Features
 
 - **Synchronized lyrics:** timed line changes plus progressive highlighting for
-  trustworthy word-timed lyrics, with exact pause, seek, rate, and track-change
-  handling; line-only, plain, and instrumental states remain explicit.
+  trustworthy word- or finer-element-timed lyrics, with exact pause, seek, rate,
+  and track-change handling; line-only, plain, and instrumental states remain
+  explicit.
 - **Disciplined native clock:** the deterministic playback clock uses one narrow
   C++20 module, continuously checked against its retained Python reference
   implementation; matching, parsing, providers, storage, and UI remain Python.
@@ -241,8 +242,11 @@ support are future work.
 Lyrics from [Unison](https://unison.boidu.dev) are used under the ODbL-1.0
 public-corpus terms. KonoKashi performs read-only access, retains source
 attribution, and does not require a Better Lyrics account. Unison LRC, plain,
-and media-clock TTML entries are supported; TTML word spans retain start/end
-timing, while malformed element timing falls back to the containing line.
+and media-clock TTML entries are supported. Timed TTML spans retain start/end
+timing and parent identity; explicit word, syllable, and grapheme units stay
+distinct, while ambiguous Apple-style spans remain provider elements instead of
+being mislabeled as words. Malformed element timing falls back to the containing
+line.
 
 The current overlay uses Qt's portable top-most window support. On Wayland this
 is a graceful normal-window fallback and a compositor may still place fullscreen

@@ -13,6 +13,7 @@ from konokashi.domain.lyrics import (
     LyricsProviderStatus,
     LyricsQuery,
     LyricTimingLevel,
+    LyricTimingUnit,
 )
 from konokashi.infrastructure.lyrics.provider_documents import (
     ProviderLyricDocumentBuilder,
@@ -45,7 +46,9 @@ def _response(records: list[object]) -> dict[str, object]:
 def _ttml() -> str:
     return (
         '<tt xmlns="http://www.w3.org/ns/ttml" '
-        'xmlns:ttp="http://www.w3.org/ns/ttml#parameter" ttp:timeBase="media">'
+        'xmlns:ttp="http://www.w3.org/ns/ttml#parameter" '
+        'xmlns:itunes="http://music.apple.com/lyric-ttml-internal" '
+        'ttp:timeBase="media" itunes:timing="Word">'
         '<body><div><p xml:id="line-1" begin="0:01.000" end="0:03.000">'
         '<span begin="0:01.000" end="0:02.000">Fixture</span> '
         '<span begin="0:02.000" end="0:03.000">words</span>'
@@ -203,7 +206,13 @@ def test_search_metadata_is_hydrated_with_rich_ttml_detail() -> None:
     candidate = result.candidates[0]
     assert candidate.duration_ms == 183_771
     assert candidate.parsed_lyrics is not None
-    assert candidate.parsed_lyrics.timing_level.value == "word"
+    assert candidate.parsed_lyrics.timing_level is LyricTimingLevel.ELEMENT
+    assert all(
+        segment.unit is LyricTimingUnit.PROVIDER_ELEMENT
+        and segment.provider_unit == "itunes-word-span"
+        for line in candidate.parsed_lyrics.lines
+        for segment in line.timing_segments
+    )
     assert candidate.language == "en"
 
     document, diagnostics = ProviderLyricDocumentBuilder().build(
@@ -212,7 +221,7 @@ def test_search_metadata_is_hydrated_with_rich_ttml_detail() -> None:
     assert document is not None
     assert document.source_name == "Unison"
     assert document.language == "en"
-    assert document.timing_level is LyricTimingLevel.WORD
+    assert document.timing_level is LyricTimingLevel.ELEMENT
     assert diagnostics == ()
 
 

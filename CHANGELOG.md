@@ -11,8 +11,9 @@ All notable user-visible changes are recorded here.
   and frontend-neutral fallback to line synchronization.
 - Enhanced LRC word timing parsing that retains the original source while
   exposing calibrated word segments to frontend snapshots.
-- Trust-gated desktop karaoke highlighting for exact word-timed lyrics, with
-  wrapped multilingual text, clock-driven interpolation, and line-sync fallback.
+- Trust-gated desktop karaoke highlighting for exact word- or fine-timed lyrics,
+  with wrapped multilingual text, clock-driven interpolation, and line-sync
+  fallback.
 - Independent reading and translation identities through synchronized frontend
   state, with semantic accessible roles for romaji, pinyin, Korean readings,
   generic transliteration, and provider/imported/user/generated provenance.
@@ -22,7 +23,7 @@ All notable user-visible changes are recorded here.
   routes; environments without a tray retain an interactive overlay.
 - Read-only Unison lyric retrieval alongside LRCLIB, with explicit ODbL
   attribution, provider confidence, independent caching, bounded response
-  hydration, and rich media-clock TTML word timing.
+  hydration, and rich media-clock TTML timing.
 - Configurable provider preference and bounded parallel lookup with isolated
   failure, cancellation, privacy-safe duration/result diagnostics, and
   conservative conflict handling instead of first-response selection.
@@ -47,6 +48,10 @@ All notable user-visible changes are recorded here.
 
 ### Changed
 
+- TTML timing now preserves explicit word, syllable, grapheme, and provider
+  element units plus timed parent identity. Ambiguous Apple-style `Word` spans
+  are no longer mislabeled as semantic words, and malformed child timing still
+  degrades safely to line synchronization.
 - Review now opens on a reassuring current-source summary without contacting
   lyric providers. Alternative lookup is a deliberate action, High and Medium
   matches use plain-language explanations, Low matches stay behind an explicit

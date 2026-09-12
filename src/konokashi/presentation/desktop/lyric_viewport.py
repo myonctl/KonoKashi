@@ -122,7 +122,7 @@ class _WrappedLyricLabel(QLabel):
             return
         self._karaoke_segments = segments
         self.setAccessibleDescription(
-            "Word-timed lyric highlighting" if segments else ""
+            "Fine-timed lyric highlighting" if segments else ""
         )
         self._apply_karaoke_palette()
         self.update()
