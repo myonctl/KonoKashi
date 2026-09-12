@@ -30,6 +30,11 @@
   <url type="bugtracker">https://github.com/myonctl/KonoKashi/issues</url>
   <content_rating type="oars-1.1" />
   <releases>
+    <release version="0.1.0-beta.2" date="2026-09-12" type="development">
+      <description>
+        <p>Current development beta; publication awaits the beta.2 quality gates.</p>
+      </description>
+    </release>
     <release version="0.1.0-beta.1" date="2026-09-09" type="development">
       <description>
         <p>First public beta of KonoKashi.</p>

@@ -9,8 +9,8 @@ import konokashi
 
 
 def test_package_version_is_exposed() -> None:
-    assert konokashi.__version__ == "0.1.0b1"
-    assert konokashi.DISPLAY_VERSION == "0.1.0-beta.1"
+    assert konokashi.__version__ == "0.1.0b2"
+    assert konokashi.DISPLAY_VERSION == "0.1.0-beta.2"
     assert konokashi.PRODUCT_NAME == "KonoKashi"
     assert konokashi.MACHINE_ID == "konokashi"
     assert konokashi.APPLICATION_ID == "io.github.myonctl.KonoKashi"
@@ -46,7 +46,7 @@ def test_distribution_and_console_entry_point_are_canonically_named() -> None:
     )["project"]
 
     assert project["name"] == "konokashi"
-    assert project["version"] == "0.1.0b1"
+    assert project["version"] == "0.1.0b2"
     assert "Development Status :: 4 - Beta" in project["classifiers"]
     assert "Private :: Do Not Upload" in project["classifiers"]
     assert project["license"] == "PolyForm-Noncommercial-1.0.0"

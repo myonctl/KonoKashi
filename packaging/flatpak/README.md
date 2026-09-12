@@ -1,19 +1,22 @@
 # Flatpak candidate
 
-This directory contains the generic `0.1.0-beta.1` build candidate, not a
-Flathub submission.
+This directory contains the unpublished `0.1.0-beta.2` build candidate, not a
+Flathub submission. The beta.1 manifest and public artifacts remain historical
+and immutable.
 `io.github.myonctl.KonoKashi` matches the current GitHub repository identity and
 the existing desktop application ID.
 
 The manifest uses the current `io.qt.PySide.BaseApp` 6.11 branch, generated
-hash-pinned Python sources, and the immutable public GitHub release sdist. It
-installs the PolyForm Noncommercial license explicitly. Preserve the declared
+hash-pinned Python sources, and the reserved beta.2 GitHub release-sdist URL.
+That URL is intentionally unavailable before publication; local candidate builds
+replace it with an exact current-checkout sdist. The manifest installs the
+PolyForm Noncommercial license explicitly. Preserve the declared
 `PolyForm-Noncommercial-1.0.0` project license and disclose AI-assisted
 packaging as required by the current Flathub generative-AI policy.
 
 Flathub's stable repository only accepts stable software, and current policy
 says new submissions are not accepted to its beta repository. Do not submit
-this first beta to Flathub; retain the manifest for direct local builds and
+this beta to Flathub; retain the manifest for direct local builds and
 reassess submission when KonoKashi has a stable release.
 
 Fugashi is built separately from the exact upstream v1.5.2 Git commit because
@@ -81,10 +84,12 @@ CLI; no host-config bridge is used.
 
 ## Local build
 
-The canonical manifest always retains the immutable published release sdist.
-To validate the current checkout instead, first derive a local manifest from a
-twice-built, byte-identical current sdist. The helper also copies the colocated
-portal bridge source required by the manifest. The command changes no tracked file:
+The canonical manifest retains the reserved beta.2 URL with a fail-closed zero
+checksum until the release source is frozen. Before publication, validate the
+current checkout by deriving a local manifest from a twice-built, byte-identical
+current sdist; the helper replaces both reserved values with that exact local
+artifact. It also copies the colocated portal bridge source required by the
+manifest. The command changes no tracked file:
 
 ```bash
 python scripts/prepare_flatpak.py --output-dir build/flatpak-current

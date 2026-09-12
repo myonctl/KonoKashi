@@ -179,15 +179,14 @@ def test_readme_is_product_first_and_honest_about_license() -> None:
     assert "AGENT_TODO.md" not in content
 
 
-def test_readme_has_a_no_clone_release_install_path() -> None:
+def test_readme_distinguishes_current_beta2_from_historical_beta1() -> None:
     content = (REPOSITORY_ROOT / "README.md").read_text(encoding="utf-8")
 
-    assert "pipx install 'https://github.com/myonctl/KonoKashi/releases/" in content
-    assert "konokashi doctor" in content
-    assert "pipx uninstall konokashi" in content
-    assert "requires neither a repository clone" in (
-        REPOSITORY_ROOT / "packaging/README.md"
-    ).read_text(encoding="utf-8")
+    assert "0.1.0-beta.2" in content
+    assert "has not been published" in content
+    assert "0.1.0-beta.1 artifacts remain available as historical" in content
+    assert "v0.1.0-beta.1/konokashi-0.1.0b1.tar.gz" not in content
+    assert "normal-user beta.2 package URL will be documented only after" in content
 
 
 def test_runtime_source_does_not_embed_a_maintainer_home_path() -> None:
@@ -213,6 +212,8 @@ def test_appstream_metadata_matches_the_desktop_identity() -> None:
     ) in metadata
     assert "<metadata_license>CC0-1.0</metadata_license>" in metadata
     assert "<project_license>PolyForm-Noncommercial-1.0.0</project_license>" in metadata
+    assert '<release version="0.1.0-beta.2"' in metadata
+    assert "publication awaits the beta.2 quality gates" in metadata
     assert '<release version="0.1.0-beta.1"' in metadata
     assert "First public beta of KonoKashi" in metadata
 
@@ -225,18 +226,18 @@ def test_beta_version_is_consistent_across_release_candidates() -> None:
     aur = (REPOSITORY_ROOT / "packaging/aur/PKGBUILD").read_text(encoding="utf-8")
     srcinfo = (REPOSITORY_ROOT / "packaging/aur/.SRCINFO").read_text(encoding="utf-8")
 
-    assert 'version = "0.1.0b1"' in pyproject
-    assert '__version__ = "0.1.0b1"' in package
-    assert 'DISPLAY_VERSION = "0.1.0-beta.1"' in package
-    assert "pkgver=0.1.0beta1" in aur
-    assert "_sdistver=0.1.0b1" in aur
-    assert "pkgver = 0.1.0beta1" in srcinfo
+    assert 'version = "0.1.0b2"' in pyproject
+    assert '__version__ = "0.1.0b2"' in package
+    assert 'DISPLAY_VERSION = "0.1.0-beta.2"' in package
+    assert "pkgver=0.1.0beta2" in aur
+    assert "_sdistver=0.1.0b2" in aur
+    assert "pkgver = 0.1.0beta2" in srcinfo
     assert (
-        "source = konokashi-0.1.0b1.tar.gz::https://github.com/myonctl/KonoKashi/"
-        "releases/download/v0.1.0-beta.1/konokashi-0.1.0b1.tar.gz"
+        "source = konokashi-0.1.0b2.tar.gz::https://github.com/myonctl/KonoKashi/"
+        "releases/download/v0.1.0-beta.2/konokashi-0.1.0b2.tar.gz"
     ) in srcinfo
     assert (
-        "sha256sums = c0727503df631741a1ebe1d8cdb1836363eb727c1930fea0e4ce921b327734d8"
+        "sha256sums = 0000000000000000000000000000000000000000000000000000000000000000"
         in srcinfo
     )
 
@@ -320,10 +321,10 @@ def test_flatpak_manifest_uses_narrow_runtime_permissions() -> None:
     )
     assert (
         "https://github.com/myonctl/KonoKashi/releases/download/"
-        "v0.1.0-beta.1/konokashi-0.1.0b1.tar.gz"
+        "v0.1.0-beta.2/konokashi-0.1.0b2.tar.gz"
     ) in manifest
     assert (
-        "sha256: c0727503df631741a1ebe1d8cdb1836363eb727c1930fea0e4ce921b327734d8"
+        "sha256: 0000000000000000000000000000000000000000000000000000000000000000"
         in manifest
     )
     candidate_notes = (REPOSITORY_ROOT / "packaging/flatpak/README.md").read_text(

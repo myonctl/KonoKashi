@@ -73,8 +73,9 @@ modules:
       - install -Dm644 LICENSE /app/share/licenses/io.github.myonctl.KonoKashi/LICENSE
     sources:
       - type: archive
-        url: https://github.com/myonctl/KonoKashi/releases/download/v0.1.0-beta.1/konokashi-0.1.0b1.tar.gz
-        sha256: c0727503df631741a1ebe1d8cdb1836363eb727c1930fea0e4ce921b327734d8
+        url: https://github.com/myonctl/KonoKashi/releases/download/v0.1.0-beta.2/konokashi-0.1.0b2.tar.gz
+        # Fail closed until the final beta.2 source commit and sdist are frozen.
+        sha256: 0000000000000000000000000000000000000000000000000000000000000000
 
 cleanup-commands:
   - /app/cleanup-BaseApp.sh

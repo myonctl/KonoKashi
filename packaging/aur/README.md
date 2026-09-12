@@ -1,9 +1,12 @@
 # AUR preparation
 
-`konokashi` is the sole proposed package. The recipe identifies the public
-`0.1.0-beta.1` prerelease as `pkgver=0.1.0beta1` and consumes the immutable
-GitHub release sdist `konokashi-0.1.0b1.tar.gz`. Its SHA-256 matches the public
-`SHA256SUMS.txt`. Do not upload that source archive to an AUR Git repository.
+`konokashi` is the sole proposed package. The recipe identifies the unpublished
+`0.1.0-beta.2` candidate as `pkgver=0.1.0beta2`. Its source URL is reserved for
+the future beta.2 GitHub sdist and is intentionally unavailable before release.
+Do not submit the AUR package until the final beta.2 sdist hash replaces the
+fail-closed zero checksum and the public URL has been independently verified.
+The beta.1 recipe and its immutable public artifacts remain historical and are
+not reused.
 
 The project is source-available under `PolyForm-Noncommercial-1.0.0`; do not
 describe it as OSI Open Source. Keep `pkgrel=1` for this new upstream version
@@ -47,13 +50,12 @@ Pacman removal should leave XDG configuration, database, cache, and music intact
 
 ## Local results
 
-The public immutable source verifies against its pinned SHA-256. Generated
-`.SRCINFO` comparison and shell syntax pass. On 2026-09-11 the complete package
-chain was built with checks enabled in a disposable official Arch 2026.09.01
-bootstrap, then KonoKashi was installed through pacman with normal dependency
-resolution. The installed CLI/import/romanization smoke passed, and package
-removal preserved synthetic XDG configuration, database, and cache files. No
-`--nodeps` or `--nocheck` option was used.
+The immutable beta.1 source verified against its published SHA-256 during the
+2026-09-11 packaging proof. That proof remains useful historical evidence but is
+not a beta.2 release claim. The beta.2 recipe must repeat source verification,
+`.SRCINFO` comparison, the clean package chain, installed smoke checks, and
+removal-preserves-data checks after the final source is frozen. No `--nodeps` or
+`--nocheck` result qualifies as that proof.
 
 Official Arch namcap 3.6.0 reports no findings for the three companion
 PKGBUILDs or their package archives, and no findings for the KonoKashi

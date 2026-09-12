@@ -4,17 +4,17 @@ KonoKashi maintains package routes only when their complete runtime dependency
 graph can be built, tested, installed, upgraded, and removed without bypassing
 the target package manager. The current routes are:
 
-- The supported beta install path is `pipx install` from the immutable GitHub
-  release archive documented in the root README. It is independently validated
-  and requires neither a repository clone nor a manually managed virtual
-  environment. Current-development wheels are platform-specific because of the
+- The current source and package candidates identify as unpublished
+  `0.1.0-beta.2`. Until its quality gates pass, the root README documents an
+  explicit source-checkout test path rather than presenting the historical
+  beta.1 archive as current. Beta.2 wheels are platform-specific because of the
   one bounded native PlaybackClock module; source installs require a C++20
   toolchain and the pinned pybind11 build input.
 
-- [`flatpak/`](flatpak/): a reproducible local-build candidate for the current
-  beta. Flathub submission is intentionally deferred until a stable release.
-- [`aur/`](aur/): an Arch/AUR candidate plus separate package candidates for
-  genuine repository gaps. These are not published AUR package bases yet.
+- [`flatpak/`](flatpak/): a reproducible local-build candidate carrying beta.2
+  identity. Its reserved release URL is not public until beta.2 is released.
+- [`aur/`](aur/): a beta.2 Arch/AUR preparation plus separate package candidates
+  for genuine repository gaps. These are not published AUR package bases yet.
 
 The following formats were investigated on 2026-09-11 and are deliberately not
 represented by placeholder recipes.

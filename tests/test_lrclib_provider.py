@@ -65,7 +65,7 @@ def test_exact_request_uses_official_fields_duration_headers_and_injected_url() 
         "duration": "183.771",
     }
     assert request.headers["user-agent"] == (
-        "KonoKashi/0.1.0b1 (https://github.com/myonctl/KonoKashi)"
+        "KonoKashi/0.1.0b2 (https://github.com/myonctl/KonoKashi)"
     )
     assert request.headers["accept"] == "application/json"
     assert "authorization" not in request.headers

@@ -1,16 +1,15 @@
 pkgbase = konokashi
 	pkgdesc = Local-first synchronized multilingual lyrics for Linux MPRIS players
-	pkgver = 0.1.0beta1
+	pkgver = 0.1.0beta2
 	pkgrel = 1
 	url = https://github.com/myonctl/KonoKashi
 	arch = x86_64
 	arch = aarch64
-	options = !debug
 	license = PolyForm-Noncommercial-1.0.0
 	checkdepends = python-pytest
+	makedepends = pybind11
 	makedepends = python-build
 	makedepends = python-installer
-	makedepends = pybind11
 	makedepends = python-setuptools
 	makedepends = python-wheel
 	depends = hicolor-icon-theme
@@ -28,7 +27,8 @@ pkgbase = konokashi
 	depends = python-unidic-lite>=1.0.8
 	optdepends = playerctl: optional MPRIS debugging
 	optdepends = pipewire: optional audio timing diagnostics
-	source = konokashi-0.1.0b1.tar.gz::https://github.com/myonctl/KonoKashi/releases/download/v0.1.0-beta.1/konokashi-0.1.0b1.tar.gz
-	sha256sums = c0727503df631741a1ebe1d8cdb1836363eb727c1930fea0e4ce921b327734d8
+	options = !debug
+	source = konokashi-0.1.0b2.tar.gz::https://github.com/myonctl/KonoKashi/releases/download/v0.1.0-beta.2/konokashi-0.1.0b2.tar.gz
+	sha256sums = 0000000000000000000000000000000000000000000000000000000000000000
 
 pkgname = konokashi

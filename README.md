@@ -84,27 +84,17 @@ included.
 ## Try it
 
 KonoKashi supports Linux with Python 3.11 through 3.14; every advertised version
-is exercised in CI. For the current beta, install the immutable public release
-with your distribution's `pipx` package. Pipx creates and manages the isolated
-environment for you:
+is exercised in CI. The current source tree identifies as **0.1.0-beta.2**, which
+is still undergoing its quality program and has not been published. The immutable
+0.1.0-beta.1 artifacts remain available as historical release artifacts, but they
+do not contain the current application described here.
 
 A desktop session needs a Qt/EGL runtime and session D-Bus. A source install
 compiles KonoKashi's narrow playback-clock module and may also compile PyICU, so
 install a C++20 compiler, Python development headers, ICU development headers,
 and `pkg-config` when your distribution does not provide compatible wheels.
 
-```bash
-pipx install 'https://github.com/myonctl/KonoKashi/releases/download/v0.1.0-beta.1/konokashi-0.1.0b1.tar.gz'
-konokashi doctor
-konokashi desktop-integration install
-```
-
-Launch KonoKashi from the application menu, or run `konokashi desktop`. Upgrade
-to a future release with `pipx install --force <new-release-url>`, and remove the
-application with `pipx uninstall konokashi`. Removal intentionally preserves
-your XDG configuration, cache, and lyric database.
-
-For a development checkout instead:
+Until beta.2 passes its release gates, test it from a development checkout:
 
 ```bash
 git clone https://github.com/myonctl/KonoKashi.git
@@ -121,6 +111,10 @@ Launch KonoKashi from the application menu, or run:
 ```bash
 ~/.local/lib/konokashi/bin/konokashi desktop
 ```
+
+Removal of the environment leaves your XDG configuration, cache, and lyric
+database intact. A normal-user beta.2 package URL will be documented only after
+the published artifact has been installed and verified from that exact URL.
 
 Then start an MPRIS player such as Strawberry—or play media through KDE Plasma
 Browser Integration—and KonoKashi will follow the selected source. AUR and
@@ -226,8 +220,9 @@ remain reachable outside the window.
 
 ## Current status
 
-KonoKashi is usable and under active development. **0.1.0-beta.1** is the first
-public beta.
+KonoKashi is usable and under active development. **0.1.0-beta.2** is the current
+development identity and is not published yet. **0.1.0-beta.1** remains the first
+public beta and its tag and artifacts are immutable historical releases.
 
 Linux is the only supported host today. Real-world verification has focused on
 Artix Linux with KDE Plasma, Strawberry, and Plasma Browser Integration. Other

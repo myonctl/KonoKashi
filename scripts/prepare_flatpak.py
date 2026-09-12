@@ -21,12 +21,12 @@ FLATPAK_DIRECTORY = PROJECT_ROOT / "packaging" / "flatpak"
 MANIFEST_NAME = "io.github.myonctl.KonoKashi.yaml"
 DEPENDENCY_MANIFEST_NAME = "python3-dependencies.json"
 SUPPORT_DIRECTORIES = ("portal-parent-bridge",)
-PUBLISHED_SOURCE_URL = (
+CANDIDATE_SOURCE_URL = (
     "https://github.com/myonctl/KonoKashi/releases/download/"
-    "v0.1.0-beta.1/konokashi-0.1.0b1.tar.gz"
+    "v0.1.0-beta.2/konokashi-0.1.0b2.tar.gz"
 )
-PUBLISHED_SOURCE_SHA256 = (
-    "c0727503df631741a1ebe1d8cdb1836363eb727c1930fea0e4ce921b327734d8"
+CANDIDATE_SOURCE_SHA256 = (
+    "0000000000000000000000000000000000000000000000000000000000000000"
 )
 
 
@@ -48,19 +48,19 @@ def render_current_manifest(
     source_uri: str,
     source_sha256: str,
 ) -> str:
-    """Replace only the release sdist source in the canonical manifest."""
+    """Replace only the fail-closed candidate source in the canonical manifest."""
 
-    if manifest.count(PUBLISHED_SOURCE_URL) != 1:
+    if manifest.count(CANDIDATE_SOURCE_URL) != 1:
         raise FlatpakPreparationError(
-            "canonical Flatpak manifest does not contain its exact published source URL"
+            "canonical Flatpak manifest does not contain its exact candidate source URL"
         )
-    if manifest.count(PUBLISHED_SOURCE_SHA256) != 1:
+    if manifest.count(CANDIDATE_SOURCE_SHA256) != 1:
         raise FlatpakPreparationError(
-            "canonical Flatpak manifest does not contain its exact published "
+            "canonical Flatpak manifest does not contain its exact candidate "
             "source hash"
         )
-    return manifest.replace(PUBLISHED_SOURCE_URL, source_uri).replace(
-        PUBLISHED_SOURCE_SHA256,
+    return manifest.replace(CANDIDATE_SOURCE_URL, source_uri).replace(
+        CANDIDATE_SOURCE_SHA256,
         source_sha256,
     )
 
