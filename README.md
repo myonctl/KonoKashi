@@ -200,15 +200,18 @@ konokashi sync current --jsonl --no-pipewire
 ```
 
 Each stdout line is one compact `io.github.myonctl.konokashi.current-lyrics`
-record with `version: 1`. Records contain a monotonic sequence/generation,
+record with `version: 2`. Records contain a monotonic sequence/generation,
 current track and playback state, lyric document status/source/provenance,
-active line group, trusted active word when available, next line, media and
-lyric timestamps, and aligned reading/translation values. Ordinary interpolated
-position changes are suppressed; track, playback, line, word, timing, source,
-and representation changes emit a new record. Diagnostics go to stderr, and a
-closed pipe exits without a traceback. The stream intentionally omits local
-paths, raw MPRIS URLs, and the stable source identity, but lyric text and track
-metadata are expected output and should be treated as private playback data.
+active line group, trusted generic active segment, a real active word only when
+known, next line, media and lyric timestamps, and aligned reading/translation
+values. Ordinary interpolated position changes are suppressed; meaningful
+track, playback, line, segment, timing, source, and representation changes emit
+a new record. The complete field contract and v1 migration note are in the
+[current-lyrics schema v2](CURRENT_LYRICS_SCHEMA.md). Diagnostics go to
+stderr, and a closed pipe exits without a traceback. The stream intentionally
+omits local paths, raw MPRIS URLs, and the stable source identity, but lyric text
+and track metadata are expected output and should be treated as private
+playback data.
 
 Both terminal modes currently require timed lyrics. They stop with a controlled
 error when no selectable player or timed document is available; callers can

@@ -7,8 +7,11 @@ from dataclasses import replace
 
 from konokashi.application.sync_events import (
     CURRENT_LYRICS_EVENT_SCHEMA,
+    CURRENT_LYRICS_EVENT_VERSION,
     CurrentLyricsEventEncoder,
     active_timing_segment,
+    active_word_timing_segment,
+    leaf_timing_segments,
     render_current_lyrics_jsonl,
 )
 from konokashi.application.sync_state import SynchronizedTimingSegment
@@ -23,7 +26,7 @@ def test_jsonl_schema_contains_generic_track_line_source_and_timestamps() -> Non
 
     assert "\n" not in rendered
     assert payload["schema"] == CURRENT_LYRICS_EVENT_SCHEMA
-    assert payload["version"] == 1
+    assert payload["version"] == CURRENT_LYRICS_EVENT_VERSION == 2
     assert payload["event"] == "state"
     assert payload["sequence"] == 1
     assert payload["generation"] == 4
@@ -43,7 +46,7 @@ def test_jsonl_schema_contains_generic_track_line_source_and_timestamps() -> Non
     assert "/home/" not in rendered
 
 
-def test_encoder_suppresses_position_ticks_but_emits_line_word_and_state_changes() -> (
+def test_encoder_suppresses_position_ticks_but_emits_segment_and_state_changes() -> (
     None
 ):
     snapshot = _snapshot(_track("xa4WrgqI7q0", "Track"), 1)
@@ -119,22 +122,95 @@ def test_encoder_suppresses_position_ticks_but_emits_line_word_and_state_changes
     assert first is not None
     first_payload = json.loads(first)
     assert first_payload["sequence"] == 1
-    assert first_payload["active_word"] == {
+    expected_segment = {
         "effective_end_us": 2_500_000,
         "effective_start_us": 2_000_000,
         "line_id": rich.active[0].line_id,
+        "parent_segment_id": None,
         "provenance": "provider",
+        "provider_unit": None,
         "segment_id": "word-1",
         "source_end_us": 2_500_000,
         "source_start_us": 2_000_000,
         "text": "two",
         "unit": "word",
     }
+    assert first_payload["active_segment"] == expected_segment
+    assert first_payload["active_word"] == expected_segment
     assert tick is None
     assert next_word is not None
-    assert json.loads(next_word)["active_word"]["segment_id"] == "word-2"
+    next_payload = json.loads(next_word)
+    assert next_payload["active_segment"]["segment_id"] == "word-2"
+    assert next_payload["active_word"]["segment_id"] == "word-2"
     assert paused is not None and json.loads(paused)["sequence"] == 3
     assert active_timing_segment(rich) == (rich.active[0].line_id, segment)
+
+
+def test_v2_distinguishes_generic_leaf_from_real_parent_word() -> None:
+    snapshot = _snapshot(_track("xa4WrgqI7q0", "Track"), 1)
+    word = SynchronizedTimingSegment(
+        "word-parent",
+        "Synthetic",
+        "word",
+        2_000_000,
+        2_500_000,
+        2_000_000,
+        2_500_000,
+        "provider",
+        highlight_fraction=0.2,
+    )
+    syllable = SynchronizedTimingSegment(
+        "syllable-leaf",
+        "Syn",
+        "syllable",
+        2_000_000,
+        2_250_000,
+        2_000_000,
+        2_250_000,
+        "provider",
+        parent_segment_id=word.segment_id,
+        highlight_fraction=0.4,
+    )
+    rich = replace(
+        snapshot,
+        active=(replace(snapshot.active[0], timing_segments=(word, syllable)),),
+    )
+
+    payload = json.loads(render_current_lyrics_jsonl(rich, sequence=1))
+
+    assert payload["version"] == 2
+    assert payload["active_segment"]["segment_id"] == "syllable-leaf"
+    assert payload["active_segment"]["unit"] == "syllable"
+    assert payload["active_segment"]["parent_segment_id"] == "word-parent"
+    assert payload["active_word"]["segment_id"] == "word-parent"
+    assert leaf_timing_segments(rich.active[0]) == (syllable,)
+    assert active_word_timing_segment(rich) == (rich.active[0].line_id, word)
+
+
+def test_v2_provider_element_never_masquerades_as_active_word() -> None:
+    snapshot = _snapshot(_track("xa4WrgqI7q0", "Track"), 1)
+    provider_element = SynchronizedTimingSegment(
+        "provider-leaf",
+        "Synthetic",
+        "provider-element",
+        2_000_000,
+        2_500_000,
+        2_000_000,
+        2_500_000,
+        "provider",
+        provider_unit="itunes-word-span",
+        highlight_fraction=0.3,
+    )
+    rich = replace(
+        snapshot,
+        active=(replace(snapshot.active[0], timing_segments=(provider_element,)),),
+    )
+
+    payload = json.loads(render_current_lyrics_jsonl(rich, sequence=1))
+
+    assert payload["active_segment"]["unit"] == "provider-element"
+    assert payload["active_segment"]["provider_unit"] == "itunes-word-span"
+    assert payload["active_word"] is None
 
 
 def test_jsonl_rejects_nonpositive_sequence() -> None:

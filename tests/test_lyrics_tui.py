@@ -8,7 +8,8 @@ from threading import Event
 from textual.pilot import Pilot
 from textual.widgets import Static
 
-from konokashi.presentation.tui.lyrics_app import LyricsApp
+from konokashi.application.sync_state import SynchronizedTimingSegment
+from konokashi.presentation.tui.lyrics_app import LyricsApp, _active_text
 from tests.test_desktop_state import _snapshot, _track
 from tests.test_settings_tui import _run_app, _wait_until
 
@@ -35,6 +36,51 @@ def test_tui_projects_shared_snapshot_and_treats_lyrics_as_plain_text() -> None:
     _run_app(  # type: ignore[arg-type]
         SnapshotApp(lambda _consumer, _stopped: 0), scenario, size=(90, 28)
     )
+
+
+def test_tui_renders_fine_timing_leaves_without_parent_text_duplication() -> None:
+    base = _snapshot(_track("xa4WrgqI7q0", "Synthetic track"), 1)
+    parent = SynchronizedTimingSegment(
+        "word-parent",
+        "Synthetic",
+        "word",
+        2_000_000,
+        2_500_000,
+        2_000_000,
+        2_500_000,
+        "provider",
+        highlight_fraction=0.5,
+    )
+    first = SynchronizedTimingSegment(
+        "syllable-1",
+        "Syn",
+        "syllable",
+        2_000_000,
+        2_250_000,
+        2_000_000,
+        2_250_000,
+        "provider",
+        parent_segment_id=parent.segment_id,
+        highlight_fraction=1.0,
+    )
+    second = replace(
+        first,
+        segment_id="syllable-2",
+        text="thetic",
+        source_start_us=2_250_000,
+        effective_start_us=2_250_000,
+        source_end_us=2_500_000,
+        effective_end_us=2_500_000,
+        highlight_fraction=0.0,
+    )
+    snapshot = replace(
+        base,
+        active=(replace(base.active[0], timing_segments=(parent, first, second)),),
+    )
+
+    rendered = _active_text(snapshot)
+
+    assert rendered.plain == "Synthetic"
 
 
 def test_tui_worker_stops_cleanly_when_user_quits() -> None:

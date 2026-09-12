@@ -34,7 +34,8 @@ All notable user-visible changes are recorded here.
   including private atomic file writes and explicit overwrite protection.
 - A versioned semantic JSON Lines current-lyrics stream for shell scripts,
   status bars, OBS, widgets, and local display projects, including current track,
-  playback state, active line/word, next line, provenance, and timestamps.
+  playback state, active line/segment, real word identity when known, next line,
+  provenance, and timestamps.
 - A focused synchronized lyrics TUI over the same clock, timeline, correction,
   representation, and snapshot boundaries as the desktop renderer.
 - Midnight, Paper, and High Contrast color themes with explicit custom-color
@@ -48,6 +49,9 @@ All notable user-visible changes are recorded here.
 
 ### Changed
 
+- Current-lyrics JSONL is intentionally versioned to schema v2: the previously
+  ambiguous `active_word` payload is now `active_segment` with an explicit unit,
+  while `active_word` is emitted only for a genuine word or word parent.
 - TTML timing now preserves explicit word, syllable, grapheme, and provider
   element units plus timed parent identity. Ambiguous Apple-style `Word` spans
   are no longer mislabeled as semantic words, and malformed child timing still

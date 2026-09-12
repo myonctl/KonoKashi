@@ -247,7 +247,7 @@ def test_sync_current_jsonl_emits_one_versioned_semantic_record(
     assert len(records) == 1
     payload = json.loads(records[0])
     assert payload["schema"] == "io.github.myonctl.konokashi.current-lyrics"
-    assert payload["version"] == 1
+    assert payload["version"] == 2
     assert payload["active_lines"][0]["text"] == "two"
     assert payload["next_line"]["text"] == "three"
 

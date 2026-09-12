@@ -13,7 +13,7 @@ from konokashi.application.sync_state import (
 )
 
 CURRENT_LYRICS_EVENT_SCHEMA = "io.github.myonctl.konokashi.current-lyrics"
-CURRENT_LYRICS_EVENT_VERSION = 1
+CURRENT_LYRICS_EVENT_VERSION = 2
 
 JsonValue: TypeAlias = (
     bool | int | float | str | list["JsonValue"] | dict[str, "JsonValue"] | None
@@ -42,6 +42,23 @@ class CurrentLyricsEventEncoder:
         return render_current_lyrics_jsonl(snapshot, sequence=self._sequence)
 
 
+def leaf_timing_segments(
+    line: SynchronizedLine,
+) -> tuple[SynchronizedTimingSegment, ...]:
+    """Return renderable fine-timing leaves without duplicating parent text."""
+
+    parent_ids = {
+        segment.parent_segment_id
+        for segment in line.timing_segments
+        if segment.parent_segment_id is not None
+    }
+    return tuple(
+        segment
+        for segment in line.timing_segments
+        if segment.segment_id not in parent_ids
+    )
+
+
 def active_timing_segment(
     snapshot: SynchronizationSnapshot,
 ) -> tuple[str, SynchronizedTimingSegment] | None:
@@ -53,18 +70,47 @@ def active_timing_segment(
         else snapshot.estimated_audible_position_us
     )
     reached = tuple(
-        (line.line_id, segment)
-        for line in snapshot.active
-        for segment in line.timing_segments
+        (line.line_id, segment, line_position, segment_position)
+        for line_position, line in enumerate(snapshot.active)
+        for segment_position, segment in enumerate(leaf_timing_segments(line))
         if segment.highlight_fraction is not None
         and segment.effective_start_us <= position_us
     )
     if not reached:
         return None
-    return max(
+    line_id, segment, _line_position, _segment_position = max(
         reached,
-        key=lambda item: (item[1].effective_start_us, item[1].segment_id),
+        key=lambda item: (item[1].effective_start_us, item[2], item[3]),
     )
+    return line_id, segment
+
+
+def active_word_timing_segment(
+    snapshot: SynchronizationSnapshot,
+    active_segment: tuple[str, SynchronizedTimingSegment] | None = None,
+) -> tuple[str, SynchronizedTimingSegment] | None:
+    """Resolve a selected leaf to a genuine semantic word, when one exists."""
+
+    selected = active_segment or active_timing_segment(snapshot)
+    if selected is None:
+        return None
+    line_id, segment = selected
+    line = next((item for item in snapshot.active if item.line_id == line_id), None)
+    if line is None:
+        return None
+    by_id = {item.segment_id: item for item in line.timing_segments}
+    visited: set[str] = set()
+    current: SynchronizedTimingSegment | None = segment
+    while current is not None and current.segment_id not in visited:
+        visited.add(current.segment_id)
+        if current.unit == "word":
+            return line_id, current
+        current = (
+            None
+            if current.parent_segment_id is None
+            else by_id.get(current.parent_segment_id)
+        )
+    return None
 
 
 def current_lyrics_event(
@@ -74,7 +120,8 @@ def current_lyrics_event(
 
     if sequence < 1:
         raise ValueError("current-lyrics event sequence must be positive")
-    active_word = active_timing_segment(snapshot)
+    active_segment = active_timing_segment(snapshot)
+    active_word = active_word_timing_segment(snapshot, active_segment)
     return {
         "schema": CURRENT_LYRICS_EVENT_SCHEMA,
         "version": CURRENT_LYRICS_EVENT_VERSION,
@@ -104,6 +151,14 @@ def current_lyrics_event(
             "display_delay_us": snapshot.lyrics_display_delay_us,
         },
         "active_lines": [_line_value(line) for line in snapshot.active],
+        "active_segment": (
+            None
+            if active_segment is None
+            else {
+                "line_id": active_segment[0],
+                **_segment_value(active_segment[1]),
+            }
+        ),
         "active_word": (
             None
             if active_word is None
@@ -174,11 +229,13 @@ def _segment_value(segment: SynchronizedTimingSegment) -> dict[str, JsonValue]:
         "effective_start_us": segment.effective_start_us,
         "effective_end_us": segment.effective_end_us,
         "provenance": segment.timing_provenance,
+        "parent_segment_id": segment.parent_segment_id,
+        "provider_unit": segment.provider_unit,
     }
 
 
 def _event_key(snapshot: SynchronizationSnapshot) -> tuple[object, ...]:
-    active_word = active_timing_segment(snapshot)
+    active_segment = active_timing_segment(snapshot)
 
     def line_key(line: SynchronizedLine) -> tuple[object, ...]:
         return (
@@ -207,6 +264,10 @@ def _event_key(snapshot: SynchronizationSnapshot) -> tuple[object, ...]:
         snapshot.lyrics_timing_level,
         snapshot.lyrics_display_delay_us,
         tuple(line_key(line) for line in snapshot.active),
-        None if active_word is None else (active_word[0], active_word[1].segment_id),
+        (
+            None
+            if active_segment is None
+            else (active_segment[0], active_segment[1].segment_id)
+        ),
         None if not snapshot.next else line_key(snapshot.next[0]),
     )

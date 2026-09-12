@@ -11,7 +11,10 @@ from textual.app import App, ComposeResult
 from textual.binding import Binding, BindingType
 from textual.widgets import Footer, Header, Static
 
-from konokashi.application.sync_events import active_timing_segment
+from konokashi.application.sync_events import (
+    active_timing_segment,
+    leaf_timing_segments,
+)
 from konokashi.application.sync_state import SynchronizationSnapshot
 
 SnapshotConsumer: TypeAlias = Callable[[SynchronizationSnapshot], None]
@@ -176,7 +179,7 @@ def _active_text(snapshot: SynchronizationSnapshot) -> Text:
         return Text("\n".join(line.original for line in snapshot.active))
     selected_id = None if active_segment is None else active_segment[1].segment_id
     rendered = Text()
-    for segment in snapshot.active[0].timing_segments:
+    for segment in leaf_timing_segments(snapshot.active[0]):
         rendered.append(
             segment.text,
             style="bold reverse" if segment.segment_id == selected_id else None,
