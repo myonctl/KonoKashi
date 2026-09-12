@@ -435,7 +435,7 @@ def test_settings_update_uses_canonical_service_and_applies_live_selection(
     coordinator._settings_subscription = service.subscribe(
         lambda change: coordinator.settings_change_observed.emit(change)
     )
-    window.settings_button.click()
+    window.settings_action.trigger()
 
     coordinator._change_setting("desktop.lyrics.selectable", True)
 
@@ -505,7 +505,7 @@ def test_settings_window_reuses_one_instance_and_round_trips_gui_file_cli(
     assert settings_window.isVisible()
     settings_window.close()
     assert window.isVisible()
-    window.settings_button.click()
+    window.settings_action.trigger()
     assert coordinator._settings_window is settings_window
     assert len(service._subscriptions) == 1
 
@@ -605,14 +605,14 @@ def test_large_library_job_keeps_qt_event_loop_responsive(
             QTest.qWait(5)
 
         assert event_loop_progress == ["responsive"]
-        assert window.library_button.text() == "Cancel scan"
+        assert window.scan_action.text() == "Cancel &scan"
         assert started.wait(10), "bounded worker did not start within 10 seconds"
         release.set()
         for _ in range(400):
-            if not window.library_button.property("scanRunning"):
+            if not window._library_scan_running:
                 break
             QTest.qWait(5)
-        assert window.library_button.text() == "Scan library"
+        assert window.scan_action.text() == "Scan &library"
     finally:
         release.set()
         assert coordinator._pool.waitForDone(10_000)

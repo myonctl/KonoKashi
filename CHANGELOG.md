@@ -47,6 +47,13 @@ All notable user-visible changes are recorded here.
 
 ### Changed
 
+- The normal desktop header now prioritizes track identity and lyrics, keeps one
+  quiet review/correction action visible, moves settings, lyric details, and
+  library scanning into a discoverable overflow menu, and promotes recovery
+  only when a match actually needs attention.
+- Healthy source, confidence, and synchronization boilerplate no longer occupies
+  the listening surface; uncertain matches and degraded synchronization remain
+  explicit and actionable.
 - Python support is explicitly bounded to 3.11–3.14 and every advertised
   interpreter is exercised by the CI quality gate.
 - Security guidance now points to the repository's enabled private

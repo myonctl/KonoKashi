@@ -318,7 +318,7 @@ def test_untimed_lyrics_use_a_readable_bounded_content_page(
     window.close()
 
 
-def test_normal_status_uses_human_readable_source_confidence_and_sync_copy(
+def test_healthy_source_confidence_and_sync_status_stay_quiet(
     qt_app: QApplication,
 ) -> None:
     window = MainWindow()
@@ -326,9 +326,8 @@ def test_normal_status_uses_human_readable_source_confidence_and_sync_copy(
     window.show()
     qt_app.processEvents()
 
-    assert window.source_label.text() == (
-        "Local lyrics · High-confidence match · In sync"
-    )
+    assert window.source_label.text() == ""
+    assert window.source_label.isHidden()
     window.close()
 
 
@@ -347,7 +346,27 @@ def test_paused_state_is_not_repeated_in_source_status(
     qt_app.processEvents()
 
     assert window.playback_label.text() == "Paused"
-    assert window.source_label.text() == "Lyrics from LRCLIB · High-confidence match"
+    assert window.source_label.text() == ""
+    assert window.source_label.isHidden()
+    window.close()
+
+
+def test_actionable_match_and_sync_status_remain_prominent(
+    qt_app: QApplication,
+) -> None:
+    window = MainWindow()
+    window.render_state(
+        replace(
+            _state(),
+            match_confidence="Medium",
+            sync_health=ClockHealth.DEGRADED,
+        )
+    )
+    window.show()
+    qt_app.processEvents()
+
+    assert window.source_label.text() == "Review suggested · Sync needs attention"
+    assert window.source_label.isVisible()
     window.close()
 
 
@@ -356,20 +375,39 @@ def test_main_actions_have_hierarchy_tooltips_and_settings_shortcut(
 ) -> None:
     window = MainWindow()
     requests: list[str] = []
+    review_requests: list[str] = []
     window.settings_requested.connect(lambda: requests.append("settings"))
+    window.review_requested.connect(lambda: review_requests.append("review"))
+    window.render_state(
+        replace(_state(), title="A deliberately long title that needs useful width")
+    )
+    window.resize(760, 720)
     window.show()
     window.activateWindow()
     qt_app.processEvents()
 
-    assert not window.settings_button.isFlat()
     assert window.review_button.isFlat()
-    assert window.details_button.isFlat()
-    assert window.library_button.isFlat()
+    assert window.more_button.isVisible()
     assert "track and lyrics match" in window.review_button.toolTip()
-    assert "synchronization" in window.details_button.toolTip()
+    assert window.settings_action in window.more_menu.actions()
+    assert window.details_action in window.more_menu.actions()
+    assert window.scan_action in window.more_menu.actions()
+    assert window.details_action.text() == "Lyrics &details…"
+    assert window.title_label.width() > window._actions_widget.width()
+    assert (
+        window.title_label.font().pointSizeF() > window.artist_label.font().pointSizeF()
+    )
+    assert window.artwork.width() == 72
     QTest.keyClick(window, Qt.Key.Key_Comma, Qt.KeyboardModifier.ControlModifier)
     qt_app.processEvents()
     assert requests == ["settings"]
+    QTest.keyClick(
+        window,
+        Qt.Key.Key_R,
+        Qt.KeyboardModifier.ControlModifier | Qt.KeyboardModifier.ShiftModifier,
+    )
+    qt_app.processEvents()
+    assert review_requests == ["review"]
     window.close()
 
 
@@ -619,12 +657,9 @@ def test_no_result_recovery_actions_remain_reachable_with_long_metadata(
     qt_app.processEvents()
 
     assert window._header_layout.direction() is QBoxLayout.Direction.LeftToRight
-    for button in (
-        window.settings_button,
-        window.review_button,
-        window.details_button,
-        window.library_button,
-    ):
+    assert window.review_button.text() == "Find lyrics…"
+    assert not window.review_button.isFlat()
+    for button in (window.review_button, window.more_button):
         top_left = button.mapTo(window, QPoint())
         assert button.isVisible()
         assert top_left.x() >= 0
@@ -794,14 +829,12 @@ def test_keyboard_focus_order_and_escape_dialog_behavior(
     window = MainWindow()
     window.render_state(_state())
     window.show()
-    window.settings_button.setFocus()
+    window.review_button.setFocus()
     qt_app.processEvents()
 
-    assert qt_app.focusWidget() is window.settings_button
-    QTest.keyClick(window.settings_button, Qt.Key.Key_Tab)
     assert qt_app.focusWidget() is window.review_button
     QTest.keyClick(window.review_button, Qt.Key.Key_Tab)
-    assert qt_app.focusWidget() is window.details_button
+    assert qt_app.focusWidget() is window.more_button
 
     dialogs = (
         SettingsWindow(tmp_path / "config.toml", window),
@@ -831,7 +864,8 @@ def test_review_is_enabled_only_after_source_resolution(qt_app: QApplication) ->
     window.render_state(timed)
     assert window.review_button.isEnabled()
     window.render_state(replace(timed, state=DesktopLyricsState.AMBIGUOUS))
-    assert window.review_button.text() == "Possible lyrics matches…"
+    assert window.review_button.text() == "Find lyrics…"
+    assert not window.review_button.isFlat()
     assert window.review_action.text() == "&Possible lyrics matches…"
     window.render_state(replace(timed, state=DesktopLyricsState.NO_RESULT))
     assert "Search, refresh" in window.review_button.toolTip()
@@ -840,7 +874,7 @@ def test_review_is_enabled_only_after_source_resolution(qt_app: QApplication) ->
     window.close()
 
 
-def test_library_scan_button_emits_typed_start_and_cancel_intents(
+def test_library_scan_menu_action_emits_typed_start_and_cancel_intents(
     qt_app: QApplication,
 ) -> None:
     window = MainWindow()
@@ -849,14 +883,14 @@ def test_library_scan_button_emits_typed_start_and_cancel_intents(
     window.library_scan_requested.connect(lambda: starts.append("start"))
     window.library_scan_cancel_requested.connect(lambda: cancels.append("cancel"))
 
-    QTest.mouseClick(window.library_button, Qt.MouseButton.LeftButton)
+    window.scan_action.trigger()
     window.set_library_scan_state(True, "Scanning in background")
-    QTest.mouseClick(window.library_button, Qt.MouseButton.LeftButton)
+    window.scan_action.trigger()
 
     assert starts == ["start"]
     assert cancels == ["cancel"]
-    assert window.library_button.text() == "Cancel scan"
-    assert window.library_button.accessibleDescription() == "Scanning in background"
+    assert window.scan_action.text() == "Cancel &scan"
+    assert window.scan_action.statusTip() == "Scanning in background"
     window.close()
 
 

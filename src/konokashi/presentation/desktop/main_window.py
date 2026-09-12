@@ -57,6 +57,7 @@ from PySide6.QtWidgets import (
     QSizePolicy,
     QStackedWidget,
     QSystemTrayIcon,
+    QToolButton,
     QVBoxLayout,
     QWidget,
 )
@@ -1295,6 +1296,7 @@ class MainWindow(DesktopWindowSurface):
         self._library_result: (
             tuple[LibraryScanSummary, tuple[LibraryReviewItem, ...]] | None
         ) = None
+        self._library_scan_running = False
         system_point_size = self.font().pointSizeF()
         self._base_point_size = system_point_size if system_point_size > 0 else 10.0
         self._pending_typography_size = QSize(760, 720)
@@ -1353,6 +1355,9 @@ class MainWindow(DesktopWindowSurface):
         metadata.setContentsMargins(0, 0, 0, 0)
         self.title_label = ElidingLabel("KonoKashi")
         self.title_label.setAccessibleName("Track title")
+        self.title_label.setSizePolicy(
+            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred
+        )
         self.artist_label = ElidingLabel("")
         self.artist_label.setAccessibleName("Track artist")
         self.album_label = ElidingLabel("")
@@ -1367,24 +1372,13 @@ class MainWindow(DesktopWindowSurface):
         actions_widget = QWidget()
         self._actions_widget = actions_widget
         actions = QHBoxLayout(actions_widget)
+        self._actions_layout = actions
         actions.setContentsMargins(0, 0, 0, 0)
         actions.addStretch(1)
-        self.settings_button = QPushButton("Settings")
-        self.settings_button.setAccessibleName("KonoKashi settings")
-        self.settings_button.setToolTip("Open KonoKashi settings (Ctrl+,)")
-        self.settings_button.clicked.connect(self._open_settings)
-        self.review_button = QPushButton("Review")
+        self.review_button = QPushButton("Review lyrics")
         self.review_button.setAccessibleName("Review and correct this track and lyrics")
         self.review_button.setToolTip("Review the detected track and lyrics match")
         self.review_button.clicked.connect(self.review_requested)
-        self.details_button = QPushButton("Details")
-        self.details_button.setAccessibleName("Synchronization and source details")
-        self.details_button.setToolTip("Show source and synchronization details")
-        self.details_button.clicked.connect(self._open_details)
-        self.library_button = QPushButton("Scan library")
-        self.library_button.setAccessibleName("Scan configured music library")
-        self.library_button.setToolTip("Scan the configured music folders")
-        self.library_button.clicked.connect(self._toggle_library_scan)
         self.library_results_button = QPushButton("Library results…")
         self.library_results_button.setAccessibleName("Review library scan results")
         self.library_results_button.setToolTip(
@@ -1393,12 +1387,8 @@ class MainWindow(DesktopWindowSurface):
         self.library_results_button.setFlat(True)
         self.library_results_button.setVisible(False)
         self.library_results_button.clicked.connect(self._open_library_results)
-        for button in (self.review_button, self.details_button, self.library_button):
-            button.setFlat(True)
-        actions.addWidget(self.settings_button)
+        self.review_button.setFlat(True)
         actions.addWidget(self.review_button)
-        actions.addWidget(self.details_button)
-        actions.addWidget(self.library_button)
         actions.addWidget(self.library_results_button)
         header.addWidget(actions_widget)
         root.add_panel(PanelId.METADATA, metadata_panel)
@@ -1495,8 +1485,9 @@ class MainWindow(DesktopWindowSurface):
         self.addAction(self.settings_action)
 
         self.review_action = QAction("&Review track and lyrics…", self)
+        self.review_action.setShortcut(QKeySequence("Ctrl+Shift+R"))
         self.review_action.triggered.connect(self.review_requested)
-        self.details_action = QAction("&Diagnostics…", self)
+        self.details_action = QAction("Lyrics &details…", self)
         self.details_action.triggered.connect(self._open_details)
         self.scan_action = QAction("Scan &library", self)
         self.scan_action.triggered.connect(self._toggle_library_scan)
@@ -1508,6 +1499,20 @@ class MainWindow(DesktopWindowSurface):
         self.restore_window_action.triggered.connect(self.restore_from_transient_mode)
         self.restore_window_action.setEnabled(False)
         self.addAction(self.restore_window_action)
+
+        self.more_button = QToolButton()
+        self.more_button.setText("More…")
+        self.more_button.setAccessibleName("More KonoKashi actions")
+        self.more_button.setToolTip("Settings, lyric details, and local library tools")
+        self.more_button.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
+        self.more_menu = QMenu(self.more_button)
+        self.more_menu.addAction(self.settings_action)
+        self.more_menu.addAction(self.details_action)
+        self.more_menu.addSeparator()
+        self.more_menu.addAction(self.scan_action)
+        self.more_button.setMenu(self.more_menu)
+        self._actions_layout.addWidget(self.more_button)
+        QWidget.setTabOrder(self.review_button, self.more_button)
         self.application_menu = ApplicationMenu(
             self.settings_action,
             self.review_action,
@@ -1704,15 +1709,15 @@ class MainWindow(DesktopWindowSurface):
         self._applied_typography_scale = scale
         appearance = self._appearance
         self.title_label.setFont(
-            _styled_font(self.title_label, appearance.metadata, scale)
+            _styled_font(self.title_label, appearance.metadata, scale * 1.12)
         )
         self.artist_label.setFont(
-            _styled_font(self.artist_label, appearance.metadata, scale)
+            _styled_font(self.artist_label, appearance.metadata, scale * 0.96)
         )
         self.album_label.setFont(
             _styled_font(self.album_label, appearance.metadata, scale * 0.9)
         )
-        artwork_size = round(96 * min(1.65, max(0.82, scale)))
+        artwork_size = round(72 * min(1.65, max(0.82, scale)))
         self.artwork.setFixedSize(artwork_size, artwork_size)
         for label in (
             self.status_label,
@@ -1724,11 +1729,9 @@ class MainWindow(DesktopWindowSurface):
             label.setFont(_styled_font(label, appearance.status, scale))
 
         for button in (
-            self.settings_button,
             self.review_button,
-            self.details_button,
-            self.library_button,
             self.library_results_button,
+            self.more_button,
         ):
             font = button.font()
             font.setPointSizeF(max(8.0, appearance.status.size * scale))
@@ -1895,6 +1898,8 @@ class MainWindow(DesktopWindowSurface):
                 _semantic_color(appearance.colors.accent),
             )
         self.setPalette(palette)
+        self.application_menu.setPalette(palette)
+        self.more_menu.setPalette(palette)
         self._apply_background_surface()
         central = self.centralWidget()
         if central is not None:
@@ -2052,8 +2057,12 @@ class MainWindow(DesktopWindowSurface):
         source_parts = _normal_status_parts(state)
         self.source_label.setText(" · ".join(source_parts))
         self.source_label.setVisible(bool(source_parts))
-        self.details_button.setEnabled(
-            bool(source_parts or state.diagnostics or state.player)
+        details_available = bool(
+            state.lyrics_source
+            or state.match_confidence
+            or state.sync_health
+            or state.diagnostics
+            or state.player
         )
         self.review_button.setEnabled(
             bool(state.player and state.title)
@@ -2069,8 +2078,9 @@ class MainWindow(DesktopWindowSurface):
             DesktopLyricsState.NO_RESULT,
         }
         self.review_button.setText(
-            "Possible lyrics matches…" if possible_matches else "Review"
+            "Find lyrics…" if possible_matches else "Review lyrics"
         )
+        self.review_button.setFlat(not possible_matches)
         self.review_button.setAccessibleName(
             "Possible lyrics matches"
             if possible_matches
@@ -2087,7 +2097,7 @@ class MainWindow(DesktopWindowSurface):
             else "&Review track and lyrics…"
         )
         self.review_action.setEnabled(self.review_button.isEnabled())
-        self.details_action.setEnabled(self.details_button.isEnabled())
+        self.details_action.setEnabled(details_available)
         self._apply_visibility()
         self._lyric_column.transition(
             transition_anchor,
@@ -2224,7 +2234,7 @@ class MainWindow(DesktopWindowSurface):
         DiagnosticsDialog(self._state, self).exec()
 
     def _toggle_library_scan(self) -> None:
-        if self.library_button.property("scanRunning"):
+        if self._library_scan_running:
             self.library_scan_cancel_requested.emit()
         else:
             self.library_scan_requested.emit()
@@ -2232,11 +2242,10 @@ class MainWindow(DesktopWindowSurface):
     def set_library_scan_state(self, running: bool, message: str) -> None:
         """Expose background scan/cancel state without replacing lyric content."""
 
-        self.library_button.setProperty("scanRunning", running)
-        self.library_button.setText("Cancel scan" if running else "Scan library")
+        self._library_scan_running = running
         self.scan_action.setText("Cancel &scan" if running else "Scan &library")
-        self.library_button.setToolTip(escape(message))
-        self.library_button.setAccessibleDescription(message)
+        self.scan_action.setToolTip(escape(message))
+        self.scan_action.setStatusTip(message)
 
     def set_library_scan_result(
         self,
@@ -2288,34 +2297,25 @@ def _time_text(value_us: int | None) -> str:
 
 
 def _normal_status_parts(state: DesktopViewState) -> tuple[str, ...]:
+    """Return only listening-state information that merits attention."""
+
     parts: list[str] = []
-    source = state.lyrics_source
-    if source:
-        normalized_source = source.casefold()
-        if "local" in normalized_source or "sidecar" in normalized_source:
-            parts.append("Local lyrics")
-        elif "lrclib" in normalized_source:
-            parts.append("Lyrics from LRCLIB")
-        elif "embedded" in normalized_source:
-            parts.append("Embedded lyrics")
-        else:
-            parts.append(source)
     confidence = state.match_confidence
-    if confidence:
+    if confidence in {"Medium", "Low", "Rejected"}:
         parts.append(
             {
-                "Approved": "Approved match",
-                "High": "High-confidence match",
                 "Medium": "Review suggested",
                 "Low": "Uncertain match",
                 "Rejected": "Rejected match",
-            }.get(confidence, confidence)
+            }[confidence]
         )
     health = state.sync_health
-    if health and health is not ClockHealth.PAUSED:
+    if health is not None and health not in {
+        ClockHealth.PAUSED,
+        ClockHealth.LOCKED,
+    }:
         parts.append(
             {
-                ClockHealth.LOCKED: "In sync",
                 ClockHealth.CONVERGING: "Syncing",
                 ClockHealth.DEGRADED: "Sync needs attention",
                 ClockHealth.STALE: "Sync is stale",
