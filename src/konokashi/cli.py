@@ -33,6 +33,7 @@ from konokashi.infrastructure.diagnostics import collect_local_diagnostics
 if TYPE_CHECKING:
     from konokashi.application.resolve_lyrics import LyricsSearchResult
     from konokashi.application.settings_service import CanonicalSettingsService
+    from konokashi.application.sync_state import SynchronizationSnapshot
     from konokashi.domain.lyrics import LyricDocument, LyricsProviderCandidate
     from konokashi.domain.representations import EffectiveRepresentationLine
     from konokashi.domain.tracks import ResolvedTrack
@@ -42,6 +43,7 @@ RuntimeFactory: TypeAlias = Callable[[], MprisRuntimePort]
 LyricsProviderSource: TypeAlias = LyricsProviderPort | Sequence[LyricsProviderPort]
 LyricsProviderFactory: TypeAlias = Callable[[], LyricsProviderSource]
 AudioLatencyProbeFactory: TypeAlias = Callable[[], AudioLatencyProbePort]
+SnapshotConsumer: TypeAlias = Callable[["SynchronizationSnapshot"], None]
 
 
 def _open_canonical_settings(
@@ -557,6 +559,17 @@ def _parser() -> argparse.ArgumentParser:
     )
     sync_current.add_argument("--offline", action="store_true")
     sync_current.add_argument("--refresh", action="store_true")
+    sync_output = sync_current.add_mutually_exclusive_group()
+    sync_output.add_argument(
+        "--jsonl",
+        action="store_true",
+        help="emit versioned semantic current-lyrics events as JSON Lines",
+    )
+    sync_output.add_argument(
+        "--tui",
+        action="store_true",
+        help="open the focused synchronized lyrics terminal interface",
+    )
     sync_current.add_argument(
         "--samples",
         type=_sample_count,
@@ -1605,9 +1618,12 @@ def _select_sync_track(
         or _open_canonical_settings(storage, None).get_player_selection(),
     )
     if selection.selected is None:
-        print("No selectable MPRIS track is available for synchronization.")
+        print(
+            "No selectable MPRIS track is available for synchronization.",
+            file=sys.stderr,
+        )
         for diagnostic in selection.unavailable_diagnostics:
-            print(f"  - {diagnostic}")
+            print(f"  - {diagnostic}", file=sys.stderr)
         return None
     return selection.selected.track
 
@@ -1650,6 +1666,7 @@ def _resolve_sync_document(
     offline: bool,
     refresh: bool = False,
 ) -> LyricDocument | None:
+    from konokashi.application.lyric_corrections import LyricCorrectionService
     from konokashi.application.resolve_lyrics import LyricsResolver
     from konokashi.domain.lyrics import LyricDocumentKind
     from konokashi.infrastructure.lyrics.embedded import EmbeddedLyricsProvider
@@ -1668,15 +1685,24 @@ def _resolve_sync_document(
     )
     result = resolver.resolve(track, offline=offline, refresh=refresh)
     if result.document is None:
-        print(f"No lyric document is available ({result.status.value}).")
-        return None
-    if result.document.kind is not LyricDocumentKind.SYNCED:
         print(
-            "Synchronization requires timed lyrics; current document is "
-            f"{result.document.kind.value}."
+            f"No lyric document is available ({result.status.value}).",
+            file=sys.stderr,
         )
         return None
-    return result.document
+    document = (
+        LyricCorrectionService(storage.lyric_corrections)
+        .project(result.document)
+        .document
+    )
+    if document.kind is not LyricDocumentKind.SYNCED:
+        print(
+            "Synchronization requires timed lyrics; current document is "
+            f"{document.kind.value}.",
+            file=sys.stderr,
+        )
+        return None
+    return document
 
 
 def _run_sync_audio(
@@ -1875,7 +1901,10 @@ def _run_sync_probe(
     start = runtime.monitor.start(handle_probe_event)
     if start.error is not None:
         runtime.monitor.close()
-        print(f"Unable to monitor MPRIS synchronization events: {start.error}")
+        print(
+            f"Unable to monitor MPRIS synchronization events: {start.error}",
+            file=sys.stderr,
+        )
         return 1
     refresh_serial = session.event_serial
     try:
@@ -1997,7 +2026,7 @@ def _run_sync(
     database_path: Path | None,
     config_path: Path | None,
 ) -> int:
-    """Follow one selected player through the frontend-neutral Stage 6 engine."""
+    """Dispatch synchronization diagnostics and frontend modes."""
 
     if arguments.sync_command == "audio":
         return _run_sync_audio(arguments, latency_probe_factory, database_path)
@@ -2017,6 +2046,43 @@ def _run_sync(
             database_path,
             config_path,
         )
+    if arguments.tui:
+        from konokashi.presentation.tui.lyrics_app import run_lyrics_tui
+
+        return run_lyrics_tui(
+            lambda consumer, stopped: _run_sync_current(
+                arguments,
+                runtime_factory,
+                provider_factory,
+                latency_probe_factory,
+                database_path,
+                config_path,
+                snapshot_consumer=consumer,
+                stop_requested=stopped,
+            )
+        )
+    return _run_sync_current(
+        arguments,
+        runtime_factory,
+        provider_factory,
+        latency_probe_factory,
+        database_path,
+        config_path,
+    )
+
+
+def _run_sync_current(
+    arguments: argparse.Namespace,
+    runtime_factory: RuntimeFactory,
+    provider_factory: LyricsProviderFactory,
+    latency_probe_factory: AudioLatencyProbeFactory,
+    database_path: Path | None,
+    config_path: Path | None,
+    *,
+    snapshot_consumer: SnapshotConsumer | None = None,
+    stop_requested: Callable[[], bool] | None = None,
+) -> int:
+    """Follow one player and project the shared state into one frontend."""
 
     if arguments.offline and arguments.refresh:
         print("--offline and --refresh cannot be used together.", file=sys.stderr)
@@ -2036,6 +2102,7 @@ def _run_sync(
         AdaptiveResampler,
         SuspendResumeDetector,
     )
+    from konokashi.application.frontend_lines import build_frontend_line_cache
     from konokashi.application.lyrics_sync import LyricTimelineCache, synchronize
     from konokashi.application.playback_clock import PlaybackClock
     from konokashi.application.representations import RepresentationService
@@ -2043,7 +2110,12 @@ def _run_sync(
         render_audio_latency_probe,
         render_sync_frame,
     )
+    from konokashi.application.sync_events import CurrentLyricsEventEncoder
     from konokashi.application.sync_session import PlaybackSyncSession
+    from konokashi.application.sync_state import (
+        SynchronizationPublisher,
+        build_sync_snapshot,
+    )
     from konokashi.domain.lyrics import RepresentationKind
     from konokashi.domain.synchronization import (
         AudioLatencyProbeResult,
@@ -2117,6 +2189,7 @@ def _run_sync(
         )
 
     effective_representations = selected_representations()
+    line_cache = build_frontend_line_cache(document, effective_representations)
 
     pipewire_report = None
     if not arguments.no_pipewire:
@@ -2187,7 +2260,10 @@ def _run_sync(
     start = runtime.monitor.start(handle_sync_event)
     if start.error is not None:
         runtime.monitor.close()
-        print(f"Unable to monitor MPRIS synchronization events: {start.error}")
+        print(
+            f"Unable to monitor MPRIS synchronization events: {start.error}",
+            file=sys.stderr,
+        )
         return 1
     refresh_serial = session.event_serial
     try:
@@ -2207,10 +2283,24 @@ def _run_sync(
         else:
             session.invalidate_selection()
 
+    publisher = SynchronizationPublisher()
+    event_encoder = CurrentLyricsEventEncoder()
+
+    def emit_snapshot(snapshot: SynchronizationSnapshot) -> None:
+        if snapshot_consumer is not None:
+            snapshot_consumer(snapshot)
+        elif arguments.jsonl:
+            record = event_encoder.encode(snapshot)
+            if record is not None:
+                print(record, flush=True)
+
+    subscription = publisher.subscribe(emit_snapshot)
     completed = 0
     last_update = None
     try:
-        while arguments.samples == 0 or completed < arguments.samples:
+        while (arguments.samples == 0 or completed < arguments.samples) and not (
+            stop_requested is not None and stop_requested()
+        ):
             now_ns = runtime.clock.monotonic_ns()
             suspended = detector.observe()
             if suspended.resumed:
@@ -2241,6 +2331,9 @@ def _run_sync(
                 new_track, new_document = loaded
                 track, document = new_track, new_document
                 effective_representations = selected_representations()
+                line_cache = build_frontend_line_cache(
+                    document, effective_representations
+                )
                 session.replace_source(track.raw_snapshot, _sync_session_id(track))
                 stored_timing = storage.timing_calibrations.get_document_timing(
                     document.document_id
@@ -2293,31 +2386,46 @@ def _run_sync(
                 calibration,
                 timeline=timeline_cache.get(document, calibration.lyrics),
             )
-            update_text = (
-                "interpolated locally"
-                if not sampled or last_update is None
-                else f"{last_update.kind.value} ({last_update.reason})"
+            snapshot = build_sync_snapshot(
+                generation=session.generation,
+                track=track,
+                document=document,
+                estimate=estimate,
+                frame=frame,
+                calibration=calibration,
+                representations=effective_representations,
+                line_cache=line_cache,
             )
-            heading = (
-                f"selected player: {session.snapshot.service_name}\n"
-                f"track: {track.candidate.title or '<unknown>'}\n"
-                f"clock update: {update_text}"
-            )
-            rendered = (
-                heading
-                + "\n"
-                + render_sync_frame(
-                    estimate,
-                    frame,
-                    effective_representations,
+            publisher.publish(snapshot)
+            if snapshot_consumer is None and not arguments.jsonl:
+                update_text = (
+                    "interpolated locally"
+                    if not sampled or last_update is None
+                    else f"{last_update.kind.value} ({last_update.reason})"
                 )
-            )
-            if pipewire_report is not None:
-                rendered += "\n" + render_audio_latency_probe(pipewire_report)
-            if sys.stdout.isatty():
-                print("\033[2J\033[H" + rendered, end="", flush=True)
-            else:
-                print(f"--- sync frame {max(1, completed)} ---\n{rendered}", flush=True)
+                heading = (
+                    f"selected player: {session.snapshot.service_name}\n"
+                    f"track: {track.candidate.title or '<unknown>'}\n"
+                    f"clock update: {update_text}"
+                )
+                rendered = (
+                    heading
+                    + "\n"
+                    + render_sync_frame(
+                        estimate,
+                        frame,
+                        effective_representations,
+                    )
+                )
+                if pipewire_report is not None:
+                    rendered += "\n" + render_audio_latency_probe(pipewire_report)
+                if sys.stdout.isatty():
+                    print("\033[2J\033[H" + rendered, end="", flush=True)
+                else:
+                    print(
+                        f"--- sync frame {max(1, completed)} ---\n{rendered}",
+                        flush=True,
+                    )
             if arguments.samples and completed >= arguments.samples:
                 break
             wait_ms = min(
@@ -2336,9 +2444,13 @@ def _run_sync(
                     )
             wait_ms = max(1, wait_ms)
             runtime.wait(wait_ms)
+    except BrokenPipeError:
+        _silence_broken_stdout()
+        return 0
     except KeyboardInterrupt:
         return 130
     finally:
+        subscription.close()
         try:
             runtime.monitor.close()
         except RuntimeError as error:

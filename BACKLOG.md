@@ -6,9 +6,8 @@ authorization.
 
 - Extend the compact line editor to trustworthy word-level rich timing after
   the line-based workflow has matured; avoid a DAW-like editing surface.
-- Add a full-screen synchronized-lyrics TUI.
-- Stabilize machine-readable current-line and event output for desktop widgets
-  and streaming tools.
+- Add explicit unavailable/waiting records to the versioned local JSONL stream
+  if process supervisors prove insufficient for long-lived widget integrations.
 - Add frontend-neutral themes, compact mode, and a carefully researched desktop
   overlay.
 - Support per-track display choices and per-layer typography.
@@ -16,7 +15,8 @@ authorization.
 - Add another lyrics provider only after the same legal, privacy, and quality
   review used for the read-only Unison integration; provider count alone is not
   a goal.
-- Investigate secure remote display/KonoKashi Web as a separate product boundary.
+- Investigate secure remote display/KonoKashi Web as a separate product boundary
+  only after a concrete use case cannot be served by the local JSONL stream.
 - Replace the temporary icon after a deliberate identity and trademark review.
 
 Priorities are refined through focused issues as public-beta feedback arrives.

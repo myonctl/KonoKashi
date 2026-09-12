@@ -47,8 +47,9 @@ local-first, deeply customizable, and source-available.
   title, artists, and album; adjust whole-document timing; maintain local
   per-line translations; and edit original lyric text or individual timestamps
   without replacing provider evidence.
-- **Multiple controls:** native PySide6 desktop, graphical settings, a terminal
-  settings interface, CLI diagnostics, and one canonical TOML configuration.
+- **Composable controls:** native PySide6 desktop, focused synchronized lyrics
+  and settings TUIs, CLI diagnostics, a stable JSONL current-line stream, and one
+  canonical TOML configuration.
 - **Four desktop modes:** normal window, compact companion, lyric-only desktop
   overlay, and focused fullscreen, all using the same synchronized renderer.
 
@@ -163,6 +164,39 @@ order before replacing the current document's local corrections atomically.
 Exports refuse to overwrite a file unless `--force` is supplied. No external
 account or contribution service is required.
 
+## Use it from a terminal or another local tool
+
+The focused lyrics TUI uses the same selected player, disciplined MPRIS clock,
+timing corrections, local lyric overlays, and multilingual snapshot as the
+desktop app:
+
+```bash
+konokashi sync current --tui
+```
+
+For Waybar, shell scripts, OBS helpers, desktop widgets, and DIY displays, emit
+newline-delimited JSON instead:
+
+```bash
+konokashi sync current --jsonl --no-pipewire
+```
+
+Each stdout line is one compact `io.github.myonctl.konokashi.current-lyrics`
+record with `version: 1`. Records contain a monotonic sequence/generation,
+current track and playback state, lyric document status/source/provenance,
+active line group, trusted active word when available, next line, media and
+lyric timestamps, and aligned reading/translation values. Ordinary interpolated
+position changes are suppressed; track, playback, line, word, timing, source,
+and representation changes emit a new record. Diagnostics go to stderr, and a
+closed pipe exits without a traceback. The stream intentionally omits local
+paths, raw MPRIS URLs, and the stable source identity, but lyric text and track
+metadata are expected output and should be treated as private playback data.
+
+Both terminal modes currently require timed lyrics. They stop with a controlled
+error when no selectable player or timed document is available; callers can
+restart them under their normal process supervisor. KonoKashi does not start an
+HTTP server or listen on a network socket.
+
 Use **View → Window mode** or `Ctrl+Alt+1` through `Ctrl+Alt+3` to switch among
 normal, compact, and overlay modes; `F11` opens fullscreen lyrics. `Esc` always
 leaves an interactive overlay or fullscreen. The unlocked overlay has explicit
@@ -182,9 +216,9 @@ certified.
 
 Translation generation is not implemented. A translation layer contains aligned
 provider, imported, local, or user-approved text; KonoKashi does not silently
-send lyrics to a machine-translation service. A full lyrics TUI, web frontend,
-word-level rich-timing editing, additional rich-timing provider formats, and
-Windows support are future work.
+send lyrics to a machine-translation service. A web frontend, word-level
+rich-timing editing, additional rich-timing provider formats, and Windows
+support are future work.
 
 Lyrics from [Unison](https://unison.boidu.dev) are used under the ODbL-1.0
 public-corpus terms. KonoKashi performs read-only access, retains source
@@ -204,7 +238,8 @@ are not shipped yet; KonoKashi does not claim them based on KDE-only behavior.
   word-level rich-timing edits without turning it into a DAW.
 - Add an optional, replaceable Wayland layer-shell backend after its native
   dependency and cross-compositor packaging path are validated.
-- Explore deeper themes and a full lyrics TUI.
+- Refine terminal lyrics and the stable local event contract through real widget
+  and streaming-tool integrations.
 - Stabilize release packaging before any AUR or Flathub submission.
 
 See the concise [backlog](BACKLOG.md) for longer-term direction.

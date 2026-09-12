@@ -31,6 +31,11 @@ All notable user-visible changes are recorded here.
   preview, undo, ordering validation, and one-action revert.
 - Portable UTF-8 plain-text and LRC import/export for the current lyric document,
   including private atomic file writes and explicit overwrite protection.
+- A versioned semantic JSON Lines current-lyrics stream for shell scripts,
+  status bars, OBS, widgets, and local display projects, including current track,
+  playback state, active line/word, next line, provenance, and timestamps.
+- A focused synchronized lyrics TUI over the same clock, timeline, correction,
+  representation, and snapshot boundaries as the desktop renderer.
 
 ### Changed
 

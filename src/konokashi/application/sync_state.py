@@ -113,6 +113,7 @@ class SynchronizationSnapshot:
     audio_output: AudioOutputLatency
     lyrics_status: str
     lyrics_source: str
+    lyrics_provenance: str
     lyrics_match_confidence: str | None
     lyric_document_id: str
     lyrics_timing_level: str
@@ -122,6 +123,7 @@ class SynchronizationSnapshot:
     next: tuple[SynchronizedLine, ...]
     next_transition_monotonic_ns: int | None
     time_until_next_transition_us: int | None
+    observed_monotonic_us: int
     diagnostics: tuple[str, ...] = field(default_factory=tuple)
 
     @property
@@ -345,6 +347,14 @@ def build_sync_snapshot(
             for diagnostic in item.diagnostics
         )
     )
+    original_representation = next(
+        (
+            representation
+            for representation in document.representations
+            if representation.kind is RepresentationKind.ORIGINAL
+        ),
+        None,
+    )
     return SynchronizationSnapshot(
         generation=generation,
         source_identity=track.source_identity,
@@ -367,6 +377,11 @@ def build_sync_snapshot(
         audio_output=calibration.audio_output,
         lyrics_status=document.kind.value,
         lyrics_source=document.source_name,
+        lyrics_provenance=(
+            "unknown"
+            if original_representation is None
+            else original_representation.provenance.value
+        ),
         lyrics_match_confidence=lyrics_match_confidence,
         lyric_document_id=document.document_id,
         lyrics_timing_level=document.timing_level.value,
@@ -376,6 +391,7 @@ def build_sync_snapshot(
         next=bundle(frame.lyrics.next),
         next_transition_monotonic_ns=deadline_ns,
         time_until_next_transition_us=until_us,
+        observed_monotonic_us=estimate.monotonic_ns // 1_000,
         diagnostics=(*frame.error_budget.unknown_sources, *representation_diagnostics),
     )
 
@@ -455,6 +471,7 @@ class SynchronizationPublisher:
             clock.discontinuity_count,
             clock.last_sample_source,
         )
+
         return (
             snapshot.generation,
             snapshot.source_identity,
@@ -470,6 +487,7 @@ class SynchronizationPublisher:
             snapshot.audio_output,
             snapshot.lyrics_status,
             snapshot.lyrics_source,
+            snapshot.lyrics_provenance,
             snapshot.lyrics_match_confidence,
             snapshot.lyric_document_id,
             snapshot.lyrics_timing_level,

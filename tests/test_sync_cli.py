@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import time
 from dataclasses import replace
 from pathlib import Path
@@ -224,6 +225,126 @@ def test_sync_current_renders_separate_calibrations_and_pipewire_evidence(
     assert "PipeWire auto-compensation: disabled" in captured.out
     assert runtime.timing.reasons == [ObservationReason.INITIAL]
     assert runtime.monitor.closed is True
+
+
+def test_sync_current_jsonl_emits_one_versioned_semantic_record(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    runtime = SyncRuntime((2_150_000,))
+
+    exit_code = cli.main(
+        ["sync", "current", "--samples", "1", "--no-pipewire", "--jsonl"],
+        runtime_factory=lambda: runtime,
+        lyrics_provider_factory=lambda: _CliProvider(),
+        database_path=tmp_path / "events.sqlite3",
+    )
+    captured = capsys.readouterr()
+    records = captured.out.splitlines()
+
+    assert exit_code == 0
+    assert captured.err == ""
+    assert len(records) == 1
+    payload = json.loads(records[0])
+    assert payload["schema"] == "io.github.myonctl.konokashi.current-lyrics"
+    assert payload["version"] == 1
+    assert payload["active_lines"][0]["text"] == "two"
+    assert payload["next_line"]["text"] == "three"
+
+
+def test_sync_jsonl_uses_persisted_local_line_corrections(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    from konokashi.application.lyric_corrections import LyricCorrectionService
+    from konokashi.application.representations import original_lines
+    from konokashi.domain.lyric_corrections import LyricLineEdit
+    from konokashi.infrastructure.lyrics.provider_documents import (
+        ProviderLyricDocumentBuilder,
+    )
+    from konokashi.infrastructure.storage.bootstrap import open_storage
+
+    path = tmp_path / "corrected-events.sqlite3"
+    initial = SyncRuntime((2_150_000,))
+    assert (
+        cli.main(
+            ["sync", "current", "--samples", "1", "--no-pipewire"],
+            runtime_factory=lambda: initial,
+            lyrics_provider_factory=lambda: _CliProvider(),
+            database_path=path,
+        )
+        == 0
+    )
+    capsys.readouterr()
+    storage = open_storage(path)
+    candidate = _provider_result().candidates[0]
+    document = storage.lyrics.get(ProviderLyricDocumentBuilder().document_id(candidate))
+    assert document is not None
+    lines = original_lines(document)
+    LyricCorrectionService(storage.lyric_corrections).replace(
+        document,
+        tuple(
+            LyricLineEdit(
+                line.line_id,
+                "corrected two" if index == 1 else line.text,
+                line.start_ms,
+            )
+            for index, line in enumerate(lines)
+        ),
+    )
+
+    corrected = SyncRuntime((2_150_000,))
+    assert (
+        cli.main(
+            [
+                "sync",
+                "current",
+                "--samples",
+                "1",
+                "--no-pipewire",
+                "--offline",
+                "--jsonl",
+            ],
+            runtime_factory=lambda: corrected,
+            lyrics_provider_factory=lambda: _CliProvider(),
+            database_path=path,
+        )
+        == 0
+    )
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["active_lines"][0]["text"] == "corrected two"
+    assert payload["lyrics"]["provenance"] == "user"
+
+
+def test_sync_tui_dispatches_the_same_snapshot_stream(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from konokashi.application.sync_state import SynchronizationSnapshot
+    from konokashi.presentation.tui import lyrics_app
+
+    received: list[SynchronizationSnapshot] = []
+
+    def run_without_terminal(stream):  # type: ignore[no-untyped-def]
+        return stream(received.append, lambda: False)
+
+    monkeypatch.setattr(lyrics_app, "run_lyrics_tui", run_without_terminal)
+    runtime = SyncRuntime((2_150_000,))
+
+    exit_code = cli.main(
+        ["sync", "current", "--samples", "1", "--no-pipewire", "--tui"],
+        runtime_factory=lambda: runtime,
+        lyrics_provider_factory=lambda: _CliProvider(),
+        database_path=tmp_path / "tui.sqlite3",
+    )
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    assert captured.out == ""
+    assert captured.err == ""
+    assert len(received) == 1
+    assert received[0].active[0].original == "two"
 
 
 def test_sync_current_reconciles_playback_state_after_monitor_subscription(

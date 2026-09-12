@@ -16,7 +16,8 @@
       transliteration can appear beneath the original, with translation kept
       as a separate optional layer. Settings and user-approved corrections are
       stored locally. Normal, compact, lyric-overlay, and fullscreen modes reuse
-      the same synchronized renderer.
+      the same synchronized renderer. A focused terminal view and versioned
+      JSON Lines stream reuse the same playback and lyric state for local tools.
     </p>
   </description>
   <launchable type="desktop-id">io.github.myonctl.KonoKashi.desktop</launchable>
