@@ -654,6 +654,7 @@ class _LyricGroupWidget(QWidget):
         super().__init__()
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
         self._active = active
+        self._captions_visible = True
         self._appearance = default_appearance_profile()
         self._scale = 1.0
         layout = QVBoxLayout(self)
@@ -694,12 +695,16 @@ class _LyricGroupWidget(QWidget):
             (
                 self.reading_caption,
                 reading_caption,
-                self._active and group.romanized_or_transliterated is not None,
+                self._active
+                and self._captions_visible
+                and group.romanized_or_transliterated is not None,
             ),
             (
                 self.translation_caption,
                 translation_caption,
-                self._active and group.translation is not None,
+                self._active
+                and self._captions_visible
+                and group.translation is not None,
             ),
         ):
             if label.text() != text:
@@ -747,6 +752,20 @@ class _LyricGroupWidget(QWidget):
         )
         if layout_changed:
             self.updateGeometry()
+
+    def set_captions_visible(self, visible: bool) -> None:
+        """Keep layer meaning accessible while shedding labels in tight layouts."""
+
+        if visible == self._captions_visible:
+            return
+        self._captions_visible = visible
+        self.reading_caption.setVisible(
+            self._active and visible and not self.romanized.isHidden()
+        )
+        self.translation_caption.setVisible(
+            self._active and visible and not self.translation.isHidden()
+        )
+        self.updateGeometry()
 
     def hasHeightForWidth(self) -> bool:
         return True
@@ -875,16 +894,22 @@ class LyricBand(QWidget):
 
     _MAX_VISIBLE_GROUPS = 8
 
-    def __init__(self, *, active: bool = False) -> None:
+    def __init__(self, *, active: bool = False, preceding: bool = False) -> None:
         super().__init__()
         self._active = active
+        self._preceding = preceding
         self._groups: tuple[DesktopLyricGroup, ...] = ()
+        self._rendered_groups: tuple[DesktopLyricGroup, ...] = ()
         self._group_widgets: list[_LyricGroupWidget] = []
+        self._visible_group_limit = self._MAX_VISIBLE_GROUPS
+        self._captions_visible = True
         self._selection_enabled = False
         self._appearance = default_appearance_profile()
         self._scale = 1.0
+        self._fit_scale = 1.0
         initial_point_size = self.font().pointSizeF()
         self._point_size = initial_point_size if initial_point_size > 0 else 10.0
+        self._responsive_minimum_height = 0
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
         self._layout = QVBoxLayout(self)
         self._layout.setContentsMargins(0, 0, 0, 0)
@@ -901,17 +926,34 @@ class LyricBand(QWidget):
 
         if (
             abs(point_size - self._point_size) < 0.01
-            and minimum_height == self.minimumHeight()
+            and minimum_height == self._responsive_minimum_height
         ):
             return
+        self._point_size = point_size
+        self._responsive_minimum_height = minimum_height
+        self._apply_fit_scale()
+
+    def set_fit_scale(self, scale: float) -> None:
+        """Apply a bounded presentation-only fit after context has been reduced."""
+
+        bounded = min(1.0, max(0.35, scale))
+        if abs(bounded - self._fit_scale) < 1e-6:
+            return
+        self._fit_scale = bounded
+        self._apply_fit_scale()
+
+    @property
+    def fit_scale(self) -> float:
+        return self._fit_scale
+
+    def _apply_fit_scale(self) -> None:
         font = self.font()
-        font.setPointSizeF(point_size)
+        font.setPointSizeF(max(7.0, self._point_size * self._fit_scale))
         font.setWeight(QFont.Weight.DemiBold if self._active else QFont.Weight.Normal)
         self.setFont(font)
-        self._point_size = point_size
-        self.setMinimumHeight(minimum_height)
+        self.setMinimumHeight(round(self._responsive_minimum_height * self._fit_scale))
         for widget in self._group_widgets:
-            widget.apply_appearance(self._appearance, self._scale)
+            widget.apply_appearance(self._appearance, self._scale * self._fit_scale)
 
     def apply_appearance(self, appearance: AppearanceProfile, scale: float) -> None:
         """Recompute derived visual state only when appearance/size changes."""
@@ -926,7 +968,7 @@ class LyricBand(QWidget):
             appearance.spacing.lyric_padding,
         )
         for widget in self._group_widgets:
-            widget.apply_appearance(appearance, scale)
+            widget.apply_appearance(appearance, scale * self._fit_scale)
 
     def set_groups(self, groups: tuple[DesktopLyricGroup, ...]) -> None:
         same_layout = len(groups) == len(self._groups) and all(
@@ -935,8 +977,9 @@ class LyricBand(QWidget):
         )
         self._groups = groups
         if same_layout:
+            self._rendered_groups = self._selected_groups()
             for group, widget in zip(
-                groups[: self._MAX_VISIBLE_GROUPS],
+                self._rendered_groups,
                 self._group_widgets,
                 strict=False,
             ):
@@ -945,6 +988,33 @@ class LyricBand(QWidget):
                 )
             return
         self._render_groups()
+
+    @property
+    def available_group_count(self) -> int:
+        return min(len(self._groups), self._MAX_VISIBLE_GROUPS)
+
+    @property
+    def visible_group_count(self) -> int:
+        return len(self._rendered_groups)
+
+    @property
+    def captions_visible(self) -> bool:
+        return self._captions_visible
+
+    def set_visible_group_limit(self, limit: int) -> None:
+        bounded = min(self._MAX_VISIBLE_GROUPS, max(0, limit))
+        if bounded == self._visible_group_limit:
+            return
+        self._visible_group_limit = bounded
+        self._render_groups()
+
+    def set_captions_visible(self, visible: bool) -> None:
+        if visible == self._captions_visible:
+            return
+        self._captions_visible = visible
+        for widget in self._group_widgets:
+            widget.set_captions_visible(visible)
+        self.updateGeometry()
 
     def hasHeightForWidth(self) -> bool:
         return True
@@ -977,9 +1047,7 @@ class LyricBand(QWidget):
         return tuple(
             widget
             for group, widget in zip(
-                self._groups[: self._MAX_VISIBLE_GROUPS],
-                self._group_widgets,
-                strict=False,
+                self._rendered_groups, self._group_widgets, strict=False
             )
             if group.line_id in wanted and not widget.isHidden()
         )
@@ -1016,10 +1084,12 @@ class LyricBand(QWidget):
         return False
 
     def _render_groups(self) -> None:
-        visible_groups = self._groups[: self._MAX_VISIBLE_GROUPS]
+        visible_groups = self._selected_groups()
+        self._rendered_groups = visible_groups
         while len(self._group_widgets) < len(visible_groups):
             widget = _LyricGroupWidget(active=self._active)
-            widget.apply_appearance(self._appearance, self._scale)
+            widget.apply_appearance(self._appearance, self._scale * self._fit_scale)
+            widget.set_captions_visible(self._captions_visible)
             widget.set_selection_enabled(self._selection_enabled)
             self._layout.addWidget(widget)
             self._group_widgets.append(widget)
@@ -1031,6 +1101,16 @@ class LyricBand(QWidget):
                 widget.setVisible(False)
         self.setVisible(bool(_group_text(visible_groups)))
         self.updateGeometry()
+
+    def _selected_groups(self) -> tuple[DesktopLyricGroup, ...]:
+        available = (
+            self._groups[-self._MAX_VISIBLE_GROUPS :]
+            if self._preceding
+            else self._groups[: self._MAX_VISIBLE_GROUPS]
+        )
+        if self._preceding and self._visible_group_limit:
+            return available[-self._visible_group_limit :]
+        return available[: self._visible_group_limit]
 
 
 class _TransitionAnchor:
@@ -1063,6 +1143,8 @@ class LyricTransitionViewport(QScrollArea):
         self._previous = previous
         self._active = active
         self._following = following
+        self._previous_requested = True
+        self._following_requested = True
         self._scene = QWidget()
         self._scene.setSizePolicy(
             QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum
@@ -1108,6 +1190,22 @@ class LyricTransitionViewport(QScrollArea):
     @property
     def document_height(self) -> int:
         return self._document_height
+
+    @property
+    def adaptive_fit_scale(self) -> float:
+        return self._active.fit_scale
+
+    def set_context_visibility(self, previous: bool, following: bool) -> None:
+        """Declare desired context; measured fitting may show fewer nearby lines."""
+
+        if (
+            previous == self._previous_requested
+            and following == self._following_requested
+        ):
+            return
+        self._previous_requested = previous
+        self._following_requested = following
+        self.relayout(center_active=True)
 
     def _visual_center(self, line_ids: tuple[str, ...]) -> float | None:
         widgets = tuple(
@@ -1186,6 +1284,7 @@ class LyricTransitionViewport(QScrollArea):
 
         viewport = self.viewport()
         width = max(1, viewport.width())
+        self._apply_adaptive_fit(width, max(1, viewport.height()))
         visible_bands = tuple(
             band
             for band in (self._previous, self._active, self._following)
@@ -1215,6 +1314,66 @@ class LyricTransitionViewport(QScrollArea):
             else:
                 target = active_top + active_height // 2 - viewport.height() // 2
             self.verticalScrollBar().setValue(target)
+
+    def _document_height_for_width(self, width: int) -> int:
+        visible_bands = tuple(
+            band
+            for band in (self._previous, self._active, self._following)
+            if not band.isHidden()
+        )
+        return (
+            sum(band.heightForWidth(width) for band in visible_bands)
+            + max(0, len(visible_bands) - 1) * self.lyric_layout.spacing()
+        )
+
+    def _apply_adaptive_fit(self, width: int, available_height: int) -> None:
+        """Reduce distant context before making one bounded typography adjustment."""
+
+        self._active.set_fit_scale(1.0)
+        self._active.set_captions_visible(True)
+        previous_count = (
+            self._previous.available_group_count if self._previous_requested else 0
+        )
+        following_count = (
+            self._following.available_group_count if self._following_requested else 0
+        )
+        self._previous.set_visible_group_limit(previous_count)
+        self._following.set_visible_group_limit(following_count)
+        self._previous.setVisible(previous_count > 0 and bool(self._previous.text()))
+        self._following.setVisible(following_count > 0 and bool(self._following.text()))
+
+        while self._document_height_for_width(width) > available_height and (
+            previous_count or following_count
+        ):
+            if previous_count >= following_count and previous_count:
+                previous_count -= 1
+                self._previous.set_visible_group_limit(previous_count)
+                self._previous.setVisible(previous_count > 0)
+            elif following_count:
+                following_count -= 1
+                self._following.set_visible_group_limit(following_count)
+                self._following.setVisible(following_count > 0)
+
+        if self._document_height_for_width(width) <= available_height:
+            return
+        self._active.set_captions_visible(False)
+        if self._document_height_for_width(width) <= available_height:
+            return
+
+        minimum_scale = 0.35
+        self._active.set_fit_scale(minimum_scale)
+        if self._document_height_for_width(width) > available_height:
+            return
+        lower = minimum_scale
+        upper = 1.0
+        for _step in range(9):
+            candidate = (lower + upper) / 2
+            self._active.set_fit_scale(candidate)
+            if self._document_height_for_width(width) <= available_height:
+                lower = candidate
+            else:
+                upper = candidate
+        self._active.set_fit_scale(lower)
 
     def resizeEvent(self, event: QResizeEvent) -> None:
         self._movement.stop()
@@ -1414,7 +1573,7 @@ class MainWindow(DesktopWindowSurface):
         self.content_stack.addWidget(state_page)
         self._state_page = state_page
 
-        self.previous_band = LyricBand()
+        self.previous_band = LyricBand(preceding=True)
         self.active_band = LyricBand(active=True)
         self.next_band = LyricBand()
         timed_page = QWidget()
@@ -2024,9 +2183,7 @@ class MainWindow(DesktopWindowSurface):
         self.next_band.set_groups(following)
         self.static_lyrics.setPlainText(_group_text(state.static_lines))
         has_lyric_bands = bool(_group_text(previous + state.active + following))
-        self.previous_band.setVisible(bool(previous) and has_lyric_bands)
         self.active_band.setVisible(bool(state.active) and has_lyric_bands)
-        self.next_band.setVisible(bool(following) and has_lyric_bands)
         if state.state is DesktopLyricsState.UNTIMED and state.static_lines:
             self.content_stack.setCurrentWidget(self._static_page)
         elif state.state is DesktopLyricsState.TIMED and has_lyric_bands:
@@ -2185,8 +2342,10 @@ class MainWindow(DesktopWindowSurface):
         )
         self._metadata_widget.setVisible(show_title or show_artist or show_album)
         show_context = visibility.inactive_context and not compact
-        self.previous_band.setVisible(show_context and bool(self.previous_band.text()))
-        self.next_band.setVisible(show_context and bool(self.next_band.text()))
+        self._lyric_column.set_context_visibility(
+            show_context and bool(self.previous_band.text()),
+            show_context and bool(self.next_band.text()),
+        )
         self.status_label.setVisible(visibility.auxiliary_status)
         self.static_status_label.setVisible(visibility.auxiliary_status)
         self.playback_label.setVisible(visibility.playback_status)

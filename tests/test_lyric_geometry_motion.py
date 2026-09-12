@@ -136,8 +136,14 @@ def test_wrapped_layers_have_disjoint_measured_geometry_at_supported_scales(
         if not label.isHidden()
     )
     if any(not viewport.contains(rect) for rect in active_rectangles):
+        assert window.previous_band.visible_group_count == 0
+        assert window.next_band.visible_group_count == 0
+        assert not window.active_band.captions_visible
+        assert window._lyric_column.adaptive_fit_scale == pytest.approx(0.35)
         assert window._lyric_column.verticalScrollBar().maximum() > 0
         assert window._lyric_column.verticalScrollBar().isVisible()
+    else:
+        assert window._lyric_column.verticalScrollBar().maximum() == 0
     window.close()
 
 
@@ -215,7 +221,6 @@ def _adjacent_states(
     ("old_active", "incoming"),
     (
         ("short", CYRILLIC * 3),
-        (CYRILLIC * 3, "short"),
         ("equal first", "equal second"),
     ),
 )
@@ -255,6 +260,32 @@ def test_measured_flip_motion_converges_monotonically_to_exact_final_geometry(
     qt_app.processEvents()
     assert window._lyric_column.lyric_offset() == 0
     assert window.active_band._group_widgets[0].geometry() == animated_final
+    window.close()
+
+
+def test_constrained_active_content_sheds_incoming_context_and_snaps_cleanly(
+    qt_app: QApplication,
+) -> None:
+    """Fitting the current lyric wins when no adjacent anchor can remain visible."""
+
+    window = MainWindow()
+    window.resize(520, 620)
+    first, second = _adjacent_states(CYRILLIC * 3, "short")
+    window.render_state(first)
+    window.show()
+    qt_app.processEvents()
+    QTest.qWait(120)
+
+    assert window.next_band.visible_group_count == 0
+    assert window._lyric_column._visual_center(("incoming",)) is None
+    window.render_state(second)
+
+    assert window.active_band.visible_group_count == 1
+    assert "short" in window.active_band.text()
+    assert not window._lyric_column.animation_running
+    assert window._lyric_column.lyric_offset() == 0
+    active = window.active_band._group_widgets[0].original
+    assert active.height() >= active.heightForWidth(active.width())
     window.close()
 
 
@@ -382,7 +413,7 @@ def test_resize_appearance_pause_and_close_settle_inflight_motion(
 ) -> None:
     window = MainWindow()
     window.resize(520, 620)
-    first, second = _adjacent_states("first", CYRILLIC * 2)
+    first, second = _adjacent_states("first", "second")
     window.render_state(first)
     window.show()
     qt_app.processEvents()
@@ -396,6 +427,7 @@ def test_resize_appearance_pause_and_close_settle_inflight_motion(
 
     first, second = _adjacent_states("first", "second")
     window.render_state(first)
+    qt_app.processEvents()
     window.render_state(second)
     assert window._lyric_column.animation_running
     window.set_appearance_profile(
@@ -406,6 +438,7 @@ def test_resize_appearance_pause_and_close_settle_inflight_motion(
 
     window.render_state(first)
     window._lyric_column.settle()
+    qt_app.processEvents()
     window.render_state(second)
     assert window._lyric_column.animation_running
     window.render_state(replace(second, playback_state=PlaybackState.PAUSED))
@@ -414,6 +447,7 @@ def test_resize_appearance_pause_and_close_settle_inflight_motion(
 
     window.render_state(first)
     window._lyric_column.settle()
+    qt_app.processEvents()
     window.render_state(second)
     assert window._lyric_column.animation_running
     window.close()

@@ -47,6 +47,10 @@ All notable user-visible changes are recorded here.
 
 ### Changed
 
+- Timed lyrics now adapt from real wrapped geometry: distant context is removed
+  before active-layer captions or typography are reduced, nearby lines return
+  when room does, and extreme content scrolls at a readable floor instead of
+  clipping glyphs or colliding multilingual layers.
 - The normal desktop header now prioritizes track identity and lyrics, keeps one
   quiet review/correction action visible, moves settings, lyric details, and
   library scanning into a discoverable overflow menu, and promotes recovery

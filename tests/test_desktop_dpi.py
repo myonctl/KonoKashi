@@ -79,6 +79,13 @@ labels = tuple(
     for label in (group.original, group.romanized, group.translation)
     if not label.isHidden()
 )
+active_labels = tuple(
+    label
+    for group in window.active_band._group_widgets
+    if not group.isHidden()
+    for label in (group.original, group.romanized, group.translation)
+    if not label.isHidden()
+)
 rectangles = tuple(
     QRect(
         label.mapTo(window._lyric_column._content, label.rect().topLeft()),
@@ -92,7 +99,21 @@ assert all(
     for index, left in enumerate(rectangles)
     for right in rectangles[index + 1:]
 )
-assert window._lyric_column.verticalScrollBar().maximum() > 0
+viewport = window._lyric_column.viewport().rect()
+assert all(
+    viewport.contains(
+        QRect(
+            label.mapTo(window._lyric_column.viewport(), label.rect().topLeft()),
+            label.size(),
+        )
+    )
+    for label in active_labels
+)
+assert window.previous_band.visible_group_count == 0
+assert window.next_band.visible_group_count == 0
+assert not window.active_band.captions_visible
+assert window._lyric_column.adaptive_fit_scale < 1.0
+assert window._lyric_column.verticalScrollBar().maximum() == 0
 settings = SettingsWindow(Path("/tmp/konokashi-dpi-config.toml"), window)
 settings.set_snapshot(default_settings_snapshot())
 settings.set_diagnostics(())
