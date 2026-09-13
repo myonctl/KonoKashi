@@ -22,6 +22,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 APP_ID = "io.github.myonctl.KonoKashi"
 REQUIRED_PYTHON_BOUNDS = frozenset({">=3.11", "<3.15"})
 REQUIRED_WHEEL_SUFFIXES = (
+    "konokashi/_lrc_native.pyi",
     "konokashi/_playback_clock_native.pyi",
     "konokashi/cli.py",
     "konokashi/infrastructure/desktop_portal.py",
@@ -30,15 +31,24 @@ REQUIRED_WHEEL_SUFFIXES = (
     f"konokashi/resources/{APP_ID}.metainfo.xml",
     f"konokashi/resources/{APP_ID}.svg",
 )
-REQUIRED_WHEEL_NATIVE_PREFIX = "konokashi/_playback_clock_native."
+REQUIRED_WHEEL_NATIVE_MODULES = {
+    "PlaybackClock": "konokashi/_playback_clock_native.",
+    "LRC parser": "konokashi/_lrc_native.",
+}
 REQUIRED_SDIST_SUFFIXES = (
     "LICENSE",
+    "NATIVE_02_BENCHMARK.md",
+    "NATIVE_02_CANDIDATE_REVIEW.md",
     "README.md",
     "pyproject.toml",
     "setup.py",
     "assets/readme/konokashi-demo.gif",
     "scripts/__init__.py",
+    "scripts/benchmark_lrc_native.py",
     "scripts/evaluate_matching.py",
+    "src/konokashi/native/lrc_bindings.cpp",
+    "src/konokashi/native/lrc_parser.cpp",
+    "src/konokashi/native/lrc_parser.hpp",
     "src/konokashi/native/playback_clock.cpp",
     "src/konokashi/infrastructure/desktop_portal.py",
     "tests/fixtures/matching_evaluation/synthetic_cases.json",
@@ -197,14 +207,15 @@ def _verify_contents(artifacts: dict[str, Path]) -> None:
         for suffix in REQUIRED_WHEEL_SUFFIXES
         if not any(name.endswith(suffix) for name in wheel_names)
     ]
-    native_modules = [
-        name
-        for name in wheel_names
-        if name.startswith(REQUIRED_WHEEL_NATIVE_PREFIX) and name.endswith(".so")
-    ]
-    if len(native_modules) != 1:
-        missing_wheel.append("one native PlaybackClock extension")
-    if any(name.endswith(".cpp") for name in wheel_names):
+    for label, prefix in REQUIRED_WHEEL_NATIVE_MODULES.items():
+        native_modules = [
+            name
+            for name in wheel_names
+            if name.startswith(prefix) and name.endswith(".so")
+        ]
+        if len(native_modules) != 1:
+            missing_wheel.append(f"one native {label} extension")
+    if any(name.endswith((".cpp", ".hpp")) for name in wheel_names):
         raise ReleaseBuildError("wheel must not contain C++ source files")
     with tarfile.open(source, "r:gz") as archive:
         source_names = set(archive.getnames())

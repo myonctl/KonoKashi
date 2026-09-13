@@ -16,12 +16,13 @@ and increment it for packaging-only updates. Regenerate `.SRCINFO` using
 The package uses PEP 517 wheel construction and installs into makepkg's staging
 directory with Python installer. Neither build nor package functions download
 dependencies or modify the host Python installation. Runtime packages are
-declared individually; native dependencies remain separately packaged. KonoKashi's
-own payload now contains the bounded C++ PlaybackClock experiment, so the recipe
-targets `x86_64` and `aarch64` and builds against the official `pybind11`
-make dependency. Architecture-specific dependency resolution, native compilation,
-and installation must pass before submission. No provides/conflicts or VCS
-variant is necessary for the sole package name.
+declared individually; native dependencies remain separately packaged.
+KonoKashi's own payload now contains the bounded C++ PlaybackClock and LRC
+parser modules, so the recipe targets `x86_64` and `aarch64`, builds against the
+official `pybind11` make dependency, and declares OpenSSL for the parser's
+SHA-256 implementation. Architecture-specific dependency resolution, native
+compilation, and installation must pass before submission. No
+provides/conflicts or VCS variant is necessary for the sole package name.
 
 The 2026-09-11 dependency review found that official Arch provides `pypinyin`
 0.55.0 (the package name does not have a `python-` prefix) and all other direct
@@ -41,9 +42,9 @@ preferred final build environment. A `--nodeps` experiment can validate layout,
 but is not proof of a resolvable or installable AUR dependency graph.
 
 The package check function installs the built platform wheel into an isolated
-staging root and exercises package identity, parsing, both PlaybackClock
-implementations and their differential suite, and all offline romanization
-adapters. The complete upstream suite is a separate release gate.
+staging root and exercises package identity, native/reference LRC parity, both
+PlaybackClock implementations and their differential suite, and all offline
+romanization adapters. The complete upstream suite is a separate release gate.
 After package installation, use the normal `konokashi` and desktop launcher;
 do not run the user-local desktop integration installer over pacman-owned files.
 Pacman removal should leave XDG configuration, database, cache, and music intact.

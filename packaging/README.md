@@ -8,8 +8,9 @@ the target package manager. The current routes are:
   `0.1.0-beta.2`. Until its quality gates pass, the root README documents an
   explicit source-checkout test path rather than presenting the historical
   beta.1 archive as current. Beta.2 wheels are platform-specific because of the
-  one bounded native PlaybackClock module; source installs require a C++20
-  toolchain and the pinned pybind11 build input.
+  bounded native PlaybackClock and LRC parser modules; source installs require
+  a C++20 toolchain, OpenSSL development headers, and the pinned pybind11 build
+  input.
 
 - [`flatpak/`](flatpak/): a reproducible local-build candidate carrying beta.2
   identity. Its reserved release URL is not public until beta.2 is released.

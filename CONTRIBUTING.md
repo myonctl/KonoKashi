@@ -20,9 +20,9 @@ python -m venv .venv
 ```
 
 Qt needs a working EGL/OpenGL runtime for desktop use. The authorized native
-PlaybackClock experiment requires a C++20 compiler and the pinned pybind11 build
-input; building PyICU from source may additionally require ICU development
-headers and `pkg-config`.
+PlaybackClock and bounded LRC parser require a C++20 compiler, OpenSSL
+development headers, and the pinned pybind11 build input; building PyICU from
+source may additionally require ICU development headers and `pkg-config`.
 
 ## Making a change
 
@@ -67,8 +67,10 @@ needed.
 Review feedback may request smaller commits or additional evidence. Do not weaken
 tests, linting, formatting, typing, or security checks to obtain a green result.
 
-The PlaybackClock is the only authorized native migration. Keep its Python
-reference and differential tests intact; migrating another subsystem requires a
-separate decision based on real maintenance and packaging evidence.
+PlaybackClock and bounded LRC parsing are the only authorized native migrations.
+Keep both Python references and differential suites intact; migrating another
+subsystem requires a separate decision based on real maintenance and packaging
+evidence. `NATIVE_02_CANDIDATE_REVIEW.md` records the parser boundary and
+`NATIVE_02_BENCHMARK.md` records its production gate.
 
 Use `SECURITY.md` for vulnerabilities rather than opening a public issue.

@@ -11,7 +11,7 @@ import pytest
 from scripts.build_release import (
     REQUIRED_PYTHON_BOUNDS,
     REQUIRED_SDIST_SUFFIXES,
-    REQUIRED_WHEEL_NATIVE_PREFIX,
+    REQUIRED_WHEEL_NATIVE_MODULES,
     REQUIRED_WHEEL_SUFFIXES,
     ReleaseBuildError,
     _verify_contents,
@@ -31,11 +31,11 @@ def _write_artifacts(
         for name in REQUIRED_WHEEL_SUFFIXES:
             archive.writestr(name, b"current")
         if native:
-            archive.writestr(
-                f"{REQUIRED_WHEEL_NATIVE_PREFIX}cpython-test-linux.so", b"native"
-            )
+            for prefix in REQUIRED_WHEEL_NATIVE_MODULES.values():
+                archive.writestr(f"{prefix}cpython-test-linux.so", b"native")
         if cpp_source:
             archive.writestr("konokashi/native/playback_clock.cpp", b"source")
+            archive.writestr("konokashi/native/lrc_parser.hpp", b"source")
         archive.writestr(
             "konokashi-0.1.0b2.dist-info/METADATA",
             "Metadata-Version: 2.4\n"
@@ -67,8 +67,8 @@ def test_release_content_check_rejects_unexpected_namespace(tmp_path: Path) -> N
         _verify_contents(_write_artifacts(tmp_path, unexpected=True))
 
 
-def test_release_content_check_requires_native_playback_clock(tmp_path: Path) -> None:
-    with pytest.raises(ReleaseBuildError, match="native PlaybackClock"):
+def test_release_content_check_requires_every_native_module(tmp_path: Path) -> None:
+    with pytest.raises(ReleaseBuildError, match=r"native (?:PlaybackClock|LRC parser)"):
         _verify_contents(_write_artifacts(tmp_path, unexpected=False, native=False))
 
 

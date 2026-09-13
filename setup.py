@@ -1,4 +1,4 @@
-"""Build the single authorized native PlaybackClock experiment."""
+"""Build the bounded native core modules."""
 
 from pathlib import Path
 
@@ -24,7 +24,27 @@ setup(
                 "-Wsign-conversion",
             ],
             extra_link_args=["-Wl,--build-id=none", "-s"],
-        )
+        ),
+        Pybind11Extension(
+            "konokashi._lrc_native",
+            [
+                "src/konokashi/native/lrc_bindings.cpp",
+                "src/konokashi/native/lrc_parser.cpp",
+            ],
+            libraries=["crypto"],
+            cxx_std=20,
+            extra_compile_args=[
+                f"-ffile-prefix-map={SOURCE_ROOT}=.",
+                f"-fdebug-prefix-map={SOURCE_ROOT}=.",
+                "-frandom-seed=konokashi-lrc-parser",
+                "-Wconversion",
+                "-Werror",
+                "-Wextra",
+                "-Wshadow",
+                "-Wsign-conversion",
+            ],
+            extra_link_args=["-Wl,--build-id=none", "-s"],
+        ),
     ],
     cmdclass={"build_ext": build_ext},
 )

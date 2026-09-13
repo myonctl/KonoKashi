@@ -61,7 +61,7 @@ package-dir = { "" = "src" }
 konokashi = ["resources/*.desktop.in", "resources/*.metainfo.xml", "resources/*.svg"]
 
 [tool.setuptools.exclude-package-data]
-"konokashi.native" = ["*.cpp"]
+"konokashi.native" = ["*.cpp", "*.hpp"]
 
 [tool.setuptools.packages.find]
 where = ["src"]

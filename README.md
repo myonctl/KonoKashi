@@ -36,9 +36,9 @@ local-first, deeply customizable, and source-available.
   trustworthy word- or finer-element-timed lyrics, with exact pause, seek, rate,
   and track-change handling; line-only, plain, and instrumental states remain
   explicit.
-- **Disciplined native clock:** the deterministic playback clock uses one narrow
-  C++20 module, continuously checked against its retained Python reference
-  implementation; matching, parsing, providers, storage, and UI remain Python.
+- **Disciplined native core:** the deterministic playback clock and bounded LRC
+  parser use independent narrow C++20 modules, each checked against its retained
+  Python reference; matching, providers, storage, and UI remain Python.
 - **Multilingual layers:** original text plus aligned romanization or
   transliteration and optional translation, with each active secondary layer's
   identity and provenance visible without displacing the original script.
@@ -91,9 +91,10 @@ is still undergoing its quality program and has not been published. The immutabl
 do not contain the current application described here.
 
 A desktop session needs a Qt/EGL runtime and session D-Bus. A source install
-compiles KonoKashi's narrow playback-clock module and may also compile PyICU, so
-install a C++20 compiler, Python development headers, ICU development headers,
-and `pkg-config` when your distribution does not provide compatible wheels.
+compiles KonoKashi's narrow playback-clock and LRC-parser modules and may also
+compile PyICU, so install a C++20 compiler, Python and OpenSSL development
+headers, ICU development headers, and `pkg-config` when your distribution does
+not provide compatible wheels.
 
 Until beta.2 passes its release gates, test it from a development checkout:
 

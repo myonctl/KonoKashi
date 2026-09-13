@@ -46,6 +46,11 @@ All notable user-visible changes are recorded here.
 - One bounded C++20/pybind11 PlaybackClock implementation behind the unchanged
   Python-facing API, with the prior Python implementation retained as a
   differential reference oracle.
+- One independently packaged C++20 bounded LRC/plain-text parser behind the
+  unchanged domain-facing API, with exact Python-oracle parity across seeded,
+  malformed, Unicode, provenance, and maximum-size cases. Its committed
+  benchmark records lower runtime and no peak-allocation regression for every
+  required workload.
 
 ### Changed
 
@@ -103,8 +108,8 @@ All notable user-visible changes are recorded here.
   only; remote artwork is not fetched and source paths are not retained in the
   frontend asset.
 - Linux wheels are now interpreter- and architecture-specific because they
-  contain the native PlaybackClock module; source builds require a C++20
-  compiler and pinned pybind11 build input.
+  contain the native PlaybackClock and LRC parser modules; source builds require
+  a C++20 compiler, OpenSSL development headers, and pinned pybind11 build input.
 
 ## 0.1.0-beta.1 — 2026-09-10
 
