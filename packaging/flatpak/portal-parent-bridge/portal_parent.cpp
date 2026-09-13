@@ -1,4 +1,4 @@
-// Minimal Qt-to-portal parent bridge for the pinned KDE 6.11 Flatpak runtime.
+// Minimal Qt-to-portal parent bridge for the pinned KDE 6.10 Flatpak runtime.
 
 #include <QByteArray>
 #include <QGuiApplication>

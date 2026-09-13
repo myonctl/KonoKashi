@@ -6,8 +6,13 @@ and immutable.
 `io.github.myonctl.KonoKashi` matches the current GitHub repository identity and
 the existing desktop application ID.
 
-The manifest uses the current `io.qt.PySide.BaseApp` 6.11 branch, generated
-hash-pinned Python sources, and the reserved beta.2 GitHub release-sdist URL.
+The manifest uses the ABI-aligned `org.kde.Platform` and
+`io.qt.PySide.BaseApp` 6.10 branches, generated hash-pinned Python sources, and
+the reserved beta.2 GitHub release-sdist URL. The newer 6.11 pair was rejected
+during package testing because the published BaseApp still carried PySide
+6.11.1 after the KDE runtime advanced to Qt 6.11.2; importing `QtCore` then
+failed on its private-ABI symbol. Re-evaluate newer branches only as an aligned
+runtime/BaseApp pair.
 That URL is intentionally unavailable before publication; local candidate builds
 replace it with an exact current-checkout sdist. The manifest installs the
 PolyForm Noncommercial license explicitly. Preserve the declared

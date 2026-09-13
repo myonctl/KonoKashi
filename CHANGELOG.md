@@ -15,6 +15,12 @@ All notable user-visible changes are recorded here.
   integration, runs installation/desktop smoke checks, and prints the launch
   command.
 
+### Changed
+
+- The Flatpak candidate pins the maintained, ABI-aligned KDE/PySide 6.10 pair
+  after installed-package testing exposed a Qt private-ABI mismatch on the
+  independently moving 6.11 runtime and BaseApp.
+
 - Provider-neutral unsynchronized, line, word, and finer-element timing with
   stable nested segment identities, explicit timing provenance, durable storage,
   and frontend-neutral fallback to line synchronization.
