@@ -51,6 +51,9 @@ All notable user-visible changes are recorded here.
   malformed, Unicode, provenance, and maximum-size cases. Its committed
   benchmark records lower runtime and no peak-allocation regression for every
   required workload.
+- A capability-gated LayerShellQt bridge for locked click-through lyrics on
+  Wayland compositors that advertise layer-shell, with a role-safe dedicated
+  surface and the existing portable Qt fallback everywhere else.
 
 ### Changed
 
@@ -104,16 +107,20 @@ All notable user-visible changes are recorded here.
   stable while seeking, pausing, changing playback rate, or refreshing metadata.
 - Fresh profiles show available aligned translations by default to complete the
   original/reading/translation hierarchy; explicit existing choices are kept.
-- Wayland floating-lyrics behavior is described as a portable Qt top-most fallback;
-  above-fullscreen layer-shell placement is not claimed when unavailable.
+- Wayland floating lyrics remains a movable Qt top-level while unlocked and
+  transfers the shared workspace to a passive native overlay-layer surface only
+  while locked. KWin geometry, unlock restoration, and controlled fullscreen
+  stacking were live-validated; unsupported sessions fail back to portable Qt,
+  and blur or universal above-everything behavior is not claimed.
 - Resolved-track corrections now cover album as well as title and artists, while
   provider metadata and media tags remain unchanged.
 - Album art is decoded outside the Qt UI thread from local PNG/JPEG/WebP files
   only; remote artwork is not fetched and source paths are not retained in the
   frontend asset.
 - Linux wheels are now interpreter- and architecture-specific because they
-  contain the native PlaybackClock and LRC parser modules; source builds require
-  a C++20 compiler, OpenSSL development headers, and pinned pybind11 build input.
+  contain the native PlaybackClock, LRC parser, and packaged Wayland surface
+  bridge; source builds require a C++20 compiler, OpenSSL development headers,
+  pinned pybind11, and LayerShellQt development files for the optional bridge.
 
 ## 0.1.0-beta.1 — 2026-09-10
 

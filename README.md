@@ -64,8 +64,9 @@ local-first, deeply customizable, and source-available.
 Local reading support covers Japanese and Mandarin with language-aware limits,
 Korean romanization, and generic transliteration for Cyrillic, Greek, Arabic,
 and Thai.
-Generated readings are labeled in the lyric view. Romanization is a reading aid,
-not a promise of perfect sung pronunciation.
+Generated/provider provenance remains available in Lyrics details rather than
+interrupting the listening hierarchy. Romanization is a reading aid, not a
+promise of perfect sung pronunciation.
 
 ## What the demo shows
 
@@ -91,7 +92,8 @@ is still undergoing its quality program and has not been published. The immutabl
 do not contain the current application described here.
 
 A desktop session needs a Qt/EGL runtime and session D-Bus. A source install
-compiles KonoKashi's narrow playback-clock and LRC-parser modules and may also
+compiles KonoKashi's narrow playback-clock and LRC-parser modules and, when its
+SDK is present, the optional LayerShellQt Wayland surface bridge. It may also
 compile PyICU, so install a C++20 compiler, Python and OpenSSL development
 headers, ICU development headers, and `pkg-config` when your distribution does
 not provide compatible wheels.
@@ -263,18 +265,24 @@ distinct, while ambiguous Apple-style spans remain provider elements instead of
 being mislabeled as words. Malformed element timing falls back to the containing
 line.
 
-Floating lyrics uses Qt's portable top-most window support. On Wayland this is a
-graceful normal-window fallback and a compositor may still place fullscreen
-applications above it. Native layer-shell placement and optional compositor blur
-are not shipped yet; KonoKashi does not claim them based on KDE-only behavior.
+Floating lyrics stays a portable movable Qt top-level while unlocked. When
+click-through is locked on Wayland, a capability probe selects the native
+overlay-layer backend only if both the shipped LayerShellQt bridge and the
+compositor's `zwlr_layer_shell_v1` global are available. Other sessions keep the
+portable top-most fallback. Native mode has been live-validated on KWin above a
+controlled fullscreen client, but this is not an "over everything" claim:
+security surfaces, lock screens, privileged shell UI, and peer ordering remain
+compositor-controlled. KonoKashi detects background-effect support separately
+but does not request or fake blur. See the
+[Wayland overlay review](WAYLAND_OVERLAY_REVIEW.md).
 
 ## What's next
 
 - Refine the Linux desktop experience through public-beta feedback.
 - Refine the correction editor through public-beta feedback and investigate
   word-level rich-timing edits without turning it into a DAW.
-- Add an optional, replaceable Wayland layer-shell backend after its native
-  dependency and cross-compositor packaging path are validated.
+- Validate the capability-gated Wayland overlay on more KWin and wlroots
+  versions while retaining the honest portable fallback elsewhere.
 - Refine terminal lyrics and the stable local event contract through real widget
   and streaming-tool integrations.
 - Stabilize release packaging before any AUR or Flathub submission.

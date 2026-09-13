@@ -18,10 +18,13 @@ directory with Python installer. Neither build nor package functions download
 dependencies or modify the host Python installation. Runtime packages are
 declared individually; native dependencies remain separately packaged.
 KonoKashi's own payload now contains the bounded C++ PlaybackClock and LRC
-parser modules, so the recipe targets `x86_64` and `aarch64`, builds against the
-official `pybind11` make dependency, and declares OpenSSL for the parser's
-SHA-256 implementation. Architecture-specific dependency resolution, native
-compilation, and installation must pass before submission. No
+parser modules plus its small Wayland surface bridge, so the recipe targets
+`x86_64` and `aarch64`, builds against the official `pybind11` make dependency,
+and declares OpenSSL for the parser's SHA-256 implementation plus
+`layer-shell-qt` for the optional-at-runtime native overlay path. The package
+build sets `KONOKASHI_LAYER_SHELL=required` so a declared dependency cannot
+silently produce a reduced artifact. Architecture-specific dependency
+resolution, native compilation, and installation must pass before submission. No
 provides/conflicts or VCS variant is necessary for the sole package name.
 
 The 2026-09-11 dependency review found that official Arch provides `pypinyin`

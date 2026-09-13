@@ -23,6 +23,8 @@ Qt needs a working EGL/OpenGL runtime for desktop use. The authorized native
 PlaybackClock and bounded LRC parser require a C++20 compiler, OpenSSL
 development headers, and the pinned pybind11 build input; building PyICU from
 source may additionally require ICU development headers and `pkg-config`.
+LayerShellQt development files enable the optional bounded Wayland surface
+bridge; ordinary development builds retain the portable Qt fallback if absent.
 
 ## Making a change
 
@@ -72,5 +74,8 @@ Keep both Python references and differential suites intact; migrating another
 subsystem requires a separate decision based on real maintenance and packaging
 evidence. `NATIVE_02_CANDIDATE_REVIEW.md` records the parser boundary and
 `NATIVE_02_BENCHMARK.md` records its production gate.
+The small LayerShellQt surface bridge is presentation integration rather than a
+third core migration; its capability and fallback boundary is recorded in
+`WAYLAND_OVERLAY_REVIEW.md`.
 
 Use `SECURITY.md` for vulnerabilities rather than opening a public issue.

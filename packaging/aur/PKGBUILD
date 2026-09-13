@@ -11,6 +11,7 @@ url='https://github.com/myonctl/KonoKashi'
 license=('PolyForm-Noncommercial-1.0.0')
 depends=(
   'hicolor-icon-theme'
+  'layer-shell-qt'
   'openssl'
   'python>=3.11'
   'python<3.15'
@@ -33,7 +34,7 @@ sha256sums=('0000000000000000000000000000000000000000000000000000000000000000')
 
 build() {
   cd "$pkgname-$_sdistver"
-  python -m build --wheel --no-isolation
+  KONOKASHI_LAYER_SHELL=required python -m build --wheel --no-isolation
 }
 
 check() {
@@ -45,6 +46,7 @@ check() {
   PYTHONPATH="$test_site" QT_QPA_PLATFORM=offscreen python -m pytest \
     tests/test_package.py tests/test_lrc_parser.py tests/test_lrc_parser_native.py \
     tests/test_playback_clock.py tests/test_playback_clock_native.py \
+    tests/test_wayland_overlay.py \
     tests/test_romanization_adapters.py
 }
 

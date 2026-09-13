@@ -13,6 +13,7 @@ pkgbase = konokashi
 	makedepends = python-setuptools
 	makedepends = python-wheel
 	depends = hicolor-icon-theme
+	depends = layer-shell-qt
 	depends = openssl
 	depends = python>=3.11
 	depends = python<3.15

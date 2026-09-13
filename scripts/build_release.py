@@ -24,6 +24,7 @@ REQUIRED_PYTHON_BOUNDS = frozenset({">=3.11", "<3.15"})
 REQUIRED_WHEEL_SUFFIXES = (
     "konokashi/_lrc_native.pyi",
     "konokashi/_playback_clock_native.pyi",
+    "konokashi/_wayland_overlay_native.pyi",
     "konokashi/cli.py",
     "konokashi/infrastructure/desktop_portal.py",
     "konokashi/presentation/tui/settings_app.py",
@@ -34,11 +35,13 @@ REQUIRED_WHEEL_SUFFIXES = (
 REQUIRED_WHEEL_NATIVE_MODULES = {
     "PlaybackClock": "konokashi/_playback_clock_native.",
     "LRC parser": "konokashi/_lrc_native.",
+    "Wayland overlay": "konokashi/_wayland_overlay_native.",
 }
 REQUIRED_SDIST_SUFFIXES = (
     "LICENSE",
     "NATIVE_02_BENCHMARK.md",
     "NATIVE_02_CANDIDATE_REVIEW.md",
+    "WAYLAND_OVERLAY_REVIEW.md",
     "README.md",
     "pyproject.toml",
     "setup.py",
@@ -50,6 +53,7 @@ REQUIRED_SDIST_SUFFIXES = (
     "src/konokashi/native/lrc_parser.cpp",
     "src/konokashi/native/lrc_parser.hpp",
     "src/konokashi/native/playback_clock.cpp",
+    "src/konokashi/native/wayland_overlay_bindings.cpp",
     "src/konokashi/infrastructure/desktop_portal.py",
     "tests/fixtures/matching_evaluation/synthetic_cases.json",
     "tests/fixtures/matching_evaluation/README.md",
@@ -258,6 +262,7 @@ def build_release(output_directory: Path, *, force: bool = False) -> tuple[Path,
             "PYTHONHASHSEED": "0",
             "TZ": "UTC",
             "LC_ALL": "C.UTF-8",
+            "KONOKASHI_LAYER_SHELL": "required",
         }
     )
     with (

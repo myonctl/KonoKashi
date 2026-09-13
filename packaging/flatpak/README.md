@@ -25,7 +25,11 @@ from a pinned upstream commit. Preserve these adjustments when regenerating
 the Python dependency manifest.
 
 The application sdist compiles the authorized C++ PlaybackClock and LRC parser
-modules.
+modules plus the bounded LayerShellQt presentation bridge. The manifest pins
+upstream LayerShellQt 6.7.5 by full commit, and the application build requires
+that bridge rather than silently producing a reduced package. It is used only
+on Wayland when the compositor advertises layer-shell; X11 and unsupported
+Wayland compositors retain the portable Qt path. No blur effect is requested.
 The manifest pins pybind11 3.1.0 as a build input; the KDE SDK supplies the C++20
 compiler, Python headers, and OpenSSL development/runtime surface used by the
 parser. Keep that pin aligned with `pyproject.toml`; each additional native
