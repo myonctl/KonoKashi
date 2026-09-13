@@ -54,6 +54,10 @@ All notable user-visible changes are recorded here.
 
 ### Changed
 
+- Normal, Compact, Floating lyrics, and Fullscreen are directly discoverable
+  from the main window. Each has a purpose-built projection: Compact removes
+  secondary chrome, Floating lyrics adds move/opacity/lock/resize/recovery
+  controls, and Fullscreen provides a lyric-first layout with a visible exit.
 - Provider collection now decides from evidence rather than configuration-order
   completion. A unique High-confidence result gives competitors a measured
   400 ms opportunity to agree or conflict, then cancels queued work and detaches
@@ -100,7 +104,7 @@ All notable user-visible changes are recorded here.
   stable while seeking, pausing, changing playback rate, or refreshing metadata.
 - Fresh profiles show available aligned translations by default to complete the
   original/reading/translation hierarchy; explicit existing choices are kept.
-- Wayland overlay behavior is described as a portable Qt top-most fallback;
+- Wayland floating-lyrics behavior is described as a portable Qt top-most fallback;
   above-fullscreen layer-shell placement is not claimed when unavailable.
 - Resolved-track corrections now cover album as well as title and artists, while
   provider metadata and media tags remain unchanged.

@@ -9,6 +9,7 @@ from typing import cast
 from PySide6.QtCore import (
     QEvent,
     QRectF,
+    QSignalBlocker,
     QSize,
     Qt,
     QTimer,
@@ -40,6 +41,7 @@ from PySide6.QtWidgets import (
     QPushButton,
     QSizeGrip,
     QSizePolicy,
+    QSlider,
     QStackedWidget,
     QSystemTrayIcon,
     QToolButton,
@@ -403,34 +405,126 @@ class MainWindow(DesktopWindowSurface):
         layout = root.panel_layout
         self._root_layout = layout
 
-        self.overlay_controls = QWidget()
-        overlay_controls_layout = QHBoxLayout(self.overlay_controls)
-        overlay_controls_layout.setContentsMargins(0, 0, 0, 0)
-        self.overlay_drag_handle = _OverlayDragHandle(
-            "Overlay unlocked — drag here to move"
+        self.mode_controls = QWidget()
+        self.mode_controls.setAccessibleName("Window mode chooser")
+        mode_controls_layout = QHBoxLayout(self.mode_controls)
+        mode_controls_layout.setContentsMargins(0, 0, 0, 0)
+        self.mode_label = _plain_label("View")
+        self.mode_label.setAccessibleName("Window mode")
+        mode_controls_layout.addWidget(self.mode_label)
+        self.mode_buttons: dict[DesktopWindowMode, QToolButton] = {}
+        for mode, label, description in (
+            (
+                DesktopWindowMode.NORMAL,
+                "Normal",
+                "Full track context, lyrics, and controls",
+            ),
+            (
+                DesktopWindowMode.COMPACT,
+                "Compact",
+                "Lyrics-first companion with minimal metadata",
+            ),
+            (
+                DesktopWindowMode.OVERLAY,
+                "Floating lyrics",
+                "Always-on-top lyric view with move and lock controls",
+            ),
+            (
+                DesktopWindowMode.FULLSCREEN,
+                "Full screen",
+                "Immersive lyric view readable at a distance",
+            ),
+        ):
+            button = QToolButton()
+            button.setText(label)
+            button.setCheckable(True)
+            button.setAutoExclusive(True)
+            button.setAccessibleName(f"Use {label} mode")
+            button.setToolTip(description)
+            button.clicked.connect(
+                lambda _checked, mode=mode: self.set_window_mode(mode)
+            )
+            mode_controls_layout.addWidget(button)
+            self.mode_buttons[mode] = button
+        self.mode_popup_button = QToolButton()
+        self.mode_popup_button.setText("Mode: Normal")
+        self.mode_popup_button.setAccessibleName("Choose window mode")
+        self.mode_popup_button.setPopupMode(
+            QToolButton.ToolButtonPopupMode.InstantPopup
         )
-        self.overlay_drag_handle.setAccessibleName("Move lyrics overlay")
+        self.mode_popup_button.setVisible(False)
+        mode_controls_layout.addWidget(self.mode_popup_button)
+
+        self.overlay_controls = QWidget()
+        overlay_controls_layout = QVBoxLayout(self.overlay_controls)
+        overlay_controls_layout.setContentsMargins(0, 0, 0, 0)
+        overlay_move_row = QWidget()
+        overlay_move_layout = QHBoxLayout(overlay_move_row)
+        overlay_move_layout.setContentsMargins(0, 0, 0, 0)
+        self.overlay_drag_handle = _OverlayDragHandle(
+            "Floating lyrics unlocked — drag here to move"
+        )
+        self.overlay_drag_handle.setAccessibleName("Move floating lyrics")
         self.overlay_drag_handle.setToolTip(
-            "Drag to ask the compositor to move this overlay"
+            "Drag to ask the compositor to move the floating lyrics window"
         )
         self.overlay_drag_handle.setCursor(Qt.CursorShape.SizeAllCursor)
         self.overlay_drag_handle.move_requested.connect(self.start_overlay_move)
+        self.overlay_opacity_label = _plain_label("Opacity 100%")
+        self.overlay_opacity_label.setAccessibleName("Floating lyrics opacity")
+        self.overlay_opacity_slider = QSlider(Qt.Orientation.Horizontal)
+        self.overlay_opacity_slider.setRange(25, 100)
+        self.overlay_opacity_slider.setSingleStep(5)
+        self.overlay_opacity_slider.setPageStep(10)
+        self.overlay_opacity_slider.setFixedWidth(108)
+        self.overlay_opacity_slider.setAccessibleName(
+            "Floating lyrics background opacity"
+        )
+        self.overlay_opacity_slider.setToolTip(
+            "Adjust the floating lyrics background opacity"
+        )
+        self.overlay_opacity_slider.valueChanged.connect(self._floating_opacity_changed)
         self.overlay_lock_button = QPushButton("Enable click-through")
-        self.overlay_lock_button.setAccessibleName("Enable click-through overlay")
+        self.overlay_lock_button.setAccessibleName(
+            "Enable click-through floating lyrics"
+        )
         self.overlay_lock_button.clicked.connect(lambda: self.set_overlay_locked(True))
-        self.overlay_exit_button = QPushButton("Exit overlay")
+        self.overlay_exit_button = QPushButton("Exit floating lyrics")
         self.overlay_exit_button.setAccessibleName("Return to normal window")
         self.overlay_exit_button.clicked.connect(
             lambda: self.set_window_mode(DesktopWindowMode.NORMAL)
         )
+        overlay_action_row = QWidget()
+        overlay_action_layout = QHBoxLayout(overlay_action_row)
+        overlay_action_layout.setContentsMargins(0, 0, 0, 0)
         self.overlay_size_grip = QSizeGrip(self.overlay_controls)
-        self.overlay_size_grip.setAccessibleName("Resize lyrics overlay")
-        overlay_controls_layout.addWidget(self.overlay_drag_handle, 1)
-        overlay_controls_layout.addWidget(self.overlay_lock_button)
-        overlay_controls_layout.addWidget(self.overlay_exit_button)
-        overlay_controls_layout.addWidget(self.overlay_size_grip)
+        self.overlay_size_grip.setAccessibleName("Resize floating lyrics")
+        overlay_move_layout.addWidget(self.overlay_drag_handle, 1)
+        overlay_move_layout.addWidget(self.overlay_opacity_label)
+        overlay_move_layout.addWidget(self.overlay_opacity_slider)
+        overlay_action_layout.addStretch(1)
+        overlay_action_layout.addWidget(self.overlay_lock_button)
+        overlay_action_layout.addWidget(self.overlay_exit_button)
+        overlay_action_layout.addWidget(self.overlay_size_grip)
+        overlay_controls_layout.addWidget(overlay_move_row)
+        overlay_controls_layout.addWidget(overlay_action_row)
         self.overlay_controls.setVisible(False)
         layout.addWidget(self.overlay_controls)
+
+        self.fullscreen_controls = QWidget()
+        self.fullscreen_controls.setAccessibleName("Fullscreen controls")
+        fullscreen_controls_layout = QHBoxLayout(self.fullscreen_controls)
+        fullscreen_controls_layout.setContentsMargins(0, 0, 0, 0)
+        fullscreen_controls_layout.addStretch(1)
+        fullscreen_hint = _plain_label("Fullscreen lyrics")
+        fullscreen_hint.setAccessibleName("Fullscreen lyrics mode")
+        fullscreen_controls_layout.addWidget(fullscreen_hint)
+        self.fullscreen_exit_button = QPushButton("Exit full screen  Esc")
+        self.fullscreen_exit_button.setAccessibleName("Exit full screen")
+        self.fullscreen_exit_button.clicked.connect(self.restore_from_transient_mode)
+        fullscreen_controls_layout.addWidget(self.fullscreen_exit_button)
+        self.fullscreen_controls.setVisible(False)
+        layout.addWidget(self.fullscreen_controls)
 
         metadata_panel = QWidget()
         header = QBoxLayout(QBoxLayout.Direction.LeftToRight, metadata_panel)
@@ -615,6 +709,10 @@ class MainWindow(DesktopWindowSurface):
         self.application_menu.overlay_lock_requested.connect(self.set_overlay_locked)
         self.application_menu.screen_requested.connect(self._move_to_screen)
         self.setMenuBar(self.application_menu)
+        self.mode_popup_button.setMenu(self.application_menu.modes_menu)
+        self.application_menu.setCornerWidget(
+            self.mode_controls, Qt.Corner.TopRightCorner
+        )
 
         actual_tray_available = QSystemTrayIcon.isSystemTrayAvailable()
         self._probe_overlay_recovery = overlay_recovery_available is None
@@ -673,7 +771,7 @@ class MainWindow(DesktopWindowSurface):
             self.setMinimumSize(420, 180)
             if value not in self._mode_geometries:
                 self.resize(760, 360)
-            self.setWindowTitle("KonoKashi — Lyrics overlay")
+            self.setWindowTitle("KonoKashi — Floating lyrics")
         else:
             self.setMinimumSize(420, 420)
             self.setWindowTitle("KonoKashi — Fullscreen lyrics")
@@ -707,6 +805,18 @@ class MainWindow(DesktopWindowSurface):
     def _project_window_controls(self) -> None:
         overlay = self.window_mode is DesktopWindowMode.OVERLAY
         unlocked_overlay = overlay and not self.overlay_locked
+        self.mode_controls.setVisible(
+            self.window_mode in {DesktopWindowMode.NORMAL, DesktopWindowMode.COMPACT}
+        )
+        self.fullscreen_controls.setVisible(
+            self.window_mode is DesktopWindowMode.FULLSCREEN
+        )
+        self.mode_popup_button.setText(
+            f"Mode: {self.mode_buttons[self.window_mode].text()}"
+        )
+        for mode, button in self.mode_buttons.items():
+            with QSignalBlocker(button):
+                button.setChecked(mode is self.window_mode)
         self.overlay_controls.setVisible(unlocked_overlay)
         self.overlay_lock_button.setEnabled(self.overlay_recovery_available)
         self.overlay_lock_button.setText(
@@ -718,7 +828,7 @@ class MainWindow(DesktopWindowSurface):
         self.overlay_lock_button.setToolTip(
             "Pointer input will pass through; unlock from the system tray"
             if self.overlay_recovery_available
-            else "A system tray is required so the overlay can always be unlocked"
+            else "A system tray is required so floating lyrics can always be unlocked"
         )
         self.application_menu.project_window_state(
             self.window_mode,
@@ -729,7 +839,7 @@ class MainWindow(DesktopWindowSurface):
             backend_description=self.overlay_backend_description,
         )
         if self.overlay_locked:
-            self.tray_show_action.setText("Unlock lyrics overlay")
+            self.tray_show_action.setText("Unlock floating lyrics")
         elif not self.isVisible():
             self.tray_show_action.setText("Show KonoKashi")
         else:
@@ -738,6 +848,10 @@ class MainWindow(DesktopWindowSurface):
     def _move_to_screen(self, index: int) -> None:
         self.move_to_screen(index)
         self._project_window_controls()
+
+    def _floating_opacity_changed(self, value: int) -> None:
+        self.overlay_opacity_label.setText(f"Opacity {value}%")
+        self.setting_requested.emit("appearance.opacity.background", value)
 
     def _screen_topology_changed(self, _screen: object) -> None:
         self._project_window_controls()
@@ -769,6 +883,11 @@ class MainWindow(DesktopWindowSurface):
     def _set_header_direction(self, width: int) -> None:
         """Preserve track metadata when compact width cannot hold one row."""
 
+        use_mode_popup = width < 650
+        self.mode_label.setVisible(not use_mode_popup)
+        self.mode_popup_button.setVisible(use_mode_popup)
+        for button in self.mode_buttons.values():
+            button.setVisible(not use_mode_popup)
         direction = (
             QBoxLayout.Direction.TopToBottom
             if width < 600
@@ -787,6 +906,8 @@ class MainWindow(DesktopWindowSurface):
     def _finish_resize_typography(self) -> None:
         size = self._pending_typography_size
         exact_scale = self._responsive_scale(size.width(), size.height())
+        if self.window_mode is DesktopWindowMode.FULLSCREEN:
+            exact_scale = min(2.65, exact_scale * 1.6)
         if (
             self._applied_typography_scale is None
             or abs(exact_scale - self._applied_typography_scale) >= 0.002
@@ -855,6 +976,7 @@ class MainWindow(DesktopWindowSurface):
         self._progress_layout.setSpacing(appearance.spacing.progress)
         self._lyric_layout.setSpacing(appearance.spacing.context)
         self._lyric_column.setMaximumWidth(appearance.spacing.maximum_lyric_width)
+        self._lyric_column.relayout(center_active=True)
 
     @property
     def state(self) -> DesktopViewState:
@@ -931,6 +1053,9 @@ class MainWindow(DesktopWindowSurface):
         self._lyric_column.settle()
         self._appearance = appearance
         self.application_menu.project(appearance)
+        with QSignalBlocker(self.overlay_opacity_slider):
+            self.overlay_opacity_slider.setValue(appearance.opacity.background)
+        self.overlay_opacity_label.setText(f"Opacity {appearance.opacity.background}%")
         scale = self._applied_typography_scale or self._responsive_scale(
             self.width(), self.height()
         )
@@ -1247,7 +1372,7 @@ class MainWindow(DesktopWindowSurface):
         lyric_only = mode is DesktopWindowMode.OVERLAY
         focused = mode is DesktopWindowMode.FULLSCREEN
         compact = mode is DesktopWindowMode.COMPACT
-        show_metadata = not lyric_only
+        show_metadata = not lyric_only and not focused
         show_title = show_metadata and visibility.title
         show_artist = show_metadata and visibility.artist and bool(state.artists)
         show_album = (
@@ -1270,20 +1395,22 @@ class MainWindow(DesktopWindowSurface):
             show_actions or show_title or show_artist or show_album or show_artwork
         )
         self._metadata_widget.setVisible(show_title or show_artist or show_album)
-        show_context = visibility.inactive_context and not compact
+        show_context = visibility.inactive_context and not compact and not lyric_only
         self._lyric_column.set_context_visibility(
             show_context and bool(self.previous_band.text()),
             show_context and bool(self.next_band.text()),
         )
         self.status_label.setVisible(visibility.auxiliary_status)
         self.static_status_label.setVisible(visibility.auxiliary_status)
-        self.playback_label.setVisible(visibility.playback_status)
+        self.playback_label.setVisible(not focused and visibility.playback_status)
         self.progress.setVisible(
             not lyric_only
             and visibility.progress
             and state.progress_fraction is not None
         )
-        self.time_label.setVisible(not lyric_only and visibility.timestamps)
+        self.time_label.setVisible(
+            not lyric_only and not focused and visibility.timestamps
+        )
         has_playback = (
             state.player is not None
             or state.playback_state is not PlaybackState.UNKNOWN
@@ -1293,9 +1420,9 @@ class MainWindow(DesktopWindowSurface):
             not lyric_only
             and has_playback
             and (
-                visibility.playback_status
+                (not focused and visibility.playback_status)
                 or visibility.progress
-                or visibility.timestamps
+                or (not focused and visibility.timestamps)
             )
         )
         self.source_label.setVisible(

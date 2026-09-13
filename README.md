@@ -229,11 +229,12 @@ error when no selectable player or timed document is available; callers can
 restart them under their normal process supervisor. KonoKashi does not start an
 HTTP server or listen on a network socket.
 
-Use **View → Window mode** or `Ctrl+Alt+1` through `Ctrl+Alt+3` to switch among
-normal, compact, and overlay modes; `F11` opens fullscreen lyrics. `Esc` always
-leaves an interactive overlay or fullscreen. The unlocked overlay has explicit
-drag, resize, and exit controls. Click-through is offered only when a system tray
-is available, so **Unlock lyrics overlay**, screen/mode selection, and **Quit**
+Use the visible **View** strip, **View → Window mode**, or `Ctrl+Alt+1` through
+`Ctrl+Alt+3` to switch among normal, compact, and floating-lyrics modes; `F11`
+opens fullscreen lyrics. `Esc` or the visible fullscreen control returns to the
+previous interactive mode. Unlocked floating lyrics have direct drag, opacity,
+resize, lock, and exit controls. Click-through is offered only when a system tray
+is available, so **Unlock floating lyrics**, screen/mode selection, and **Quit**
 remain reachable outside the window.
 
 ## Current status
@@ -262,8 +263,8 @@ distinct, while ambiguous Apple-style spans remain provider elements instead of
 being mislabeled as words. Malformed element timing falls back to the containing
 line.
 
-The current overlay uses Qt's portable top-most window support. On Wayland this
-is a graceful normal-window fallback and a compositor may still place fullscreen
+Floating lyrics uses Qt's portable top-most window support. On Wayland this is a
+graceful normal-window fallback and a compositor may still place fullscreen
 applications above it. Native layer-shell placement and optional compositor blur
 are not shipped yet; KonoKashi does not claim them based on KDE-only behavior.
 

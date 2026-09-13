@@ -73,7 +73,7 @@ class DesktopWindowSurface(QMainWindow):
                 "Portable Qt top-most fallback; this compositor may place "
                 "fullscreen windows above the lyrics"
             )
-        return "Portable Qt top-most overlay"
+        return "Portable Qt top-most floating lyrics window"
 
     def set_overlay_recovery_available(self, available: bool) -> None:
         """Allow click-through only while an out-of-window escape route exists."""

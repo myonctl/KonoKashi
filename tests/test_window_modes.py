@@ -64,6 +64,7 @@ def test_mode_projection_keeps_overlay_focused_and_fullscreen_escapable(
     window.set_window_mode(DesktopWindowMode.COMPACT)
     qt_app.processEvents()
     assert window.application_menu.isVisible()
+    assert window.mode_controls.isVisible()
     assert window.title_label.isVisible()
     assert window.album_label.isHidden()
     assert window.source_label.isHidden()
@@ -77,17 +78,38 @@ def test_mode_projection_keeps_overlay_focused_and_fullscreen_escapable(
     assert window.windowFlags() & Qt.WindowType.FramelessWindowHint
     assert window.windowFlags() & Qt.WindowType.WindowStaysOnTopHint
     assert window.application_menu.isHidden()
+    assert window.mode_controls.isHidden()
     assert window.overlay_controls.isVisible()
     assert window._metadata_widget.isHidden()
     assert window.playback_widget.isHidden()
+    assert window.previous_band.isHidden()
+    assert window.next_band.isHidden()
     assert window.active_band.isVisible()
     assert window.restore_window_action.isEnabled()
+    floating_active_size = window.active_band.font().pointSizeF()
 
     window.set_window_mode(DesktopWindowMode.FULLSCREEN)
-    qt_app.processEvents()
+    QTest.qWait(100)
     assert window.isFullScreen()
     assert window.application_menu.isHidden()
+    assert window.fullscreen_controls.isVisible()
+    assert window.fullscreen_exit_button.isVisible()
+    assert window._metadata_widget.isHidden()
+    assert window.playback_label.isHidden()
+    assert window.time_label.isHidden()
     assert window.active_band.isVisible()
+    assert window.active_band.font().pointSizeF() > floating_active_size
+    visible_bands = tuple(
+        band
+        for band in (window.previous_band, window.active_band, window.next_band)
+        if not band.isHidden()
+    )
+    viewport_width = window._lyric_column.viewport().width()
+    expected_document_height = (
+        sum(band.heightForWidth(viewport_width) for band in visible_bands)
+        + max(0, len(visible_bands) - 1) * window._lyric_layout.spacing()
+    )
+    assert window._lyric_column.document_height == expected_document_height
     QTest.keyClick(window, Qt.Key.Key_Escape)
     qt_app.processEvents()
     assert window.window_mode is DesktopWindowMode.NORMAL
@@ -118,7 +140,7 @@ def test_click_through_requires_and_retains_an_external_escape_route(
     assert safe.windowFlags() & Qt.WindowType.WindowTransparentForInput
     assert safe.windowFlags() & Qt.WindowType.WindowDoesNotAcceptFocus
     assert safe.overlay_controls.isHidden()
-    assert safe.tray_show_action.text() == "Unlock lyrics overlay"
+    assert safe.tray_show_action.text() == "Unlock floating lyrics"
 
     safe._show_from_tray()
     qt_app.processEvents()
@@ -164,10 +186,22 @@ def test_mode_menu_and_screen_targeting_project_current_native_state(
 ) -> None:
     window = MainWindow()
     window.show()
+    assert window.mode_controls.isVisible()
+    assert set(window.mode_buttons) == set(DesktopWindowMode)
+    assert all(button.isVisible() for button in window.mode_buttons.values())
+    assert window.mode_buttons[DesktopWindowMode.NORMAL].isChecked()
     window.application_menu.mode_actions[DesktopWindowMode.COMPACT].trigger()
     qt_app.processEvents()
     assert window.window_mode is DesktopWindowMode.COMPACT
     assert window.application_menu.mode_actions[DesktopWindowMode.COMPACT].isChecked()
+    assert window.mode_buttons[DesktopWindowMode.COMPACT].isChecked()
+    assert window.mode_popup_button.isVisible()
+    assert window.mode_popup_button.text() == "Mode: Compact"
+    assert all(button.isHidden() for button in window.mode_buttons.values())
+    assert (
+        window.application_menu.mode_actions[DesktopWindowMode.OVERLAY].text()
+        == "&Floating lyrics"
+    )
     assert (
         window.application_menu.mode_actions[DesktopWindowMode.FULLSCREEN]
         .shortcut()
@@ -184,4 +218,42 @@ def test_mode_menu_and_screen_targeting_project_current_native_state(
     assert window.move_to_screen(window.current_screen_index)
     assert not window.move_to_screen(-1)
     assert not window.move_to_screen(len(window.screen_names))
+    window.close()
+
+
+def test_visible_mode_chooser_and_floating_controls_are_directly_operable(
+    qt_app: QApplication,
+) -> None:
+    window = MainWindow(overlay_recovery_available=True)
+    requested: list[tuple[str, object]] = []
+    window.setting_requested.connect(lambda key, value: requested.append((key, value)))
+    window.show()
+
+    QTest.mouseClick(
+        window.mode_buttons[DesktopWindowMode.OVERLAY], Qt.MouseButton.LeftButton
+    )
+    qt_app.processEvents()
+    assert window.window_mode is DesktopWindowMode.OVERLAY
+    assert window.windowTitle() == "KonoKashi — Floating lyrics"
+    assert window.overlay_controls.isVisible()
+    assert window.overlay_opacity_slider.value() == 100
+
+    window.overlay_opacity_slider.setValue(55)
+    assert window.overlay_opacity_label.text() == "Opacity 55%"
+    assert requested[-1] == ("appearance.opacity.background", 55)
+
+    QTest.mouseClick(window.overlay_exit_button, Qt.MouseButton.LeftButton)
+    qt_app.processEvents()
+    assert window.window_mode is DesktopWindowMode.NORMAL
+    assert window.mode_controls.isVisible()
+
+    QTest.mouseClick(
+        window.mode_buttons[DesktopWindowMode.FULLSCREEN],
+        Qt.MouseButton.LeftButton,
+    )
+    qt_app.processEvents()
+    assert window.window_mode is DesktopWindowMode.FULLSCREEN
+    QTest.mouseClick(window.fullscreen_exit_button, Qt.MouseButton.LeftButton)
+    qt_app.processEvents()
+    assert window.window_mode is DesktopWindowMode.NORMAL
     window.close()

@@ -44,7 +44,7 @@ class ApplicationMenu(QMenuBar):
         for mode, label, shortcut in (
             (DesktopWindowMode.NORMAL, "&Normal window", "Ctrl+Alt+1"),
             (DesktopWindowMode.COMPACT, "&Compact companion", "Ctrl+Alt+2"),
-            (DesktopWindowMode.OVERLAY, "Desktop &overlay", "Ctrl+Alt+3"),
+            (DesktopWindowMode.OVERLAY, "&Floating lyrics", "Ctrl+Alt+3"),
             (DesktopWindowMode.FULLSCREEN, "&Fullscreen lyrics", "F11"),
         ):
             action = modes.addAction(label)
@@ -55,7 +55,7 @@ class ApplicationMenu(QMenuBar):
                 lambda _checked, mode=mode: self.window_mode_requested.emit(mode)
             )
             self.mode_actions[mode] = action
-        self.overlay_lock_action = view_menu.addAction("&Click-through overlay")
+        self.overlay_lock_action = view_menu.addAction("&Click-through floating lyrics")
         self.overlay_lock_action.setCheckable(True)
         self.overlay_lock_action.setShortcut(QKeySequence("Ctrl+Shift+L"))
         self.overlay_lock_action.triggered.connect(self.overlay_lock_requested)
@@ -104,6 +104,8 @@ class ApplicationMenu(QMenuBar):
         settings.setShortcut(QKeySequence("Ctrl+,"))
         quit_action.setShortcut(QKeySequence("Ctrl+Q"))
 
+        self.modes_menu = modes
+
     def project_window_state(
         self,
         mode: DesktopWindowMode,
@@ -125,7 +127,7 @@ class ApplicationMenu(QMenuBar):
             mode is DesktopWindowMode.OVERLAY and recovery_available
         )
         self.overlay_lock_action.setToolTip(
-            "Pass pointer input through the overlay; use the system tray to unlock"
+            "Pass pointer input through floating lyrics; use the system tray to unlock"
             if recovery_available
             else "Click-through is unavailable without a system-tray escape route"
         )

@@ -15,7 +15,7 @@
       Original-script lyrics remain authoritative. Aligned romanization or
       transliteration can appear beneath the original, with translation kept
       as a separate optional layer. Settings and user-approved corrections are
-      stored locally. Normal, compact, lyric-overlay, and fullscreen modes reuse
+      stored locally. Normal, compact, floating-lyrics, and fullscreen modes reuse
       the same synchronized renderer. A focused terminal view and versioned
       JSON Lines stream reuse the same playback and lyric state for local tools.
       Three built-in color themes, bounded local album art, and a contrast-safe
