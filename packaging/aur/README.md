@@ -37,12 +37,21 @@ separate package-base candidates live under `dependencies/`. That directory
 also contains a corrected `python-unidic-lite` maintainer-update candidate;
 see its README for the dependency order and submission boundary.
 
-For local validation, place the matching source archive beside a copy of the
-recipe in a temporary build directory, then run `makepkg --verifysource`,
-`makepkg`, and `namcap PKGBUILD` plus namcap on the resulting package. Compare
-`makepkg --printsrcinfo` with the tracked `.SRCINFO`. A clean Arch chroot is the
-preferred final build environment. A `--nodeps` experiment can validate layout,
-but is not proof of a resolvable or installable AUR dependency graph.
+For local validation, derive both package candidates from the same exact source:
+
+```bash
+python scripts/prepare_packages.py --output-dir build/packages-current
+cd build/packages-current/aur
+makepkg --verifysource
+makepkg
+namcap PKGBUILD konokashi-*.pkg.tar.zst
+```
+
+The helper copies the shared current sdist beside a checksum-filled recipe and
+generates its matching `.SRCINFO`; it does not change the canonical tracked
+files. A clean Arch chroot is the preferred final build environment. A
+`--nodeps` experiment can validate layout, but is not proof of a resolvable or
+installable AUR dependency graph.
 
 The package check function installs the built platform wheel into an isolated
 staging root and exercises package identity, native/reference LRC parity, both

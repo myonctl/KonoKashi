@@ -39,6 +39,17 @@ The repository evidence can be checked in the official indexes:
   [source-package index](https://src.fedoraproject.org/) are the authoritative
   inventory used for the RPM check.
 
+For a pre-release checkout, prepare both maintained package candidates from one
+twice-built, byte-identical sdist:
+
+```bash
+python scripts/prepare_packages.py --output-dir build/packages-current
+```
+
+The command writes a local-checksum AUR recipe under `aur/` and a local-source
+Flatpak manifest under `flatpak/`. Both point to the single archive under
+`artifacts/`; canonical tracked recipes remain fail-closed until publication.
+
 A future native package must keep third-party projects as independently
 reviewable packages, declare every dependency normally, run upstream and
 KonoKashi tests during the build, and pass clean-install and clean-removal

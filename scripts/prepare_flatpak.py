@@ -75,6 +75,7 @@ def prepare_flatpak_candidate(
     output_directory: Path,
     *,
     force: bool = False,
+    source_archive: Path | None = None,
 ) -> Path:
     """Build the current sdist and write a local-only derived manifest."""
 
@@ -91,13 +92,20 @@ def prepare_flatpak_candidate(
         raise FlatpakPreparationError(
             "Flatpak preparation output already exists; pass --force to replace it"
         )
-    artifacts = release_builder.build_release(output / "artifacts", force=force)
-    source_archives = [path for path in artifacts if path.name.endswith(".tar.gz")]
-    if len(source_archives) != 1:
-        raise FlatpakPreparationError(
-            "release builder did not return exactly one source distribution"
-        )
-    source = source_archives[0]
+    if source_archive is None:
+        artifacts = release_builder.build_release(output / "artifacts", force=force)
+        source_archives = [path for path in artifacts if path.name.endswith(".tar.gz")]
+        if len(source_archives) != 1:
+            raise FlatpakPreparationError(
+                "release builder did not return exactly one source distribution"
+            )
+        source = source_archives[0]
+    else:
+        source = source_archive.expanduser().resolve()
+        if not source.is_file() or not source.name.endswith(".tar.gz"):
+            raise FlatpakPreparationError(
+                "shared package source must be an existing .tar.gz archive"
+            )
     canonical_manifest = (FLATPAK_DIRECTORY / MANIFEST_NAME).read_text(encoding="utf-8")
     derived_manifest = render_current_manifest(
         canonical_manifest,

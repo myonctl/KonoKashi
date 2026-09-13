@@ -6,6 +6,9 @@ All notable user-visible changes are recorded here.
 
 ### Added
 
+- One reproducible package-candidate preparation path that passes the exact same
+  source archive and checksum to local AUR and Flatpak validation recipes.
+
 - A one-command `./setup.sh` source bootstrap that preflights Linux/Arch/Artix
   prerequisites without mutating system packages, creates or refreshes one
   isolated environment, builds native modules, offers user-local desktop

@@ -50,7 +50,7 @@ Run from the repository root:
 .venv/bin/python -m pytest
 .venv/bin/python -m ruff check .
 .venv/bin/python -m ruff format --check .
-.venv/bin/python -m mypy src
+.venv/bin/python -m mypy src scripts/*.py
 .venv/bin/python scripts/build_release.py --output-dir /tmp/konokashi-dist
 ```
 

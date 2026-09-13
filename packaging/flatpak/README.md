@@ -98,17 +98,21 @@ artifact. It also copies the colocated portal bridge source required by the
 manifest. The command changes no tracked file:
 
 ```bash
-python scripts/prepare_flatpak.py --output-dir build/flatpak-current
+python scripts/prepare_packages.py --output-dir build/packages-current
 ```
+
+For a Flatpak-only iteration, `python scripts/prepare_flatpak.py` remains the
+standalone equivalent; the combined command is the release proof because it
+shares one archive with the AUR candidate.
 
 Install Flatpak Builder, then run from the repository root:
 
 ```bash
 flatpak run org.flatpak.Builder --user --force-clean --install-deps-from flathub \
-  --repo=build/flatpak-current/repo build/flatpak-current/app \
-  build/flatpak-current/io.github.myonctl.KonoKashi.yaml
+  --repo=build/packages-current/flatpak/repo build/packages-current/flatpak/app \
+  build/packages-current/flatpak/io.github.myonctl.KonoKashi.yaml
 flatpak --user remote-add --if-not-exists --no-gpg-verify konokashi-local \
-  build/flatpak-current/repo
+  build/packages-current/flatpak/repo
 flatpak --user install --noninteractive konokashi-local io.github.myonctl.KonoKashi
 ```
 
