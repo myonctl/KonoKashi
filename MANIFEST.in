@@ -2,8 +2,10 @@ include assets/readme/konokashi-demo.gif
 include NATIVE_02_BENCHMARK.md
 include NATIVE_02_CANDIDATE_REVIEW.md
 include WAYLAND_OVERLAY_REVIEW.md
+include setup.sh
 include scripts/__init__.py
 include scripts/benchmark_lrc_native.py
+include scripts/bootstrap_source.py
 include scripts/evaluate_matching.py
 include src/konokashi/native/lrc_parser.hpp
 include src/konokashi/native/wayland_overlay_bindings.cpp

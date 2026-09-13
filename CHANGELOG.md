@@ -6,6 +6,12 @@ All notable user-visible changes are recorded here.
 
 ### Added
 
+- A one-command `./setup.sh` source bootstrap that preflights Linux/Arch/Artix
+  prerequisites without mutating system packages, creates or refreshes one
+  isolated environment, builds native modules, offers user-local desktop
+  integration, runs installation/desktop smoke checks, and prints the launch
+  command.
+
 - Provider-neutral unsynchronized, line, word, and finer-element timing with
   stable nested segment identities, explicit timing provenance, durable storage,
   and frontend-neutral fallback to line synchronization.

@@ -10,12 +10,11 @@ that it may be distributed under those terms. Read `LICENSE` before contributing
 
 ## Development setup
 
-Use Linux and Python 3.11 through 3.14. From a fresh checkout:
+Use Linux and Python 3.11 through 3.14. From a fresh checkout, the same
+non-sudo bootstrap can include contributor tools:
 
 ```bash
-python -m venv .venv
-.venv/bin/python -m pip install --upgrade pip
-.venv/bin/python -m pip install -e '.[dev]'
+./setup.sh --dev --no-desktop-integration
 .venv/bin/konokashi doctor
 ```
 

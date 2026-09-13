@@ -98,26 +98,30 @@ compile PyICU, so install a C++20 compiler, Python and OpenSSL development
 headers, ICU development headers, and `pkg-config` when your distribution does
 not provide compatible wheels.
 
-Until beta.2 passes its release gates, test it from a development checkout:
+Until beta.2 passes its release gates, use the checked-in, non-sudo source setup:
 
 ```bash
 git clone https://github.com/myonctl/KonoKashi.git
 cd KonoKashi
-python -m venv ~/.local/lib/konokashi
-~/.local/lib/konokashi/bin/python -m pip install --upgrade pip
-~/.local/lib/konokashi/bin/python -m pip install .
-~/.local/lib/konokashi/bin/konokashi doctor
-~/.local/lib/konokashi/bin/konokashi desktop-integration install
+./setup.sh
 ```
 
 Launch KonoKashi from the application menu, or run:
 
 ```bash
-~/.local/lib/konokashi/bin/konokashi desktop
+.venv/bin/konokashi desktop
 ```
 
-Removal of the environment leaves your XDG configuration, cache, and lyric
-database intact. A normal-user beta.2 package URL will be documented only after
+The helper checks prerequisites before writing, prints an exact Arch/Artix
+package command when one is confidently known, never invokes `sudo` or a system
+package manager, builds into `.venv`, smoke-tests both native core modules, and
+prints the exact launch command. On an interactive terminal it offers the
+user-local application launcher; use `--desktop-integration` or
+`--no-desktop-integration` to choose explicitly. `./setup.sh --check-only`
+changes nothing, and rerunning the normal command refreshes the same environment.
+
+Removing `.venv` leaves your XDG configuration, cache, and lyric database intact.
+A normal-user beta.2 package URL will be documented only after
 the published artifact has been installed and verified from that exact URL.
 
 Then start an MPRIS player such as Strawberry—or play media through KDE Plasma
