@@ -22,7 +22,7 @@ PKGBUILD_NAME = "PKGBUILD"
 SRCINFO_NAME = ".SRCINFO"
 CANDIDATE_SOURCE_URL = (
     "https://github.com/myonctl/KonoKashi/releases/download/"
-    "v0.1.0-beta.2/konokashi-0.1.0b2.tar.gz"
+    "v0.1.0-beta.2/$pkgname-$_sdistver.tar.gz"
 )
 CANDIDATE_SOURCE_SHA256 = "0" * 64
 
