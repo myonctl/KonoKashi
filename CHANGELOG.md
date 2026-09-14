@@ -9,8 +9,9 @@ All notable user-visible changes are recorded here.
 - Privacy-minimized beta.2 matching evidence from 100 independently confirmed
   real-world recording cases, including hostile browser, multilingual, version,
   duration, duplicate-result, wrong-candidate, and local-sidecar scenarios. The
-  measured safety result is zero wrong automatic accepts; six expected accepts
-  remain conservatively ambiguous and are documented rather than relabeled.
+  measured result is 90/90 correct expected automatic accepts, zero unnecessary
+  ambiguities, and zero wrong automatic accepts after dogfood-driven browser
+  metadata corrections.
 
 - One reproducible package-candidate preparation path that passes the exact same
   source archive and checksum to local AUR and Flatpak validation recipes.
@@ -22,6 +23,10 @@ All notable user-visible changes are recorded here.
   command.
 
 ### Changed
+
+- Dynamic lyric and Review status text now exposes its actual content to screen
+  readers, and the Flatpak grants only the KDE tray-watcher destination needed
+  for the floating-mode click-through recovery item.
 
 - The Flatpak candidate pins the maintained, ABI-aligned KDE/PySide 6.10 pair
   after installed-package testing exposed a Qt private-ABI mismatch on the

@@ -51,6 +51,9 @@ migration still requires a separate bounded review.
   support; neither grants file or bus access.
 - `--talk-name=org.mpris.MediaPlayer2.*`: observe only MPRIS player names on the
   filtered session bus. The unrestricted session-bus socket is not granted.
+- `--talk-name=org.kde.StatusNotifierWatcher`: register the recovery tray item
+  used to unlock click-through floating lyrics on KDE. This is a single known
+  destination, not broad ownership of `org.kde.*` names or session-bus access.
 - `--filesystem=xdg-music:ro`: read audio metadata and adjacent sidecar lyrics
   beneath the user's standard Music directory. The home or host filesystem is
   not exposed.

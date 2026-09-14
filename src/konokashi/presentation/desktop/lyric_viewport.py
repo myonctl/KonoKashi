@@ -113,6 +113,12 @@ class _WrappedLyricLabel(QLabel):
         self._karaoke_base_color = QColor()
         self._karaoke_highlight_color = QColor()
 
+    def setText(self, text: str) -> None:
+        """Keep changing lyric content available to assistive technology."""
+
+        super().setText(text)
+        self._sync_accessible_description()
+
     @property
     def karaoke_segments(self) -> tuple[DesktopKaraokeSegment, ...]:
         return self._karaoke_segments
@@ -121,11 +127,15 @@ class _WrappedLyricLabel(QLabel):
         if segments == self._karaoke_segments:
             return
         self._karaoke_segments = segments
-        self.setAccessibleDescription(
-            "Fine-timed lyric highlighting" if segments else ""
-        )
+        self._sync_accessible_description()
         self._apply_karaoke_palette()
         self.update()
+
+    def _sync_accessible_description(self) -> None:
+        parts = [self.text()]
+        if self._karaoke_segments:
+            parts.append("Fine-timed lyric highlighting")
+        self.setAccessibleDescription(" · ".join(part for part in parts if part))
 
     def set_karaoke_colors(self, base: QColor, highlight: QColor) -> None:
         if (

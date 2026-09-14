@@ -22,6 +22,11 @@ _QUOTE_TRANSLATION = str.maketrans(
     }
 )
 _FEATURING = re.compile(r"\b(?:feat(?:uring)?|ft)\.?\s+", re.IGNORECASE)
+_GROUPED_FEATURING = re.compile(
+    r"[\[(]\s*(?:feat(?:uring)?|ft)\.?\s+"
+    r"(?P<contributors>[^\[\]()]+?)\s*[\])]",
+    re.IGNORECASE,
+)
 _CREDIT_SEPARATOR = re.compile(r"\s*(?:,|[•·]|&|\band\b)\s*", re.IGNORECASE)
 _AMBIGUOUS_TITLE_SEPARATOR = re.compile(r"\s+(?P<separator>[/|:·])\s+")
 _SPACED_DASH_SEPARATOR = re.compile(r"\s+-\s+")
@@ -308,9 +313,19 @@ def parse_youtube_title_candidates(
     cleaned_title = _remove_presentation_suffix(candidate_title)
     transformations.extend(cleaned_title.transformations)
     final_title = cleaned_title.value.strip().strip('"').strip()
-    credit = _FEATURING.search(final_title)
     contributors = list(artist_credit.contributors)
-    if credit is not None and credit.start() > 0:
+    grouped_credit = _GROUPED_FEATURING.search(final_title)
+    if grouped_credit is not None:
+        parsed_contributors = parse_artist_credits(
+            (grouped_credit.group("contributors"),)
+        ).main_artists
+        if parsed_contributors:
+            contributors.extend(parsed_contributors)
+            transformations.append(
+                "preserved parenthesized featured performer credit in title"
+            )
+    credit = _FEATURING.search(final_title)
+    if grouped_credit is None and credit is not None and credit.start() > 0:
         base = final_title[: credit.start()].rstrip()
         suffix = final_title[credit.end() :].strip()
         suffix_version = _TRAILING_GROUP.fullmatch(suffix)
@@ -348,6 +363,40 @@ def parse_youtube_title_candidates(
         ),
     )
     candidates = [primary]
+
+    # A provider artist can itself contain a spaced dash. When its title is then
+    # appended by a browser integration, the exact title appears twice at the
+    # boundary (for example, "Artist - blue - blue"). That repetition is
+    # sufficient evidence for one bounded alternative interpretation; arbitrary
+    # multi-dash titles remain untouched.
+    dash_segments = _SPACED_DASH_SEPARATOR.split(title_text)
+    if len(dash_segments) > 2:
+        repeated_title = _remove_presentation_suffix(dash_segments[-1].strip()).value
+        preceding = dash_segments[-2].strip()
+        if repeated_title and comparison_key(repeated_title) == comparison_key(
+            preceding
+        ):
+            repeated_artist = normalize_artist(" - ".join(dash_segments[:-1]).strip())
+            repeated_credit = parse_artist_credits((repeated_artist.value,))
+            candidates.append(
+                TrackCandidate(
+                    title=repeated_title,
+                    artists=(repeated_artist.value,),
+                    album=None,
+                    duration_us=None,
+                    evidence=(
+                        *primary.evidence,
+                        "repeated title disambiguated a spaced-dash artist boundary",
+                    ),
+                    transformations=(
+                        *primary.transformations,
+                        "retained optional repeated-title boundary interpretation",
+                    ),
+                    strategy=f"{primary.strategy}:optional-repeated-title",
+                    artist_credit=repeated_credit,
+                    field_provenance=primary.field_provenance,
+                )
+            )
     trailing = _TRAILING_GROUP.fullmatch(final_title)
     if trailing is not None and parse_title_version(final_title).qualifier is None:
         base_title = trailing.group("base").strip()

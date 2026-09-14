@@ -208,6 +208,7 @@ class ReviewCorrectionDialog(QDialog):
         status_font.setPointSizeF(max(12.0, status_font.pointSizeF() + 2.0))
         self.current_status.setFont(status_font)
         self.current_status.setAccessibleName("Current lyrics status")
+        self.current_status.setAccessibleDescription(current_heading)
         current_layout.addWidget(self.current_status)
         summary_parts = [
             snapshot.current_lyrics_source or "No lyric source",
@@ -230,9 +231,11 @@ class ReviewCorrectionDialog(QDialog):
             summary_parts.append("Rejected")
         self.current_summary = _plain_label(" · ".join(summary_parts))
         self.current_summary.setAccessibleName("Current lyric source summary")
+        self.current_summary.setAccessibleDescription(self.current_summary.text())
         current_layout.addWidget(self.current_summary)
         self.current_reason = _plain_label(current_reason)
         self.current_reason.setAccessibleName("Why these lyrics are active")
+        self.current_reason.setAccessibleDescription(current_reason)
         current_layout.addWidget(self.current_reason)
 
         primary_actions = QHBoxLayout()
@@ -612,12 +615,18 @@ class ReviewCorrectionDialog(QDialog):
         value = self.translation_lines.currentData()
         if not isinstance(value, TranslationReviewLine):
             self.translation_original.setText("No original lyric line is available.")
+            self.translation_original.setAccessibleDescription(
+                self.translation_original.text()
+            )
             self.translation_edit.clear()
             self.save_translation_button.setEnabled(False)
             self.reset_translation_button.setEnabled(False)
             return
         self.translation_original.setText(
             f"Original ({value.source_line_id}): {value.original_text}"
+        )
+        self.translation_original.setAccessibleDescription(
+            self.translation_original.text()
         )
         self.translation_edit.setText(value.translated_text or "")
         self.save_translation_button.setEnabled(True)

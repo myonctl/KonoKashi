@@ -306,6 +306,8 @@ def test_flatpak_manifest_uses_narrow_runtime_permissions() -> None:
     ).read_text(encoding="utf-8")
 
     assert "--talk-name=org.mpris.MediaPlayer2.*" in manifest
+    assert "--talk-name=org.kde.StatusNotifierWatcher" in manifest
+    assert "--own-name=org.kde.*" not in manifest
     assert "--filesystem=xdg-music:ro" in manifest
     assert "--filesystem=home" not in manifest
     assert "--filesystem=host" not in manifest

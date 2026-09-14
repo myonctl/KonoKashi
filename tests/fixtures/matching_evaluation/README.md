@@ -61,16 +61,17 @@ simultaneous MPRIS services without retaining their playback metadata.
 
 Results through the production resolver were:
 
-- 94/100 cases matched their independent oracle;
-- 84/90 expected provider automatic accepts were correct;
-- 6 expected accepts became conservative ambiguities;
+- 100/100 cases matched their independent oracle;
+- 90/90 expected provider automatic accepts were correct;
+- 0 expected accepts became unnecessary ambiguities;
 - 5/5 deliberately bad-duration cases remained ambiguous;
 - 5/5 local sidecars won without provider access;
 - 0 wrong automatic accepts, 0 misses, and 0 wrong timing trusts.
 
-The six oracle mismatches all fail safe. Five involve feature credits embedded
-in versioned YouTube-style titles and one involves another internal spaced dash;
-the browser parser preserves safety but can become unnecessarily ambiguous.
+The dogfood pass fixed six conservative false ambiguities: parenthesized feature
+credits remain part of provider titles, and an exact repeated-title boundary can
+disambiguate an artist name that itself contains a spaced dash. The minimized
+regressions and full corpus retain zero wrong automatic accepts.
 This deliberately selected hostile corpus is release evidence, not a claim of
 population-wide matching accuracy. Translated artist names were attempted but
 could not be distinguished reliably from ordinary public-database credit

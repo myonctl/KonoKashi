@@ -585,7 +585,8 @@ def test_karaoke_overlay_preserves_plain_wrapped_multiscript_text(
     assert any(color.red() > color.blue() for color in colors_seen)
     assert any(color.blue() > color.red() for color in colors_seen)
     assert label.text() == text
-    assert label.accessibleDescription() == "Fine-timed lyric highlighting"
+    assert label.accessibleName() == "Original current lyric"
+    assert label.accessibleDescription() == (f"{text} · Fine-timed lyric highlighting")
     window.close()
 
 
@@ -1064,10 +1065,17 @@ def test_review_dialog_exposes_bounded_audit_and_explicit_actions(
     assert "LRCLIB #42: overall Medium" in audit.toPlainText()
     assert not audit.isVisible()
     assert dialog.current_status.text() == "Lyrics are ready"
+    assert dialog.current_status.accessibleDescription() == "Lyrics are ready"
     assert "LRCLIB · Provider lyrics · Line synchronized · High confidence" in (
         dialog.current_summary.text()
     )
     assert "strong match" in dialog.current_reason.text()
+    assert dialog.current_summary.accessibleDescription() == (
+        dialog.current_summary.text()
+    )
+    assert dialog.current_reason.accessibleDescription() == (
+        dialog.current_reason.text()
+    )
     assert dialog.lyrics_group.isVisible()
     assert dialog.alternatives.count() == 1
     assert dialog.alternatives.currentIndex() == -1
@@ -1337,6 +1345,9 @@ def test_review_dialog_exposes_routing_layers_and_aligned_translation_actions(
     qt_app.processEvents()
 
     assert dialog.translation_original.text() == "Original (line-0001): 君の声"
+    assert dialog.translation_original.accessibleDescription() == (
+        "Original (line-0001): 君の声"
+    )
     assert dialog.translation_edit.text() == "I hear your voice"
     assert dialog.automatic_language_button.isEnabled()
     audit = dialog.findChild(QPlainTextEdit)

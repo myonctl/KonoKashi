@@ -297,6 +297,42 @@ def test_feature_credit_cleanup_does_not_erase_recording_versions(version: str) 
     assert version in candidate.title
 
 
+def test_parenthesized_feature_credit_remains_part_of_provider_title() -> None:
+    candidate = parse_youtube_title(
+        "Maretu/Hatsune Miku - NYAN (feat. HATSUNE MIKU) (Official Music Video)",
+        (),
+    )
+
+    assert candidate is not None
+    assert candidate.title == "NYAN (feat. HATSUNE MIKU)"
+    assert candidate.artists == ("Maretu/Hatsune Miku",)
+    assert candidate.artist_credit is not None
+    assert candidate.artist_credit.contributors == ("HATSUNE MIKU",)
+
+
+def test_repeated_title_disambiguates_one_internal_spaced_dash_boundary() -> None:
+    candidates = parse_youtube_title_candidates(
+        "Yung Kai - blue - blue (Official Music Video)",
+        (),
+    )
+
+    assert [(item.title, item.artists) for item in candidates] == [
+        ("blue - blue", ("Yung Kai",)),
+        ("blue", ("Yung Kai - blue",)),
+    ]
+    assert candidates[1].strategy.endswith("optional-repeated-title")
+
+
+def test_unrelated_internal_spaced_dash_does_not_add_an_interpretation() -> None:
+    candidates = parse_youtube_title_candidates(
+        "Artist - Long-Term Song - Live at Home",
+        (),
+    )
+
+    assert len(candidates) == 1
+    assert candidates[0].title == "Long-Term Song - Live at Home"
+
+
 @pytest.mark.parametrize(
     "raw_title",
     (
