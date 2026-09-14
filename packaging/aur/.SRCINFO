@@ -31,6 +31,6 @@ pkgbase = konokashi
 	optdepends = pipewire: optional audio timing diagnostics
 	options = !debug
 	source = konokashi-0.1.0b2.tar.gz::https://github.com/myonctl/KonoKashi/releases/download/v0.1.0-beta.2/konokashi-0.1.0b2.tar.gz
-	sha256sums = b8a75b2399371151e8d1162211f351683637d93a7521890bbb62d86be192858f
+	sha256sums = 7c472f70e52da66db00f7d543cb397a6eba2529f712a17b878c5e997ee3f63d9
 
 pkgname = konokashi

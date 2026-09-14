@@ -30,7 +30,7 @@ makedepends=('pybind11' 'python-build' 'python-installer' 'python-setuptools' 'p
 checkdepends=('python-pytest')
 optdepends=('playerctl: optional MPRIS debugging' 'pipewire: optional audio timing diagnostics')
 source=("$pkgname-$_sdistver.tar.gz::https://github.com/myonctl/KonoKashi/releases/download/v0.1.0-beta.2/$pkgname-$_sdistver.tar.gz")
-sha256sums=('b8a75b2399371151e8d1162211f351683637d93a7521890bbb62d86be192858f')
+sha256sums=('7c472f70e52da66db00f7d543cb397a6eba2529f712a17b878c5e997ee3f63d9')
 
 build() {
   cd "$pkgname-$_sdistver"
