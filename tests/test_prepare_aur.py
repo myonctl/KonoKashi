@@ -8,8 +8,8 @@ from pathlib import Path
 import pytest
 from scripts import prepare_aur
 from scripts.prepare_aur import (
-    CANDIDATE_SOURCE_SHA256,
     CANDIDATE_SOURCE_URL,
+    PUBLISHED_SOURCE_SHA256,
     AurPreparationError,
     prepare_aur_candidate,
     render_current_pkgbuild,
@@ -19,7 +19,7 @@ from scripts.prepare_aur import (
 def test_current_pkgbuild_replaces_only_exact_candidate_source() -> None:
     canonical = (
         f"source=('archive::{CANDIDATE_SOURCE_URL}')\n"
-        f"sha256sums=('{CANDIDATE_SOURCE_SHA256}')\n"
+        f"sha256sums=('{PUBLISHED_SOURCE_SHA256}')\n"
     )
 
     rendered = render_current_pkgbuild(
@@ -38,7 +38,7 @@ def test_current_pkgbuild_replaces_only_exact_candidate_source() -> None:
     [
         "pkgname=example\n",
         f"source=('{CANDIDATE_SOURCE_URL}')\n",
-        f"sha256sums=('{CANDIDATE_SOURCE_SHA256}')\n",
+        f"sha256sums=('{PUBLISHED_SOURCE_SHA256}')\n",
     ],
 )
 def test_current_pkgbuild_rejects_drifted_canonical_source(pkgbuild: str) -> None:
@@ -58,7 +58,7 @@ def test_candidate_uses_shared_source_and_generates_matching_srcinfo(
     packaging.mkdir()
     (packaging / "PKGBUILD").write_text(
         f"source=('archive::{CANDIDATE_SOURCE_URL}')\n"
-        f"sha256sums=('{CANDIDATE_SOURCE_SHA256}')\n",
+        f"sha256sums=('{PUBLISHED_SOURCE_SHA256}')\n",
         encoding="utf-8",
     )
     source = tmp_path / "konokashi.tar.gz"
@@ -79,4 +79,4 @@ def test_candidate_uses_shared_source_and_generates_matching_srcinfo(
         encoding="utf-8"
     ) == "pkgbase = konokashi\n"
     assert CANDIDATE_SOURCE_URL not in pkgbuild.read_text(encoding="utf-8")
-    assert CANDIDATE_SOURCE_SHA256 not in pkgbuild.read_text(encoding="utf-8")
+    assert PUBLISHED_SOURCE_SHA256 not in pkgbuild.read_text(encoding="utf-8")

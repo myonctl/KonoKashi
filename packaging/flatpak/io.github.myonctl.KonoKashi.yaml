@@ -81,8 +81,7 @@ modules:
     sources:
       - type: archive
         url: https://github.com/myonctl/KonoKashi/releases/download/v0.1.0-beta.2/konokashi-0.1.0b2.tar.gz
-        # Fail closed until the final beta.2 source commit and sdist are frozen.
-        sha256: 0000000000000000000000000000000000000000000000000000000000000000
+        sha256: ce0966bdf6e7d5f5d4ccce9b231ccd95eeddf3b41ef2d4a5018b8ae0547b4cfb
 
 cleanup-commands:
   - /app/cleanup-BaseApp.sh

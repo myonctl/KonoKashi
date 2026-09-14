@@ -4,17 +4,17 @@ KonoKashi maintains package routes only when their complete runtime dependency
 graph can be built, tested, installed, upgraded, and removed without bypassing
 the target package manager. The current routes are:
 
-- The current source and package candidates identify as unpublished
-  `0.1.0-beta.2`. Until its quality gates pass, the root README documents an
-  explicit source-checkout test path rather than presenting the historical
-  beta.1 archive as current. Beta.2 wheels are platform-specific because of the
+- The current release and package candidates identify as `0.1.0-beta.2`. The
+  root README links the independently installed release Flatpak and the exact
+  source tag rather than presenting the historical beta.1 archive as current.
+  Beta.2 wheels are platform-specific because of the
   bounded native PlaybackClock and LRC parser modules plus the packaged optional
   LayerShellQt surface bridge; source installs require a C++20 toolchain,
   OpenSSL development headers, and the pinned pybind11 build input. Release
   package routes declare LayerShellQt and fail closed if the bridge cannot build.
 
-- [`flatpak/`](flatpak/): a reproducible local-build candidate carrying beta.2
-  identity. Its reserved release URL is not public until beta.2 is released.
+- [`flatpak/`](flatpak/): the reproducible manifest used to build the published
+  beta.2 bundle from its checksum-pinned public release sdist.
 - [`aur/`](aur/): a beta.2 Arch/AUR preparation plus separate package candidates
   for genuine repository gaps. These are not published AUR package bases yet.
 
@@ -39,16 +39,16 @@ The repository evidence can be checked in the official indexes:
   [source-package index](https://src.fedoraproject.org/) are the authoritative
   inventory used for the RPM check.
 
-For a pre-release checkout, prepare both maintained package candidates from one
+For a release or later checkout, prepare both maintained package candidates from one
 twice-built, byte-identical sdist:
 
 ```bash
-python scripts/prepare_packages.py --output-dir build/packages-current
+.venv/bin/python scripts/prepare_packages.py --output-dir build/packages-current
 ```
 
 The command writes a local-checksum AUR recipe under `aur/` and a local-source
 Flatpak manifest under `flatpak/`. Both point to the single archive under
-`artifacts/`; canonical tracked recipes remain fail-closed until publication.
+`artifacts/`; canonical tracked recipes retain the published URL and checksum.
 
 A future native package must keep third-party projects as independently
 reviewable packages, declare every dependency normally, run upstream and

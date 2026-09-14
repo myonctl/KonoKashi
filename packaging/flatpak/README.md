@@ -1,6 +1,6 @@
 # Flatpak candidate
 
-This directory contains the unpublished `0.1.0-beta.2` build candidate, not a
+This directory contains the released `0.1.0-beta.2` direct-build manifest, not a
 Flathub submission. The beta.1 manifest and public artifacts remain historical
 and immutable.
 `io.github.myonctl.KonoKashi` matches the current GitHub repository identity and
@@ -8,13 +8,13 @@ the existing desktop application ID.
 
 The manifest uses the ABI-aligned `org.kde.Platform` and
 `io.qt.PySide.BaseApp` 6.10 branches, generated hash-pinned Python sources, and
-the reserved beta.2 GitHub release-sdist URL. The newer 6.11 pair was rejected
+the checksum-pinned beta.2 GitHub release-sdist URL. The newer 6.11 pair was rejected
 during package testing because the published BaseApp still carried PySide
 6.11.1 after the KDE runtime advanced to Qt 6.11.2; importing `QtCore` then
 failed on its private-ABI symbol. Re-evaluate newer branches only as an aligned
 runtime/BaseApp pair.
-That URL is intentionally unavailable before publication; local candidate builds
-replace it with an exact current-checkout sdist. The manifest installs the
+Local candidate builds replace that public URL with an exact current-checkout
+sdist. The manifest installs the
 PolyForm Noncommercial license explicitly. Preserve the declared
 `PolyForm-Noncommercial-1.0.0` project license and disclose AI-assisted
 packaging as required by the current Flathub generative-AI policy.
@@ -98,10 +98,9 @@ CLI; no host-config bridge is used.
 
 ## Local build
 
-The canonical manifest retains the reserved beta.2 URL with a fail-closed zero
-checksum until the release source is frozen. Before publication, validate the
+The canonical manifest retains the published beta.2 URL and checksum. Validate a
 current checkout by deriving a local manifest from a twice-built, byte-identical
-current sdist; the helper replaces both reserved values with that exact local
+current sdist; the helper replaces both published values with that exact local
 artifact. It also copies the colocated portal bridge source required by the
 manifest. The command changes no tracked file:
 

@@ -2,7 +2,7 @@
 
 All notable user-visible changes are recorded here.
 
-## 0.1.0-beta.2 (unreleased)
+## 0.1.0-beta.2 (2026-09-14)
 
 ### Added
 

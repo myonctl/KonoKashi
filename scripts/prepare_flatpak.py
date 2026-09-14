@@ -25,8 +25,8 @@ CANDIDATE_SOURCE_URL = (
     "https://github.com/myonctl/KonoKashi/releases/download/"
     "v0.1.0-beta.2/konokashi-0.1.0b2.tar.gz"
 )
-CANDIDATE_SOURCE_SHA256 = (
-    "0000000000000000000000000000000000000000000000000000000000000000"
+PUBLISHED_SOURCE_SHA256 = (
+    "ce0966bdf6e7d5f5d4ccce9b231ccd95eeddf3b41ef2d4a5018b8ae0547b4cfb"
 )
 
 
@@ -48,19 +48,19 @@ def render_current_manifest(
     source_uri: str,
     source_sha256: str,
 ) -> str:
-    """Replace only the fail-closed candidate source in the canonical manifest."""
+    """Replace only the published source in the canonical manifest."""
 
     if manifest.count(CANDIDATE_SOURCE_URL) != 1:
         raise FlatpakPreparationError(
             "canonical Flatpak manifest does not contain its exact candidate source URL"
         )
-    if manifest.count(CANDIDATE_SOURCE_SHA256) != 1:
+    if manifest.count(PUBLISHED_SOURCE_SHA256) != 1:
         raise FlatpakPreparationError(
             "canonical Flatpak manifest does not contain its exact candidate "
             "source hash"
         )
     return manifest.replace(CANDIDATE_SOURCE_URL, source_uri).replace(
-        CANDIDATE_SOURCE_SHA256,
+        PUBLISHED_SOURCE_SHA256,
         source_sha256,
     )
 

@@ -86,10 +86,9 @@ included.
 ## Try it
 
 KonoKashi supports Linux with Python 3.11 through 3.14; every advertised version
-is exercised in CI. The current source tree identifies as **0.1.0-beta.2**, which
-is still undergoing its quality program and has not been published. The immutable
-0.1.0-beta.1 artifacts remain available as historical release artifacts, but they
-do not contain the current application described here.
+is exercised in CI. **0.1.0-beta.2** is the current public beta. The immutable
+0.1.0-beta.1 artifacts remain available as historical release artifacts, but
+they do not contain the current application described here.
 
 A desktop session needs a Qt/EGL runtime and session D-Bus. A source install
 compiles KonoKashi's narrow playback-clock and LRC-parser modules and, when its
@@ -98,10 +97,25 @@ compile PyICU, so install a C++20 compiler, Python and OpenSSL development
 headers, ICU development headers, and `pkg-config` when your distribution does
 not provide compatible wheels.
 
-Until beta.2 passes its release gates, use the checked-in, non-sudo source setup:
+For a normal x86-64 Linux desktop, install or replace KonoKashi with the tested
+beta.2 Flatpak bundle. Its embedded runtime-repository reference lets Flatpak
+obtain the required KDE runtime from Flathub:
 
 ```bash
-git clone https://github.com/myonctl/KonoKashi.git
+flatpak install --user --reinstall \
+  https://github.com/myonctl/KonoKashi/releases/download/v0.1.0-beta.2/KonoKashi-0.1.0-beta.2-x86_64.flatpak
+```
+
+The release page publishes `SHA256SUMS`; Flatpak also verifies the bundle's OSTree
+content while installing it. KonoKashi uses a narrow sandbox: Music is read-only,
+MPRIS and KDE's tray watcher are filtered D-Bus destinations, and neither broad
+home access nor the unrestricted session bus is granted.
+
+For a source installation, use the exact release tag and the non-sudo bootstrap:
+
+```bash
+git clone --branch v0.1.0-beta.2 --depth 1 \
+  https://github.com/myonctl/KonoKashi.git
 cd KonoKashi
 ./setup.sh
 ```
@@ -121,12 +135,11 @@ user-local application launcher; use `--desktop-integration` or
 changes nothing, and rerunning the normal command refreshes the same environment.
 
 Removing `.venv` leaves your XDG configuration, cache, and lyric database intact.
-A normal-user beta.2 package URL will be documented only after
-the published artifact has been installed and verified from that exact URL.
 
 Then start an MPRIS player such as Strawberry—or play media through KDE Plasma
-Browser Integration—and KonoKashi will follow the selected source. AUR and
-Flatpak recipes exist for local validation, but neither is published yet. See
+Browser Integration—and KonoKashi will follow the selected source. The Flatpak
+bundle is published directly with this beta rather than through Flathub. The AUR
+recipe remains a validated preparation and has not been submitted. See
 the [packaging status](https://github.com/myonctl/KonoKashi/blob/main/packaging/README.md)
 for validated routes and explicit decisions on later formats.
 
@@ -246,8 +259,8 @@ remain reachable outside the window.
 ## Current status
 
 KonoKashi is usable and under active development. **0.1.0-beta.2** is the current
-development identity and is not published yet. **0.1.0-beta.1** remains the first
-public beta and its tag and artifacts are immutable historical releases.
+public beta. **0.1.0-beta.1** remains the first public beta and its tag and
+artifacts are immutable historical releases.
 
 Linux is the only supported host today. Real-world verification has focused on
 Artix Linux with KDE Plasma, Strawberry, and Plasma Browser Integration. Other
@@ -289,7 +302,8 @@ but does not request or fake blur. See the
   versions while retaining the honest portable fallback elsewhere.
 - Refine terminal lyrics and the stable local event contract through real widget
   and streaming-tool integrations.
-- Stabilize release packaging before any AUR or Flathub submission.
+- Validate the direct Flatpak bundle on more distributions before considering a
+  stable Flathub or AUR submission.
 
 See the concise [backlog](BACKLOG.md) for longer-term direction.
 

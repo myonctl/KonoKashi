@@ -1,10 +1,10 @@
 # AUR preparation
 
-`konokashi` is the sole proposed package. The recipe identifies the unpublished
-`0.1.0-beta.2` candidate as `pkgver=0.1.0beta2`. Its source URL is reserved for
-the future beta.2 GitHub sdist and is intentionally unavailable before release.
-Do not submit the AUR package until the final beta.2 sdist hash replaces the
-fail-closed zero checksum and the public URL has been independently verified.
+`konokashi` is the sole proposed package. The recipe identifies the released
+`0.1.0-beta.2` as `pkgver=0.1.0beta2` and pins its public GitHub sdist checksum.
+Do not submit the AUR package until the remaining separately packaged dependency
+gaps and a clean package-manager installation have independent maintainers and
+verification.
 The beta.1 recipe and its immutable public artifacts remain historical and are
 not reused.
 
@@ -63,12 +63,11 @@ Pacman removal should leave XDG configuration, database, cache, and music intact
 
 ## Local results
 
-The immutable beta.1 source verified against its published SHA-256 during the
-2026-09-11 packaging proof. That proof remains useful historical evidence but is
-not a beta.2 release claim. The beta.2 recipe must repeat source verification,
-`.SRCINFO` comparison, the clean package chain, installed smoke checks, and
-removal-preserves-data checks after the final source is frozen. No `--nodeps` or
-`--nocheck` result qualifies as that proof.
+The beta.2 source verification and `.SRCINFO` comparison pass against its frozen
+release sdist. A normal local build correctly stops at missing package-manager
+dependencies on this host; no `--nodeps` or `--nocheck` result is presented as a
+clean package-chain proof. Complete that clean Arch chroot, installation, and
+removal-preserves-data proof before AUR submission.
 
 Official Arch namcap 3.6.0 reports no findings for the three companion
 PKGBUILDs or their package archives, and no findings for the KonoKashi

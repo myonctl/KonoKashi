@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Prepare an unpublished AUR recipe from one exact current source archive."""
+"""Prepare a local AUR recipe from one exact current source archive."""
 
 from __future__ import annotations
 
@@ -24,7 +24,9 @@ CANDIDATE_SOURCE_URL = (
     "https://github.com/myonctl/KonoKashi/releases/download/"
     "v0.1.0-beta.2/$pkgname-$_sdistver.tar.gz"
 )
-CANDIDATE_SOURCE_SHA256 = "0" * 64
+PUBLISHED_SOURCE_SHA256 = (
+    "ce0966bdf6e7d5f5d4ccce9b231ccd95eeddf3b41ef2d4a5018b8ae0547b4cfb"
+)
 
 
 class AurPreparationError(RuntimeError):
@@ -45,20 +47,20 @@ def render_current_pkgbuild(
     source_name: str,
     source_sha256: str,
 ) -> str:
-    """Replace only the canonical fail-closed source and checksum."""
+    """Replace only the canonical published source and checksum."""
 
     if pkgbuild.count(CANDIDATE_SOURCE_URL) != 1:
         raise AurPreparationError(
             "canonical PKGBUILD does not contain its exact candidate source URL"
         )
-    if pkgbuild.count(CANDIDATE_SOURCE_SHA256) != 1:
+    if pkgbuild.count(PUBLISHED_SOURCE_SHA256) != 1:
         raise AurPreparationError(
             "canonical PKGBUILD does not contain its exact candidate source hash"
         )
     if Path(source_name).name != source_name:
         raise AurPreparationError("package source name must be a plain file name")
     return pkgbuild.replace(CANDIDATE_SOURCE_URL, source_name).replace(
-        CANDIDATE_SOURCE_SHA256,
+        PUBLISHED_SOURCE_SHA256,
         source_sha256,
     )
 

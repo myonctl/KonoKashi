@@ -7,10 +7,10 @@ from pathlib import Path
 import pytest
 from scripts import prepare_flatpak
 from scripts.prepare_flatpak import (
-    CANDIDATE_SOURCE_SHA256,
     CANDIDATE_SOURCE_URL,
     DEPENDENCY_MANIFEST_NAME,
     MANIFEST_NAME,
+    PUBLISHED_SOURCE_SHA256,
     SUPPORT_DIRECTORIES,
     FlatpakPreparationError,
     prepare_flatpak_candidate,
@@ -23,7 +23,7 @@ def test_current_manifest_replaces_only_exact_candidate_source() -> None:
         (
             "id: example",
             f"url: {CANDIDATE_SOURCE_URL}",
-            f"sha256: {CANDIDATE_SOURCE_SHA256}",
+            f"sha256: {PUBLISHED_SOURCE_SHA256}",
             "",
         )
     )
@@ -44,9 +44,9 @@ def test_current_manifest_replaces_only_exact_candidate_source() -> None:
     [
         "id: example\n",
         f"url: {CANDIDATE_SOURCE_URL}\n",
-        f"sha256: {CANDIDATE_SOURCE_SHA256}\n",
+        f"sha256: {PUBLISHED_SOURCE_SHA256}\n",
         f"url: {CANDIDATE_SOURCE_URL}\nurl: {CANDIDATE_SOURCE_URL}\n"
-        f"sha256: {CANDIDATE_SOURCE_SHA256}\n",
+        f"sha256: {PUBLISHED_SOURCE_SHA256}\n",
     ],
 )
 def test_current_manifest_rejects_drifted_or_ambiguous_canonical_source(
@@ -84,7 +84,7 @@ def test_candidate_copies_colocated_manifest_support(
     (bridge / "portal_parent.cpp").write_text("bridge source\n", encoding="utf-8")
     (packaging / DEPENDENCY_MANIFEST_NAME).write_text("[]\n", encoding="utf-8")
     (packaging / MANIFEST_NAME).write_text(
-        f"url: {CANDIDATE_SOURCE_URL}\nsha256: {CANDIDATE_SOURCE_SHA256}\n",
+        f"url: {CANDIDATE_SOURCE_URL}\nsha256: {PUBLISHED_SOURCE_SHA256}\n",
         encoding="utf-8",
     )
 
