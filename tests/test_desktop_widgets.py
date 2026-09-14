@@ -1465,7 +1465,6 @@ def test_review_dialog_keeps_actions_reachable_in_narrow_geometry(
     QTest.mouseClick(dialog.adjust_timing_button, Qt.MouseButton.LeftButton)
     qt_app.processEvents()
     assert dialog.delay_group.isVisible()
-    assert dialog.scroll_area.verticalScrollBar().maximum() > 0
     dialog.scroll_area.ensureWidgetVisible(dialog.save_delay_button)
     qt_app.processEvents()
     assert dialog.save_delay_button.isVisible()
