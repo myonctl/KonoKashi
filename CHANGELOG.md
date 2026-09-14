@@ -6,6 +6,12 @@ All notable user-visible changes are recorded here.
 
 ### Added
 
+- Privacy-minimized beta.2 matching evidence from 100 independently confirmed
+  real-world recording cases, including hostile browser, multilingual, version,
+  duration, duplicate-result, wrong-candidate, and local-sidecar scenarios. The
+  measured safety result is zero wrong automatic accepts; six expected accepts
+  remain conservatively ambiguous and are documented rather than relabeled.
+
 - One reproducible package-candidate preparation path that passes the exact same
   source archive and checksum to local AUR and Flatpak validation recipes.
 

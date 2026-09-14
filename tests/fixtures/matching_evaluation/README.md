@@ -39,3 +39,39 @@ copyright-safe fragment or keep the entire case outside Git.
 
 Corpus schema 1 is demonstrated by the committed fixture. Grow the ignored corpus
 toward 100, 250, and 500 hostile cases; report only counts actually replayed.
+
+## Beta.2 empirical snapshot
+
+On 2026-09-14, beta.2 was replayed against 100 minimized cases in the ignored
+private corpus. The source identities came from public LRCLIB records and were
+independently confirmed by MusicBrainz (the first 33 accepted cases) or the
+iTunes Search metadata API (the remaining 67) using normalized title, related
+artist credit, and recording duration within two seconds. Provider lyric text
+was replaced immediately with one invented line while preserving only whether
+plain, synchronized, or instrumental content existed. URLs and local paths were
+replaced with stable synthetic identities.
+
+The snapshot covered 25 browser/YouTube-shaped cases, 75 local-file-shaped
+cases, 14 Vocaloid cases, 5 anime-song cases, 8 non-Latin-title cases, 11 feature
+credits, 10 remixes, 4 covers, 7 radio edits, 6 live versions, 45 artist-name
+variants, 28 duplicate-title sets, 28 multi-result searches with wrong
+candidates present, 5 bad-duration cases, and 5 local-sidecar overrides. All 100
+omitted album metadata. An installed-package live check separately observed two
+simultaneous MPRIS services without retaining their playback metadata.
+
+Results through the production resolver were:
+
+- 94/100 cases matched their independent oracle;
+- 84/90 expected provider automatic accepts were correct;
+- 6 expected accepts became conservative ambiguities;
+- 5/5 deliberately bad-duration cases remained ambiguous;
+- 5/5 local sidecars won without provider access;
+- 0 wrong automatic accepts, 0 misses, and 0 wrong timing trusts.
+
+The six oracle mismatches all fail safe. Five involve feature credits embedded
+in versioned YouTube-style titles and one involves another internal spaced dash;
+the browser parser preserves safety but can become unnecessarily ambiguous.
+This deliberately selected hostile corpus is release evidence, not a claim of
+population-wide matching accuracy. Translated artist names were attempted but
+could not be distinguished reliably from ordinary public-database credit
+variants, so only the broader artist-name-variant count is claimed.
