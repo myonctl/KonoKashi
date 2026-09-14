@@ -186,7 +186,11 @@ def _sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
-def _verify_contents(artifacts: dict[str, Path]) -> None:
+def _verify_contents(
+    artifacts: dict[str, Path],
+    *,
+    require_wayland: bool = True,
+) -> None:
     wheel = next(path for name, path in artifacts.items() if name.endswith(".whl"))
     source = next(path for name, path in artifacts.items() if name.endswith(".tar.gz"))
     with zipfile.ZipFile(wheel) as archive:
@@ -213,7 +217,12 @@ def _verify_contents(artifacts: dict[str, Path]) -> None:
         for suffix in REQUIRED_WHEEL_SUFFIXES
         if not any(name.endswith(suffix) for name in wheel_names)
     ]
-    for label, prefix in REQUIRED_WHEEL_NATIVE_MODULES.items():
+    required_native_modules = {
+        label: prefix
+        for label, prefix in REQUIRED_WHEEL_NATIVE_MODULES.items()
+        if require_wayland or label != "Wayland overlay"
+    }
+    for label, prefix in required_native_modules.items():
         native_modules = [
             name
             for name in wheel_names
@@ -264,9 +273,15 @@ def build_release(output_directory: Path, *, force: bool = False) -> tuple[Path,
             "PYTHONHASHSEED": "0",
             "TZ": "UTC",
             "LC_ALL": "C.UTF-8",
-            "KONOKASHI_LAYER_SHELL": "required",
         }
     )
+    environment.setdefault("KONOKASHI_LAYER_SHELL", "required")
+    require_wayland = environment["KONOKASHI_LAYER_SHELL"].strip().lower() not in {
+        "0",
+        "false",
+        "no",
+        "off",
+    }
     with (
         tempfile.TemporaryDirectory(prefix="konokashi-release-a-") as first_name,
         tempfile.TemporaryDirectory(prefix="konokashi-release-b-") as second_name,
@@ -286,7 +301,7 @@ def build_release(output_directory: Path, *, force: bool = False) -> tuple[Path,
             raise ReleaseBuildError(
                 "repeated builds were not byte-identical: " + ", ".join(mismatched)
             )
-        _verify_contents(first)
+        _verify_contents(first, require_wayland=require_wayland)
         resolved_output = output_directory.expanduser().resolve()
         resolved_output.mkdir(parents=True, exist_ok=True)
         destinations = tuple(resolved_output / name for name in sorted(first))

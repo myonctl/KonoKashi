@@ -62,6 +62,11 @@ jobs:
       - name: Install release build tools
         run: python -m pip install ".[dev]"
       - name: Build and compare release artifacts
+        env:
+          # Ubuntu 24.04 only packages the Qt 5 LayerShellQt SDK. The generic
+          # CI wheel remains valid without the capability-gated bridge; the
+          # Flatpak and AUR release builds require and verify the Qt 6 bridge.
+          KONOKASHI_LAYER_SHELL: "off"
         run: python scripts/build_release.py --output-dir /tmp/konokashi-dist
       - name: Validate AppStream metadata
         run: appstreamcli validate --pedantic --no-net src/konokashi/resources/io.github.myonctl.KonoKashi.metainfo.xml
