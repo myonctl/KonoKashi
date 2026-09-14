@@ -26,7 +26,7 @@ CANDIDATE_SOURCE_URL = (
     "v0.1.0-beta.2/konokashi-0.1.0b2.tar.gz"
 )
 PUBLISHED_SOURCE_SHA256 = (
-    "ce0966bdf6e7d5f5d4ccce9b231ccd95eeddf3b41ef2d4a5018b8ae0547b4cfb"
+    "b8a75b2399371151e8d1162211f351683637d93a7521890bbb62d86be192858f"
 )
 
 
