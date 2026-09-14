@@ -102,8 +102,10 @@ beta.2 Flatpak bundle. Its embedded runtime-repository reference lets Flatpak
 obtain the required KDE runtime from Flathub:
 
 ```bash
-flatpak install --user --reinstall \
+curl --fail --location --output /tmp/KonoKashi-0.1.0-beta.2-x86_64.flatpak \
   https://github.com/myonctl/KonoKashi/releases/download/v0.1.0-beta.2/KonoKashi-0.1.0-beta.2-x86_64.flatpak
+flatpak install --user --reinstall \
+  /tmp/KonoKashi-0.1.0-beta.2-x86_64.flatpak
 ```
 
 The release page publishes `SHA256SUMS`; Flatpak also verifies the bundle's OSTree

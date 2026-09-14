@@ -197,6 +197,14 @@ def test_readme_distinguishes_current_beta2_from_historical_beta1() -> None:
     assert "0.1.0-beta.1 artifacts remain available as historical" in content
     assert "v0.1.0-beta.1/konokashi-0.1.0b1.tar.gz" not in content
     assert "KonoKashi-0.1.0-beta.2-x86_64.flatpak" in content
+    assert "curl --fail --location --output /tmp/KonoKashi" in content
+    assert (
+        "flatpak install --user --reinstall \\\n"
+        "  /tmp/KonoKashi-0.1.0-beta.2-x86_64.flatpak"
+    ) in content
+    assert (
+        "flatpak install --user --reinstall \\\n  https://github.com/"
+    ) not in content
     assert "git clone --branch v0.1.0-beta.2 --depth 1" in content
 
 
