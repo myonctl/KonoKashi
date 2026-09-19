@@ -128,6 +128,7 @@ def _build(output: Path, environment: dict[str, str], epoch: int) -> None:
             ignore=shutil.ignore_patterns(
                 ".git",
                 ".maintainer-private",
+                ".matching-evaluation-private",
                 ".release-readiness-work",
                 ".venv",
                 ".mypy_cache",

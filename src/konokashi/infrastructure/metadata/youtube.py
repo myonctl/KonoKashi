@@ -39,6 +39,19 @@ _MAX_DESCRIPTION_LINES = 200
 _MAX_FIELD_CHARS = 300
 _MAX_CACHED_TEXT_CHARS = 512
 _TIMEOUT_SECONDS = 12.0
+_PRINT_FIELDS = (
+    "id",
+    "title",
+    "uploader",
+    "channel",
+    "duration",
+    "track",
+    "artist",
+    "artists",
+    "album",
+    "description",
+)
+_PRINT_TEMPLATE = "\t".join(f"%({field})j" for field in _PRINT_FIELDS)
 
 MetadataCommand = Callable[[tuple[str, ...], float, int, Event], bytes]
 
@@ -201,7 +214,8 @@ class YtDlpYouTubeMetadataEnricher:
             self._executable,
             "--ignore-config",
             "--skip-download",
-            "--dump-single-json",
+            "--print",
+            _PRINT_TEMPLATE,
             "--no-playlist",
             "--no-warnings",
             "--no-progress",
@@ -288,7 +302,7 @@ def _extract_payload(
 ) -> tuple[TrackCandidate, ...]:
     if len(payload) > _MAX_STDOUT_BYTES:
         raise ValueError("yt-dlp metadata response exceeds the accepted size")
-    value = json.loads(payload)
+    value = _decode_metadata_fields(payload)
     if not isinstance(value, dict) or value.get("id") != identity.video_id:
         raise ValueError("yt-dlp metadata identity does not match the requested video")
     title = _bounded_string(value.get("title"), _MAX_FIELD_CHARS)
@@ -331,6 +345,24 @@ def _extract_payload(
             )
         )
     return _deduplicate_candidates(candidates)
+
+
+def _decode_metadata_fields(payload: bytes) -> dict[str, Any]:
+    """Accept yt-dlp's bounded field output and legacy test JSON payloads."""
+
+    decoded = payload.decode("utf-8")
+    if decoded.lstrip().startswith("{"):
+        value = json.loads(decoded)
+        if not isinstance(value, dict):
+            raise ValueError("yt-dlp metadata response is not an object")
+        return value
+    fields = decoded.rstrip("\r\n").split("\t")
+    if len(fields) != len(_PRINT_FIELDS):
+        raise ValueError("yt-dlp metadata field count does not match the template")
+    return {
+        name: None if field == "NA" else json.loads(field)
+        for name, field in zip(_PRINT_FIELDS, fields, strict=True)
+    }
 
 
 def _structured_music_candidate(

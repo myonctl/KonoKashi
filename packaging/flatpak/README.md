@@ -43,9 +43,10 @@ migration still requires a separate bounded review.
 ## Permissions
 
 - `--share=network`: query configured LRCLIB/Unison sources when local lyrics and
-  cache miss, and contact
-  YouTube only after the user selects **Use YouTube metadata** for the current
-  confirmed public video.
+  cache miss, and retrieve metadata for a confirmed public YouTube video when
+  its first automatic match lacks reliable music identity. This automatic
+  enrichment can be disabled in Settings; the explicit **Use YouTube metadata**
+  action remains available.
 - `--socket=wayland` and `--socket=fallback-x11`: display the Qt desktop UI.
 - `--share=ipc` and `--device=dri`: Qt/X11 shared-memory and accelerated display
   support; neither grants file or bus access.

@@ -12,6 +12,7 @@ import pytest
 
 from konokashi.domain.lyrics import ProviderCacheEntry
 from konokashi.infrastructure.metadata.youtube import (
+    _PRINT_TEMPLATE,
     YtDlpYouTubeMetadataEnricher,
 )
 from tests.stage2_helpers import resolver, snapshot
@@ -84,7 +85,8 @@ def test_metadata_only_command_and_native_description_extraction() -> None:
     assert argv[0] == "yt-dlp"
     assert "--ignore-config" in argv
     assert "--skip-download" in argv
-    assert "--dump-single-json" in argv
+    assert "--print" in argv
+    assert argv[argv.index("--print") + 1] == _PRINT_TEMPLATE
     assert "--no-cookies" in argv
     assert "--no-cookies-from-browser" in argv
     assert "--no-netrc" not in argv
@@ -114,7 +116,8 @@ def test_installed_yt_dlp_accepts_the_privacy_safe_metadata_flags() -> None:
             executable,
             "--ignore-config",
             "--skip-download",
-            "--dump-single-json",
+            "--print",
+            _PRINT_TEMPLATE,
             "--no-playlist",
             "--no-warnings",
             "--no-progress",
@@ -129,6 +132,40 @@ def test_installed_yt_dlp_accepts_the_privacy_safe_metadata_flags() -> None:
     )
 
     assert completed.returncode == 0, completed.stderr
+
+
+def test_fields_only_yt_dlp_output_parses_missing_values_without_full_json() -> None:
+    cache = _Cache()
+
+    def command(
+        _argv: tuple[str, ...],
+        _timeout: float,
+        _limit: int,
+        _cancelled: Event,
+    ) -> bytes:
+        fields = (
+            json.dumps(VIDEO_ID),
+            json.dumps("Luce sul mare (Official Video)"),
+            json.dumps("Example Records"),
+            "NA",
+            json.dumps(198.0),
+            json.dumps("Luce sul mare"),
+            json.dumps("Cantante Fittizia"),
+            "NA",
+            "NA",
+            json.dumps("Artist: Cantante Fittizia"),
+        )
+        return "\t".join(fields).encode()
+
+    result = YtDlpYouTubeMetadataEnricher(
+        cache, now=lambda: NOW, command=command
+    ).enrich(_android_track())
+
+    assert result.candidates
+    assert result.candidates[0].title == "Luce sul mare"
+    assert result.candidates[0].artists == ("Cantante Fittizia",)
+    assert result.candidates[0].duration_us == 198_000_000
+    assert result.network_used is True
 
 
 def test_enrichment_reports_latency_without_exposing_metadata_values() -> None:

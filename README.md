@@ -205,6 +205,8 @@ mode uses only an existing metadata cache entry, including an expired sanitized
 entry when no network refresh is possible. Matching still requires an
 independent provider result and does not treat the uploader as the musical
 artist.
+The metadata command requests only the fields needed for interpretation; it
+does not retain yt-dlp's large format/subtitle catalogue.
 Ambiguous video-title separators can produce at most two extra artist/title
 interpretations. Those delimiter-only guesses retain the original MPRIS title
 and uploader evidence, are searched at Low identity confidence, and cannot by
