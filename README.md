@@ -205,6 +205,12 @@ Ambiguous video-title separators can produce at most two extra artist/title
 interpretations. Those delimiter-only guesses retain the original MPRIS title
 and uploader evidence, are searched at Low identity confidence, and cannot by
 themselves authorize an automatic lyric match.
+The provider search ladder starts with the strongest interpretation, then tries
+each distinct alternative before broader fallbacks, with a 16-step cap. Weak
+delimiter-only hypotheses never trigger broad catalogue expansion.
+When a local transliterator supplies a phonetic title alias, at most two aliases
+are queried before the base-title fallback; the original title remains the
+recording identity used for scoring.
 
 Open **Review lyrics** from the active lyric view to understand the current
 source or repair its match, identity, offset, translation, lyric text, or line

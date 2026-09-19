@@ -11,6 +11,7 @@ from time import monotonic, sleep
 from konokashi.application.resolve_lyrics import (
     LyricsResolver,
     LyricsSearchRequest,
+    _candidate_search_plan,
     provider_cache_key,
 )
 from konokashi.application.resolve_track import with_youtube_metadata_candidates
@@ -334,6 +335,71 @@ def test_uncorroborated_pipe_hypothesis_is_searchable_but_not_auto_accepted(
         LyricsResolutionStatus.FOUND_TIMED,
         LyricsResolutionStatus.FOUND_UNTIMED,
     )
+
+
+def test_query_ladder_bounds_and_deduplicates_alternative_interpretations() -> None:
+    primary = LyricsQuery(
+        "Song (Radio Edit)",
+        ("Artist",),
+        "Album",
+        180_000,
+        strategy="youtube-title:spaced dash",
+    )
+    alternatives = tuple(
+        LyricsQuery(
+            f"Alternate {index}",
+            ("Artist",),
+            None,
+            180_000,
+            source_confidence="Low",
+            strategy=f"youtube-title:hypothesis:{index}",
+        )
+        for index in range(20)
+    )
+
+    plan = _candidate_search_plan((primary, *alternatives, alternatives[0]))
+
+    assert len(plan) == 16
+    assert [(strategy, query.title) for strategy, query, _ in plan[:4]] == [
+        ("normalized title and artist", "Song (Radio Edit)"),
+        ("base title and artist", "Song"),
+        ("broader artist catalogue", "Song (Radio Edit)"),
+        ("normalized title and artist", "Alternate 0"),
+    ]
+    assert all(not query.broad for _strategy, query, _ in plan[3:])
+    assert len({query.title for _strategy, query, _ in plan[3:]}) == 13
+
+
+def test_query_ladder_tries_bounded_phonetic_alias_before_base_fallback() -> None:
+    query = LyricsQuery("アンドロイドガール (Radio Edit)", ("DECO*27",), None, 215_000)
+
+    plan = _candidate_search_plan(
+        (query,),
+        title_aliases=lambda _title: (
+            "andoroidogaru (Radio Edit)",
+            "andoroidogaru edit",
+            "unbounded third alias",
+        ),
+    )
+
+    assert [strategy for strategy, _search, _assessment in plan] == [
+        "normalized title and artist",
+        "phonetic title alias and artist",
+        "phonetic title alias and artist",
+        "base title and artist",
+        "broader artist catalogue",
+    ]
+    assert all(assessment is query for _strategy, _search, assessment in plan)
+
+
+def test_query_ladder_deduplicates_unicode_punctuation_spellings() -> None:
+    first = LyricsQuery("Long — Term", ("Artist",), None, 200_000)
+    equivalent = LyricsQuery("Long - Term", ("Artist",), None, 200_000)
+
+    plan = _candidate_search_plan((first, equivalent))
+
+    assert len(plan) == 2
+    assert [query.broad for _strategy, query, _assessment in plan] == [False, True]
 
 
 def test_user_approved_match_outranks_local_and_network(tmp_path: Path) -> None:
@@ -1656,7 +1722,8 @@ def test_broad_artist_catalogue_can_resolve_cross_script_phonetic_title(
     assert result.status is LyricsResolutionStatus.FOUND_TIMED
     assert result.document is not None
     assert result.document.source_title == "アンドロイドガール"
-    assert [query.broad for query in provider.search_queries] == [False, True]
+    assert [query.broad for query in provider.search_queries] == [False, False, True]
+    assert provider.search_queries[1].title == "andoroidogaru"
     assert "transliteration" in " ".join(result.evidence)
     assert "broader artist catalogue" in " ".join(result.diagnostics)
 

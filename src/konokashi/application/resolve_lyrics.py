@@ -40,7 +40,12 @@ from konokashi.domain.lyrics import (
     ProviderCacheEntry,
 )
 from konokashi.domain.lyrics_matching import CandidateMatchAssessment, assess_candidate
-from konokashi.domain.normalization import parse_artist_credits, parse_title_version
+from konokashi.domain.normalization import (
+    comparison_key,
+    normalize_text,
+    parse_artist_credits,
+    parse_title_version,
+)
 from konokashi.domain.tracks import ResolvedTrack, TrackCandidate, semantic_duration_us
 
 _CONFIDENCE_RANK = {
@@ -52,6 +57,7 @@ _CONFIDENCE_RANK = {
 _RESULTS_CACHE_TTL = timedelta(days=7)
 _NO_RESULT_CACHE_TTL = timedelta(hours=12)
 _MAX_PARALLEL_PROVIDERS = 4
+_MAX_PROVIDER_SEARCH_STEPS = 16
 # A 2026-09-12 privacy-safe sample of the two default public providers produced
 # healthy request durations of 113-395 ms and a largest cross-provider gap of
 # 259 ms (one additional request returned HTTP 503). Four hundred milliseconds
@@ -339,7 +345,9 @@ class LyricsResolver:
                 "exact provider lookup skipped; missing " + ", ".join(missing)
             )
 
-        for strategy, search_query, assessment_query in _candidate_search_plan(queries):
+        for strategy, search_query, assessment_query in _candidate_search_plan(
+            queries, title_aliases=self._title_aliases
+        ):
             diagnostics.append(
                 f"provider strategy: {strategy} "
                 f"[interpretation: {assessment_query.strategy}]"
@@ -620,7 +628,11 @@ class LyricsResolver:
                 f"exact {exact_skip_context} lookup skipped because artist, album, "
                 "or duration is missing"
             )
-        plan = _candidate_search_plan(queries) if search_plan is None else search_plan
+        plan = (
+            _candidate_search_plan(queries, title_aliases=self._title_aliases)
+            if search_plan is None
+            else search_plan
+        )
         for strategy, search_query, assessment_query in plan:
             diagnostics.append(
                 f"provider strategy: {strategy} "
@@ -1307,10 +1319,33 @@ def _manual_queries(
     )
 
 
-def _search_queries(query: LyricsQuery) -> tuple[tuple[str, LyricsQuery], ...]:
+def _search_queries(
+    query: LyricsQuery,
+    *,
+    title_aliases: Callable[[str], tuple[str, ...]] | None = None,
+) -> tuple[tuple[str, LyricsQuery], ...]:
     """Build bounded normalized, base-title, then broad provider strategies."""
 
     strategies: list[tuple[str, LyricsQuery]] = [("normalized title and artist", query)]
+    if query.source_confidence == "Low":
+        # Delimiter-only hypotheses are discovery evidence, not a licence to
+        # expand a weak identity across a provider's broad catalogue.
+        return tuple(strategies)
+    if title_aliases is not None:
+        for alias in title_aliases(query.title)[:2]:
+            cleaned = " ".join(alias.split())
+            if (
+                cleaned
+                and len(cleaned) <= 160
+                and comparison_key(cleaned)
+                and comparison_key(cleaned) != comparison_key(query.title)
+            ):
+                strategies.append(
+                    (
+                        "phonetic title alias and artist",
+                        replace(query, title=cleaned, album=None),
+                    )
+                )
     title = parse_title_version(query.title)
     if title.qualifier is not None and title.base_title != query.title:
         strategies.append(
@@ -1327,25 +1362,58 @@ def _search_queries(query: LyricsQuery) -> tuple[tuple[str, LyricsQuery], ...]:
 
 def _candidate_search_plan(
     queries: Sequence[LyricsQuery],
+    *,
+    title_aliases: Callable[[str], tuple[str, ...]] | None = None,
 ) -> tuple[tuple[str, LyricsQuery, LyricsQuery], ...]:
-    """Build bounded lookups while retaining each scoring interpretation."""
+    """Try the strongest ladder, then every alternative before broadening it."""
 
     plan: list[tuple[str, LyricsQuery, LyricsQuery]] = []
     seen: set[tuple[object, ...]] = set()
-    for assessment_query in queries:
-        for strategy, search_query in _search_queries(assessment_query):
-            key = (
-                search_query.title,
-                search_query.artists,
-                search_query.album,
-                search_query.duration_ms,
-                search_query.broad,
-                assessment_query.main_artists,
-                assessment_query.contributors,
-            )
-            if key not in seen:
-                seen.add(key)
-                plan.append((strategy, search_query, assessment_query))
+
+    def append(
+        assessment_query: LyricsQuery, strategy: str, search_query: LyricsQuery
+    ) -> None:
+        if len(plan) >= _MAX_PROVIDER_SEARCH_STEPS:
+            return
+        key = (
+            normalize_text(search_query.title).value.casefold(),
+            tuple(
+                normalize_text(artist).value.casefold()
+                for artist in search_query.artists
+            ),
+            (
+                normalize_text(search_query.album).value.casefold()
+                if search_query.album
+                else None
+            ),
+            search_query.duration_ms,
+            search_query.broad,
+            assessment_query.main_artists,
+            assessment_query.contributors,
+        )
+        if key not in seen:
+            seen.add(key)
+            plan.append((strategy, search_query, assessment_query))
+
+    if not queries:
+        return ()
+    for strategy, search_query in _search_queries(
+        queries[0], title_aliases=title_aliases
+    ):
+        append(queries[0], strategy, search_query)
+    alternatives = tuple(
+        (
+            assessment_query,
+            _search_queries(assessment_query, title_aliases=title_aliases),
+        )
+        for assessment_query in queries[1:]
+    )
+    for assessment_query, strategies in alternatives:
+        strategy, search_query = strategies[0]
+        append(assessment_query, strategy, search_query)
+    for assessment_query, strategies in alternatives:
+        for strategy, search_query in strategies[1:]:
+            append(assessment_query, strategy, search_query)
     return tuple(plan)
 
 
