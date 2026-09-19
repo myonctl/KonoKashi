@@ -170,6 +170,44 @@ class LyricsResolver:
             provider_title_aliases=self._title_aliases(candidate.track_name),
         )
 
+    def _assess_across(
+        self,
+        queries: Sequence[LyricsQuery],
+        candidate: LyricsProviderCandidate,
+        *,
+        retrieved_by: str,
+    ) -> CandidateMatchAssessment:
+        """Let provider evidence select the strongest supported interpretation."""
+
+        provider_title_aliases = self._title_aliases(candidate.track_name)
+        best_query, best = min(
+            (
+                (
+                    query,
+                    assess_candidate(
+                        query,
+                        candidate,
+                        provider_title_aliases=provider_title_aliases,
+                    ),
+                )
+                for query in queries
+            ),
+            key=lambda item: _assessment_sort_key(item[1]),
+        )
+        provenance = ", ".join(
+            f"{field}={source}" for field, source in best_query.provenance
+        )
+        return replace(
+            best,
+            evidence=(
+                *best.evidence,
+                f"recording hypothesis: {best.query_strategy}",
+                *((f"hypothesis provenance: {provenance}",) if provenance else ()),
+                f"provider result retrieved by {retrieved_by}",
+                f"evaluated against {len(queries)} recording interpretation(s)",
+            ),
+        )
+
     def resolve(
         self,
         track: ResolvedTrack,
@@ -307,7 +345,7 @@ class LyricsResolver:
                 refresh=refresh,
                 evidence_sufficient=partial(
                     self._results_are_sufficient,
-                    query,
+                    queries,
                     rejected_document_ids=rejected_document_ids,
                 ),
                 observations=diagnostics,
@@ -318,7 +356,9 @@ class LyricsResolver:
                 diagnostics.extend(exact.diagnostics)
                 if exact.status is LyricsProviderStatus.RESULTS:
                     all_assessments.extend(
-                        self._assess(query, candidate)
+                        self._assess_across(
+                            queries, candidate, retrieved_by="exact primary lookup"
+                        )
                         for candidate in exact.candidates
                         if self._provider_documents.document_id(candidate)
                         not in rejected_document_ids
@@ -362,7 +402,7 @@ class LyricsResolver:
                 refresh=False if offline else refresh,
                 evidence_sufficient=partial(
                     self._results_are_sufficient,
-                    assessment_query,
+                    queries,
                     rejected_document_ids=rejected_document_ids,
                 ),
                 observations=diagnostics,
@@ -374,7 +414,11 @@ class LyricsResolver:
                 strategy_candidates += len(search.candidates)
                 if search.status is LyricsProviderStatus.RESULTS:
                     all_assessments.extend(
-                        self._assess(assessment_query, candidate)
+                        self._assess_across(
+                            queries,
+                            candidate,
+                            retrieved_by=f"{strategy} ({assessment_query.strategy})",
+                        )
                         for candidate in search.candidates
                         if self._provider_documents.document_id(candidate)
                         not in rejected_document_ids
@@ -619,7 +663,10 @@ class LyricsResolver:
                 diagnostics.extend(exact.diagnostics)
                 if exact.status is LyricsProviderStatus.RESULTS:
                     assessments.extend(
-                        self._assess(query, candidate) for candidate in exact.candidates
+                        self._assess_across(
+                            queries, candidate, retrieved_by="exact primary lookup"
+                        )
+                        for candidate in exact.candidates
                     )
                 elif exact.status is not LyricsProviderStatus.NO_RESULT:
                     diagnostics.append(f"exact lookup ended as {exact.status.value}")
@@ -651,7 +698,11 @@ class LyricsResolver:
                 diagnostics.extend(search.diagnostics)
                 if search.status is LyricsProviderStatus.RESULTS:
                     assessments.extend(
-                        self._assess(assessment_query, candidate)
+                        self._assess_across(
+                            queries,
+                            candidate,
+                            retrieved_by=f"{strategy} ({assessment_query.strategy})",
+                        )
                         for candidate in search.candidates
                     )
                 elif search.status is not LyricsProviderStatus.NO_RESULT:
@@ -817,12 +868,12 @@ class LyricsResolver:
 
     def _results_are_sufficient(
         self,
-        query: LyricsQuery,
+        queries: Sequence[LyricsQuery],
         outcomes: Sequence[tuple[LyricsProviderResult, bool, bool]],
         rejected_document_ids: set[str],
     ) -> bool:
         assessments = [
-            self._assess(query, candidate)
+            self._assess_across(queries, candidate, retrieved_by="provider evidence")
             for result, _cached, _network in outcomes
             if result.status is LyricsProviderStatus.RESULTS
             for candidate in result.candidates
@@ -1388,8 +1439,6 @@ def _candidate_search_plan(
             ),
             search_query.duration_ms,
             search_query.broad,
-            assessment_query.main_artists,
-            assessment_query.contributors,
         )
         if key not in seen:
             seen.add(key)
@@ -1476,6 +1525,7 @@ def _title_relation_rank(assessment: CandidateMatchAssessment) -> int:
 def _assessment_diagnostic(assessment: CandidateMatchAssessment) -> str:
     return (
         f"candidate {assessment.candidate.record_id}: "
+        f"interpretation={assessment.query_strategy}, "
         f"overall={assessment.confidence.value}, "
         f"title={assessment.title_relation}, "
         f"text={assessment.text_confidence.value}, "

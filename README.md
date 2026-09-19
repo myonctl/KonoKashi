@@ -211,6 +211,10 @@ delimiter-only hypotheses never trigger broad catalogue expansion.
 When a local transliterator supplies a phonetic title alias, at most two aliases
 are queried before the base-title fallback; the original title remains the
 recording identity used for scoring.
+Each provider result is evaluated against the bounded recording interpretations,
+even when a different interpretation's query retrieved it. The selected
+hypothesis, field provenance, and retrieval strategy remain in match evidence;
+Low-confidence delimiter guesses still cannot authorize an automatic match.
 
 Open **Review lyrics** from the active lyric view to understand the current
 source or repair its match, identity, offset, translation, lyric text, or line

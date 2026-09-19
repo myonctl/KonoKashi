@@ -337,6 +337,75 @@ def test_uncorroborated_pipe_hypothesis_is_searchable_but_not_auto_accepted(
     )
 
 
+def test_provider_candidate_can_corroborate_an_alternate_recording_hypothesis(
+    tmp_path: Path,
+) -> None:
+    class PrimaryOnlyProvider(_FakeProvider):
+        def search(self, query: LyricsQuery) -> LyricsProviderResult:
+            self.search_queries.append(query)
+            if query.title != "Misleading Caption" or query.broad:
+                return LyricsProviderResult(LyricsProviderStatus.NO_RESULT)
+            return LyricsProviderResult(
+                LyricsProviderStatus.RESULTS,
+                (
+                    _candidate(
+                        "alternate-recording",
+                        title="Luce sul mare",
+                        artist="Cantante Fittizia",
+                        album=None,
+                        duration_ms=198_000,
+                    ),
+                ),
+            )
+
+    track = _track(
+        title="Misleading Caption",
+        artists=("Uploader Channel",),
+        album=None,
+        duration_us=198_000_000,
+    )
+    alternate = TrackCandidate(
+        "Luce sul mare",
+        ("Cantante Fittizia",),
+        None,
+        198_000_000,
+        strategy="youtube-enrichment:music-fields",
+        identity_confidence=Confidence.MEDIUM,
+        field_provenance=(
+            ("title", "youtube_track"),
+            ("artists", "youtube_artists"),
+        ),
+    )
+    track = replace(
+        track,
+        interpretation_candidates=(track.candidate, alternate),
+    )
+    provider = PrimaryOnlyProvider()
+
+    result = _resolver(tmp_path / "cross-hypothesis.db", provider).resolve(track)
+
+    assert result.status is LyricsResolutionStatus.FOUND_TIMED
+    assert result.document is not None
+    assert result.document.source_title == "Luce sul mare"
+    assert track.raw_snapshot.metadata.title == "Misleading Caption"
+    assert provider.search_queries[0].title == "Misleading Caption"
+    assert "provider result retrieved by" in " ".join(result.evidence)
+    assert "youtube-enrichment:music-fields" in " ".join(result.diagnostics)
+
+    uncorroborated = replace(
+        track,
+        interpretation_candidates=(
+            track.candidate,
+            replace(alternate, identity_confidence=Confidence.LOW),
+        ),
+    )
+    weak_result = _resolver(
+        tmp_path / "cross-hypothesis-low.db", PrimaryOnlyProvider()
+    ).resolve(uncorroborated)
+    assert weak_result.status is LyricsResolutionStatus.AMBIGUOUS
+    assert weak_result.document is None
+
+
 def test_query_ladder_bounds_and_deduplicates_alternative_interpretations() -> None:
     primary = LyricsQuery(
         "Song (Radio Edit)",
@@ -400,6 +469,21 @@ def test_query_ladder_deduplicates_unicode_punctuation_spellings() -> None:
 
     assert len(plan) == 2
     assert [query.broad for _strategy, query, _assessment in plan] == [False, True]
+
+
+def test_query_ladder_deduplicates_provider_request_across_credit_hypotheses() -> None:
+    first = LyricsQuery("Song", ("Artist",), None, 200_000)
+    different_credit = replace(
+        first,
+        main_artists=("Artist",),
+        contributors=("Guest",),
+        strategy="featured-credit-hypothesis",
+    )
+
+    plan = _candidate_search_plan((first, different_credit))
+
+    assert len(plan) == 2
+    assert all(assessment is first for _strategy, _search, assessment in plan)
 
 
 def test_user_approved_match_outranks_local_and_network(tmp_path: Path) -> None:
