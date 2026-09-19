@@ -215,6 +215,10 @@ Each provider result is evaluated against the bounded recording interpretations,
 even when a different interpretation's query retrieved it. The selected
 hypothesis, field provenance, and retrieval strategy remain in match evidence;
 Low-confidence delimiter guesses still cannot authorize an automatic match.
+Recording qualifiers are kept intact for matching and timing decisions. Live,
+remix, cover, radio edit, remaster year, sped-up/slowed, nightcore, karaoke,
+instrumental, and named-language versions are not treated as interchangeable
+merely because their base titles and durations agree.
 
 Open **Review lyrics** from the active lyric view to understand the current
 source or repair its match, identity, offset, translation, lyric text, or line

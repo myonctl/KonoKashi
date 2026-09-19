@@ -256,6 +256,13 @@ def test_low_source_confidence_caps_automatic_candidate() -> None:
         ("Song (Live)", "Song"),
         ("Song (Remix)", "Song"),
         ("Song (Instrumental)", "Song"),
+        ("Song (Original)", "Song (Cover)"),
+        ("Song (Karaoke)", "Song"),
+        ("Song (Sped Up)", "Song"),
+        ("Song (Slowed + Reverb)", "Song"),
+        ("Song (Nightcore)", "Song"),
+        ("Song (Japanese Version)", "Song (English Version)"),
+        ("Song (Remastered 2025)", "Song (Remastered 2024)"),
     ],
 )
 def test_incompatible_or_content_changing_versions_do_not_inherit_automatically(
@@ -272,6 +279,53 @@ def test_incompatible_or_content_changing_versions_do_not_inherit_automatically(
     )
 
     assert assessment.confidence is LyricsMatchConfidence.LOW
+
+
+@pytest.mark.parametrize(
+    "title",
+    (
+        "Song (Karaoke)",
+        "Song (Sped Up)",
+        "Song (Slowed + Reverb)",
+        "Song (Nightcore)",
+        "Song (Remastered 2025)",
+        "Song (Japanese Version)",
+    ),
+)
+def test_exact_version_can_still_match_when_title_artist_and_duration_agree(
+    title: str,
+) -> None:
+    assessment = assess_candidate(
+        LyricsQuery(title, ("Artist",), None, 180_000),
+        _candidate(title=title, artist="Artist", album=None, duration_ms=180_000),
+    )
+
+    assert assessment.confidence is LyricsMatchConfidence.HIGH
+
+
+@pytest.mark.parametrize(
+    ("local_title", "provider_title"),
+    (
+        ("Song (Remastered 2025)", "Song (Remastered 2024)"),
+        ("Song (Japanese Version)", "Song (English Version)"),
+        ("Song (Producer Remix)", "Song (Other Remix)"),
+    ),
+)
+def test_specific_version_qualifiers_are_not_interchangeable(
+    local_title: str, provider_title: str
+) -> None:
+    assessment = assess_candidate(
+        LyricsQuery(local_title, ("Artist",), None, 180_000),
+        _candidate(
+            title=provider_title,
+            artist="Artist",
+            album=None,
+            duration_ms=180_000,
+        ),
+    )
+
+    assert assessment.confidence is LyricsMatchConfidence.LOW
+    assert "recording version qualifiers conflict" in assessment.evidence
 
 
 def test_raw_exact_title_relation_outranks_normalized_equivalence() -> None:

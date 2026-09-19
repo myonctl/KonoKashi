@@ -58,9 +58,13 @@ _PRESENTATION_BARE = re.compile(
 _TOPIC_SUFFIX = re.compile(r"\s+-\s+.+?\s+-\s+topic\s*$", re.IGNORECASE)
 _VERSION_GROUP = re.compile(r"^(?P<base>.+?)\s*[\[(](?P<qualifier>[^\[\]()]+)[\])]\s*$")
 _VERSION_QUALIFIER = re.compile(
-    r"^(?:radio\s+(?:edit|version)|edit|extended\s+mix|original\s+mix|"
-    r"(?:.+?\s+)?remix|(?:\d{4}\s+)?remaster(?:ed)?|live|acoustic|"
-    r"instrumental|demo|vip|cover|club\s+mix|single\s+version|album\s+version)$",
+    r"^(?:radio\s+(?:edit|version)|edit|extended\s+mix|original(?:\s+mix)?|"
+    r"(?:.+?\s+)?remix|(?:\d{4}\s+)?remaster(?:ed)?(?:\s+\d{4})?|"
+    r"live|acoustic|instrumental|karaoke|demo|vip|cover|nightcore|"
+    r"(?:sped|speed)\s*[- ]\s*up|slowed(?:\s+down)?(?:\s*\+\s*reverb)?|"
+    r"club\s+mix|single\s+version|album\s+version|"
+    r"(?:english|japanese|korean|chinese|mandarin|cantonese|spanish|"
+    r"french|german|italian|portuguese|alternate\s+language)\s+version)$",
     re.IGNORECASE,
 )
 

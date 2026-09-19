@@ -118,6 +118,13 @@ def test_musically_meaningful_version_markers_are_preserved(
         ("Song (2024 Remastered)", "Song", "2024 Remastered"),
         ("Song (Live)", "Song", "Live"),
         ("Song (VIP)", "Song", "VIP"),
+        ("Song (Original)", "Song", "Original"),
+        ("Song (Remastered 2025)", "Song", "Remastered 2025"),
+        ("Song (Karaoke)", "Song", "Karaoke"),
+        ("Song (Sped Up)", "Song", "Sped Up"),
+        ("Song (Slowed + Reverb)", "Song", "Slowed + Reverb"),
+        ("Song (Nightcore)", "Song", "Nightcore"),
+        ("Song (Japanese Version)", "Song", "Japanese Version"),
     ],
 )
 def test_structural_recording_qualifier_preserves_raw_base_and_qualifier(

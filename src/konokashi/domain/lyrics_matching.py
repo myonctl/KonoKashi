@@ -22,6 +22,7 @@ _VERSION_MARKERS = (
     "radio version",
     "edit",
     "extended mix",
+    "original",
     "original mix",
     "remix",
     "remaster",
@@ -29,6 +30,7 @@ _VERSION_MARKERS = (
     "acoustic",
     "live",
     "instrumental",
+    "karaoke",
     "demo",
     "vip",
     "cover",
@@ -36,6 +38,22 @@ _VERSION_MARKERS = (
     "single version",
     "album version",
     "nightcore",
+    "sped up",
+    "speed up",
+    "slowed",
+    "slowed down",
+    "english version",
+    "japanese version",
+    "korean version",
+    "chinese version",
+    "mandarin version",
+    "cantonese version",
+    "spanish version",
+    "french version",
+    "german version",
+    "italian version",
+    "portuguese version",
+    "alternate language version",
 )
 _BASE_FALLBACK_QUALIFIERS = frozenset(
     {"radio edit", "radio version", "edit", "single version", "album version"}
@@ -134,7 +152,7 @@ def assess_candidate(
 
     query_versions = _version_markers(query.title)
     provider_versions = _version_markers(candidate.track_name)
-    version_compatible = query_versions == provider_versions
+    markers_compatible = query_versions == provider_versions
     duration_difference: int | None = None
     duration_compatible = False
     if query.duration_ms is not None and candidate.duration_ms is not None:
@@ -159,6 +177,12 @@ def assess_candidate(
         if provider_version.qualifier is None
         else comparison_key(provider_version.qualifier)
     )
+    qualifiers_conflict = (
+        query_qualifier is not None
+        and provider_qualifier is not None
+        and query_qualifier != provider_qualifier
+    )
+    version_compatible = markers_compatible and not qualifiers_conflict
     safe_base_fallback = (
         base_equal
         and query_qualifier in _BASE_FALLBACK_QUALIFIERS
@@ -174,8 +198,10 @@ def assess_candidate(
         evidence.append(
             "provider title is unqualified; recording timing is evaluated separately"
         )
-    elif not version_compatible:
+    if not safe_base_fallback and not markers_compatible:
         evidence.append("recording version markers conflict")
+    if qualifiers_conflict:
+        evidence.append("recording version qualifiers conflict")
 
     phonetic_similarity = max(
         (
