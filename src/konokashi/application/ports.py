@@ -352,6 +352,9 @@ class SettingsRepositoryPort(Protocol):
     def put_desktop_interaction(self, settings: DesktopInteractionSettings) -> None:
         """Persist opt-in desktop interaction mechanics."""
 
+    def get_automatic_web_metadata(self) -> bool:
+        """Whether inadequate public web playback may fetch metadata only."""
+
 
 class LyricsRepositoryPort(Protocol):
     """Store provider-neutral lyric documents without resolving providers."""

@@ -131,6 +131,47 @@ def test_cached_sanitized_metadata_avoids_second_command() -> None:
     assert calls == 1
 
 
+def test_explicit_music_fields_survive_cache_without_treating_uploader_as_artist() -> (
+    None
+):
+    cache = _Cache()
+
+    def command(
+        _argv: tuple[str, ...],
+        _timeout: float,
+        _limit: int,
+        _cancelled: Event,
+    ) -> bytes:
+        return json.dumps(
+            {
+                "id": VIDEO_ID,
+                "title": "Luce sul mare - YouTube",
+                "uploader": "Example Records",
+                "track": "Luce sul mare",
+                "artists": ["Cantante Fittizia"],
+                "album": "Album di prova",
+                "duration": 198.0,
+            }
+        ).encode()
+
+    enricher = YtDlpYouTubeMetadataEnricher(cache, now=lambda: NOW, command=command)
+    first = enricher.enrich(_android_track())
+    second = enricher.enrich(_android_track())
+
+    assert first.candidates
+    assert first.candidates[0].title == "Luce sul mare"
+    assert first.candidates[0].artists == ("Cantante Fittizia",)
+    assert first.candidates[0].album == "Album di prova"
+    assert first.candidates[0].field_provenance[:3] == (
+        ("title", "youtube_track"),
+        ("artists", "youtube_artists"),
+        ("album", "youtube_album"),
+    )
+    assert second.candidates == first.candidates
+    assert second.cache_hit and not second.network_used
+    assert b"Example Records" in cache.puts[0].payload
+
+
 def test_missing_tool_identity_mismatch_and_offline_fail_safely() -> None:
     cache = _Cache()
 

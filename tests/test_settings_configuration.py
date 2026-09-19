@@ -55,7 +55,7 @@ def test_xdg_path_uses_absolute_override_and_home_fallback(tmp_path: Path) -> No
 
 
 def test_schema_has_stable_complete_metadata() -> None:
-    assert len(SETTINGS_SCHEMA) == len(SETTINGS_BY_KEY) == 84
+    assert len(SETTINGS_SCHEMA) == len(SETTINGS_BY_KEY) == 85
     assert {item.scope for item in SETTINGS_SCHEMA} == {
         SettingScope.GLOBAL,
         SettingScope.DESKTOP,
@@ -75,6 +75,7 @@ def test_schema_has_stable_complete_metadata() -> None:
         "lyrics.display.romanized",
         "lyrics.display.translated",
         "lyrics.sources.preferred",
+        "lyrics.web_media.automatic_metadata",
         "desktop.lyrics.selectable",
         "library.roots",
         "library.automatic_downloads",
@@ -103,6 +104,7 @@ def test_missing_empty_and_unicode_config_are_valid(tmp_path: Path) -> None:
     missing = _service(tmp_path / "missing.toml")
     assert missing.current.player_selection == PlayerSelectionConfig()
     assert missing.current.lyrics_sources.providers == ("LRCLIB", "Unison")
+    assert missing.get_automatic_web_metadata() is True
     empty_path = tmp_path / "empty.toml"
     empty_path.write_text("", encoding="utf-8")
     assert _service(empty_path).current.library == LibrarySettings()
@@ -114,6 +116,19 @@ def test_missing_empty_and_unicode_config_are_valid(tmp_path: Path) -> None:
     assert _service(unicode_path).get_player_selection().preferred_players == (
         "音楽プレイヤー",
     )
+
+
+def test_automatic_web_metadata_can_be_disabled_without_disabling_lyrics(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "config.toml"
+    path.write_text(
+        "schema_version = 1\n[lyrics.web_media]\nautomatic_metadata = false\n",
+        encoding="utf-8",
+    )
+    service = _service(path)
+    assert service.get_automatic_web_metadata() is False
+    assert service.current.lyrics_sources.providers == ("LRCLIB", "Unison")
 
 
 def test_malformed_toml_retains_default_last_known_good(tmp_path: Path) -> None:

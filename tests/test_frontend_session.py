@@ -66,6 +66,9 @@ class _Selection:
 
 
 class _Lyrics:
+    has_online_providers = True
+    cancellation_generation = 0
+
     def __init__(self, track: ResolvedTrack) -> None:
         self.result = LyricsResolutionResult(
             track.source_identity,
@@ -73,7 +76,7 @@ class _Lyrics:
             document=document(),
         )
 
-    def resolve(self, track, *, offline=False, refresh=False):  # type: ignore[no-untyped-def]
+    def resolve(self, track, *, offline=False, refresh=False, expected_generation=None):  # type: ignore[no-untyped-def]
         assert track.source_identity == self.result.source_identity
         assert offline is False
         assert refresh is False
@@ -129,6 +132,7 @@ class _Settings:
         self.player_writes = []
         self.display = RepresentationDisplaySettings(True, True, False)
         self.interactions = DesktopInteractionSettings()
+        self.automatic_web_metadata = True
 
     def get_player_selection(self):  # type: ignore[no-untyped-def]
         return self.player
@@ -148,6 +152,9 @@ class _Settings:
 
     def put_desktop_interaction(self, value):  # type: ignore[no-untyped-def]
         self.interactions = value
+
+    def get_automatic_web_metadata(self) -> bool:
+        return self.automatic_web_metadata
 
 
 class _Timing:
@@ -220,6 +227,151 @@ def test_frontend_session_combines_existing_services_without_adapter_values() ->
     assert settings.interactions == interactions
     service.cancel_inflight()
     assert cancellations == ["cancelled"]
+
+
+def test_inadequate_youtube_resolution_enriches_and_retries_automatically() -> None:
+    initial = _track()
+    weak = replace(
+        initial,
+        candidate=TrackCandidate("Luce sul mare", (), None, 198_000_000),
+        confidence=Confidence.LOW,
+        interpretation_candidates=(
+            TrackCandidate("Luce sul mare", (), None, 198_000_000),
+        ),
+    )
+    native = TrackCandidate(
+        "Luce sul mare",
+        ("Cantante Fittizia",),
+        None,
+        198_000_000,
+        strategy="youtube-enrichment:labelled-description",
+    )
+
+    class Lyrics:
+        has_online_providers = True
+        cancellation_generation = 0
+
+        calls: list[ResolvedTrack]
+
+        def __init__(self) -> None:
+            self.calls = []
+
+        def resolve(
+            self, track, *, offline=False, refresh=False, expected_generation=None
+        ):  # type: ignore[no-untyped-def]
+            self.calls.append(track)
+            if not any(
+                candidate.identity_confidence is Confidence.MEDIUM
+                for candidate in track.interpretation_candidates
+            ):
+                return LyricsResolutionResult(
+                    track.source_identity,
+                    LyricsResolutionStatus.NO_RESULT,
+                    diagnostics=("initial query missed",),
+                    network_used=True,
+                )
+            return LyricsResolutionResult(
+                track.source_identity,
+                LyricsResolutionStatus.FOUND_TIMED,
+                document=document(),
+                diagnostics=("enriched query succeeded",),
+                cache_hit=True,
+            )
+
+    class Enricher:
+        calls = 0
+
+        def enrich(self, track, **kwargs):  # type: ignore[no-untyped-def]
+            self.calls += 1
+            assert track is weak
+            assert kwargs == {"offline": False, "refresh": False}
+            return YouTubeMetadataEnrichmentResult(
+                weak.source_identity,  # type: ignore[arg-type]
+                (native,),
+                ("metadata-only enrichment",),
+                network_used=True,
+            )
+
+    lyrics = Lyrics()
+    enricher = Enricher()
+    settings = _Settings()
+    service = FrontendSessionService(
+        _Selection(weak),  # type: ignore[arg-type]
+        lyrics,  # type: ignore[arg-type]
+        _Representations(),  # type: ignore[arg-type]
+        settings,  # type: ignore[arg-type]
+        _Timing(),  # type: ignore[arg-type]
+        object(),  # type: ignore[arg-type]
+        youtube_metadata=enricher,  # type: ignore[arg-type]
+    )
+
+    bundle = service.load_track(weak)
+
+    assert len(lyrics.calls) == 2
+    assert enricher.calls == 1
+    assert bundle.resolution.status is LyricsResolutionStatus.FOUND_TIMED
+    assert bundle.resolution.cache_hit and bundle.resolution.network_used
+    assert bundle.resolution.diagnostics == (
+        "initial query missed",
+        "metadata-only enrichment",
+        "enriched query succeeded",
+    )
+    assert bundle.track.candidate == weak.candidate
+    assert bundle.track.raw_snapshot == weak.raw_snapshot
+    assert bundle.track.interpretation_candidates[-1].identity_confidence is (
+        Confidence.MEDIUM
+    )
+    settings.automatic_web_metadata = False
+    disabled = service.load_track(weak)
+    assert disabled.resolution.document is None
+    assert len(lyrics.calls) == 3
+    assert enricher.calls == 1
+    settings.automatic_web_metadata = True
+    lyrics.has_online_providers = False
+    no_provider = service.load_track(weak)
+    assert no_provider.resolution.document is None
+    assert enricher.calls == 1
+
+
+def test_superseded_youtube_enrichment_cannot_start_a_stale_provider_retry() -> None:
+    track = _track()
+    calls: list[str] = []
+    service: FrontendSessionService
+
+    class Lyrics:
+        has_online_providers = True
+        cancellation_generation = 0
+
+        def resolve(self, _track, **_kwargs):  # type: ignore[no-untyped-def]
+            calls.append("lyrics")
+            return LyricsResolutionResult(
+                track.source_identity, LyricsResolutionStatus.NO_RESULT
+            )
+
+    class Enricher:
+        def enrich(self, _track, **_kwargs):  # type: ignore[no-untyped-def]
+            calls.append("enrichment")
+            service.cancel_inflight()
+            return YouTubeMetadataEnrichmentResult(
+                track.source_identity,  # type: ignore[arg-type]
+                (TrackCandidate("Song", ("Artist",), None, 5_000_000),),
+            )
+
+    service = FrontendSessionService(
+        _Selection(track),  # type: ignore[arg-type]
+        Lyrics(),  # type: ignore[arg-type]
+        _Representations(),  # type: ignore[arg-type]
+        _Settings(),  # type: ignore[arg-type]
+        _Timing(),  # type: ignore[arg-type]
+        object(),  # type: ignore[arg-type]
+        lambda: calls.append("cancelled"),
+        Enricher(),  # type: ignore[arg-type]
+    )
+
+    result = service.load_track(track)
+
+    assert result.resolution.document is None
+    assert calls == ["lyrics", "enrichment", "cancelled"]
 
 
 def test_opening_review_builds_audit_without_requesting_provider_alternatives() -> None:

@@ -240,6 +240,18 @@ SETTINGS_SCHEMA: tuple[SettingDefinition, ...] = (
         choices=("LRCLIB", "Unison"),
     ),
     SettingDefinition(
+        "lyrics.web_media.automatic_metadata",
+        SettingType.BOOLEAN,
+        True,
+        SettingScope.GLOBAL,
+        ReloadBehavior.NEXT_OPERATION,
+        "Automatically improve metadata for web media",
+        SettingCategory.LYRICS,
+        "When a public YouTube video's first lyric lookup is insufficient, fetch "
+        "bounded video metadata without downloading media, using cookies, or "
+        "reading browser profiles.",
+    ),
+    SettingDefinition(
         "desktop.lyrics.selectable",
         SettingType.BOOLEAN,
         False,

@@ -125,6 +125,12 @@ class LyricsResolver:
         self._cancellation_lock = Lock()
         self._cancellation_generation = 0
 
+    @property
+    def has_online_providers(self) -> bool:
+        """Whether metadata enrichment can lead to an online lyric lookup."""
+
+        return bool(self._providers)
+
     def cancel_inflight(self) -> None:
         """Cancel every provider request that exposes the optional cancellation API."""
 
@@ -138,6 +144,12 @@ class LyricsResolver:
     def _cancellation_token(self) -> int:
         with self._cancellation_lock:
             return self._cancellation_generation
+
+    @property
+    def cancellation_generation(self) -> int:
+        """Token a multi-step caller can keep across an enrichment retry."""
+
+        return self._cancellation_token()
 
     def _is_current(self, token: int) -> bool:
         with self._cancellation_lock:
@@ -153,11 +165,22 @@ class LyricsResolver:
         )
 
     def resolve(
-        self, track: ResolvedTrack, *, offline: bool = False, refresh: bool = False
+        self,
+        track: ResolvedTrack,
+        *,
+        offline: bool = False,
+        refresh: bool = False,
+        expected_generation: int | None = None,
     ) -> LyricsResolutionResult:
         """Resolve lyrics without letting network or refresh displace approved data."""
 
-        cancellation_token = self._cancellation_token()
+        cancellation_token = (
+            self._cancellation_token()
+            if expected_generation is None
+            else expected_generation
+        )
+        if not self._is_current(cancellation_token):
+            return self._cancelled_resolution(track, [], False)
         source = track.source_identity
         diagnostics: list[str] = []
         invalid_local_seen = False
@@ -1218,7 +1241,7 @@ def _candidate_query(
         artists,
         candidate.album if candidate.album else None,
         None if duration is None else (duration + 500) // 1000,
-        source_confidence=track.confidence.value,
+        source_confidence=(candidate.identity_confidence or track.confidence).value,
         main_artists=() if credit is None else credit.main_artists,
         contributors=() if credit is None else credit.contributors,
         strategy=candidate.strategy,

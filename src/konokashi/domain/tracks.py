@@ -61,6 +61,7 @@ class TrackCandidate:
     strategy: str = "reported-mpris"
     artist_credit: ArtistCredit | None = None
     field_provenance: tuple[tuple[str, str], ...] = field(default_factory=tuple)
+    identity_confidence: Confidence | None = None
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "duration_us", semantic_duration_us(self.duration_us))

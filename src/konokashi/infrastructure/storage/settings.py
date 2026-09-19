@@ -212,3 +212,8 @@ class SQLiteSettingsRepository:
                 """,
                 (int(settings.allow_lyric_selection), utc_now_text()),
             )
+
+    def get_automatic_web_metadata(self) -> bool:
+        """Legacy settings adapter retains the public-web metadata default."""
+
+        return True

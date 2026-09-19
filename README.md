@@ -190,6 +190,18 @@ On a cache miss, each enabled source receives only the provider-safe resolved
 title, musical artist, and available album/duration—not the local media path,
 raw MPRIS URL, player identity, or playback history.
 
+When a confirmed public YouTube video still has no trustworthy lyrics after
+that first pass, KonoKashi can automatically request metadata for that one video
+using `yt-dlp`. This is enabled by default through **Automatically improve
+metadata for web media** (`lyrics.web_media.automatic_metadata`); turn it off to
+disable automatic YouTube metadata requests. The request uses the video ID and
+public metadata only: no audio/video download, browser profile, cookies,
+authentication, or playlist traversal. A bounded, sanitized interpretation is
+cached locally for three days; the full description is not retained. Offline
+mode uses only an existing metadata cache entry. Matching still requires an
+independent provider result and does not treat the uploader as the musical
+artist.
+
 Open **Review lyrics** from the active lyric view to understand the current
 source or repair its match, identity, offset, translation, lyric text, or line
 timing. Opening Review does not contact providers; **Find different lyrics** is

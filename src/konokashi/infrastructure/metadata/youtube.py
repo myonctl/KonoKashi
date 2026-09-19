@@ -266,6 +266,9 @@ def _extract_payload(
         if item.strip()
     )
     candidates: list[TrackCandidate] = []
+    structured = _structured_music_candidate(value, duration_us, uploader)
+    if structured is not None:
+        candidates.append(structured)
     if title is not None:
         candidates.extend(
             _with_enrichment_context(
@@ -286,6 +289,55 @@ def _extract_payload(
             )
         )
     return _deduplicate_candidates(candidates)
+
+
+def _structured_music_candidate(
+    value: dict[str, Any], duration_us: int | None, uploader: str | None
+) -> TrackCandidate | None:
+    """Use explicit music fields, never a channel/uploader as an artist fallback."""
+
+    title = _bounded_string(value.get("track"), _MAX_FIELD_CHARS)
+    raw_artists = value.get("artists")
+    artists = (
+        tuple(
+            artist
+            for item in raw_artists[:8]
+            if (artist := _bounded_string(item, _MAX_FIELD_CHARS)) is not None
+        )
+        if isinstance(raw_artists, list)
+        else ()
+    )
+    if not artists:
+        artist = _bounded_string(value.get("artist"), _MAX_FIELD_CHARS)
+        artists = () if artist is None else (artist,)
+    credit = parse_artist_credits(artists)
+    if title is None or not credit.main_artists:
+        return None
+    album = _bounded_string(value.get("album"), _MAX_FIELD_CHARS)
+    provenance = [("title", "youtube_track"), ("artists", "youtube_artists")]
+    if album:
+        provenance.append(("album", "youtube_album"))
+    if uploader:
+        provenance.append(("uploader", "youtube_uploader"))
+    if duration_us:
+        provenance.append(("duration", "youtube_metadata"))
+    return TrackCandidate(
+        title,
+        (" & ".join(credit.main_artists),),
+        album,
+        duration_us,
+        (
+            "YouTube exposed explicit music track and artist fields",
+            *(
+                (f"preserved YouTube uploader evidence: {uploader}",)
+                if uploader
+                else ()
+            ),
+        ),
+        strategy="youtube-enrichment:structured-music-fields",
+        artist_credit=credit,
+        field_provenance=tuple(provenance),
+    )
 
 
 def _description_candidates(
@@ -439,6 +491,7 @@ def _sanitized_payload(candidates: tuple[TrackCandidate, ...]) -> bytes:
         {
             "title": item.title,
             "artists": item.artists,
+            "album": item.album,
             "duration_us": item.duration_us,
             "evidence": item.evidence,
             "transformations": item.transformations,
@@ -468,10 +521,13 @@ def _parse_sanitized_cache(payload: bytes) -> tuple[TrackCandidate, ...]:
             raise ValueError("invalid sanitized YouTube metadata cache")
         title = item.get("title")
         artists = item.get("artists")
+        album = item.get("album")
         duration_us = item.get("duration_us")
         if (
             not isinstance(title, str)
             or len(title) > _MAX_FIELD_CHARS
+            or not isinstance(album, str | type(None))
+            or (isinstance(album, str) and len(album) > _MAX_FIELD_CHARS)
             or not isinstance(duration_us, int | type(None))
             or isinstance(duration_us, bool)
         ):
@@ -500,7 +556,7 @@ def _parse_sanitized_cache(payload: bytes) -> tuple[TrackCandidate, ...]:
             TrackCandidate(
                 title,
                 artist_values,
-                None,
+                album,
                 duration_us,
                 evidence,
                 transformations,

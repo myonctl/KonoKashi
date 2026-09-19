@@ -274,6 +274,9 @@ class CanonicalSettingsService:
     def put_desktop_interaction(self, settings: DesktopInteractionSettings) -> None:
         self.set("desktop.lyrics.selectable", settings.allow_lyric_selection)
 
+    def get_automatic_web_metadata(self) -> bool:
+        return bool(self.current.get("lyrics.web_media.automatic_metadata"))
+
     def get_library(self) -> LibrarySettings:
         return self.current.library
 

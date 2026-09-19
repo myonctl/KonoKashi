@@ -13,6 +13,7 @@ from konokashi.application.resolve_lyrics import (
     LyricsSearchRequest,
     provider_cache_key,
 )
+from konokashi.application.resolve_track import with_youtube_metadata_candidates
 from konokashi.domain.identity import LocalFileIdentity, YouTubeIdentity
 from konokashi.domain.lyrics import (
     ApprovalState,
@@ -47,6 +48,8 @@ from konokashi.infrastructure.lyrics.provider_documents import (
     ProviderLyricDocumentBuilder,
 )
 from konokashi.infrastructure.storage.bootstrap import open_storage
+from tests.stage2_helpers import resolver as track_resolver
+from tests.stage2_helpers import snapshot
 
 NOW = datetime(2026, 8, 13, 14, tzinfo=UTC)
 
@@ -224,6 +227,72 @@ def _resolver(
         sleeper=lambda _seconds: None,
         title_aliases=(title_aliases if callable(title_aliases) else None),
         evidence_window_seconds=evidence_window_seconds,
+    )
+
+
+def test_enriched_youtube_identity_finds_lrclib_without_uploader_as_artist(
+    tmp_path: Path,
+) -> None:
+    source_resolver, _overrides = track_resolver()
+    track = source_resolver.resolve(
+        snapshot(
+            "browser",
+            title="Luce sul mare (Official Video) - YouTube",
+            artists=("Example Records",),
+            url="https://www.youtube.com/watch?v=AbCdEfGhI12",
+            duration_us=198_000_000,
+        )
+    )
+    provider = _FakeProvider(
+        search=LyricsProviderResult(
+            LyricsProviderStatus.RESULTS,
+            (
+                _candidate(
+                    title="Luce sul mare",
+                    artist="Cantante Fittizia",
+                    album=None,
+                    duration_ms=198_000,
+                ),
+            ),
+        )
+    )
+    resolver = _resolver(tmp_path / "youtube-miss.db", provider)
+
+    missed = resolver.resolve(track)
+    assert missed.status is LyricsResolutionStatus.NO_RESULT
+    assert provider.search_queries == []
+
+    enriched = with_youtube_metadata_candidates(
+        track,
+        (
+            TrackCandidate(
+                "Luce sul mare",
+                ("Cantante Fittizia",),
+                None,
+                198_000_000,
+                strategy="youtube-enrichment:labelled-description",
+                field_provenance=(
+                    ("title", "youtube_description"),
+                    ("artists", "youtube_credit"),
+                ),
+            ),
+        ),
+    )
+    stale_generation = resolver.cancellation_generation
+    resolver.cancel_inflight()
+    stale = resolver.resolve(enriched, expected_generation=stale_generation)
+    assert stale.status is LyricsResolutionStatus.NO_RESULT
+    assert provider.search_queries == []
+    found = resolver.resolve(enriched)
+
+    assert found.status is LyricsResolutionStatus.FOUND_TIMED
+    assert found.confidence is LyricsMatchConfidence.HIGH
+    assert enriched.candidate == track.candidate
+    assert enriched.raw_snapshot == track.raw_snapshot
+    assert provider.search_queries[0].artists == ("Cantante Fittizia",)
+    assert provider.search_queries[0].source_confidence == "Medium"
+    assert all(
+        "Example Records" not in query.artists for query in provider.search_queries
     )
 
 

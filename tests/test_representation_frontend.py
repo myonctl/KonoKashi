@@ -107,12 +107,19 @@ def _track() -> ResolvedTrack:
 
 
 class _Lyrics:
+    cancellation_generation = 0
+
     def __init__(self, document: LyricDocument, track: ResolvedTrack) -> None:
         self.document = document
         self.track = track
 
     def resolve(
-        self, track: ResolvedTrack, *, offline: bool = False, refresh: bool = False
+        self,
+        track: ResolvedTrack,
+        *,
+        offline: bool = False,
+        refresh: bool = False,
+        expected_generation: int | None = None,
     ) -> LyricsResolutionResult:
         assert track is self.track
         assert not offline

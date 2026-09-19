@@ -96,7 +96,7 @@ def test_default_profile_is_typed_complete_and_frontend_neutral() -> None:
     assert appearance.colors.accent == "#39B9C7"
     assert appearance.lyric_alignment is TextAlignment.CENTER
     assert appearance.context.previous == appearance.context.following == 2
-    assert len(SETTINGS_BY_KEY) == 84
+    assert len(SETTINGS_BY_KEY) == 85
 
 
 @pytest.mark.parametrize(

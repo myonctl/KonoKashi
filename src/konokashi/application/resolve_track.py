@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
+
 from konokashi.application.ports import TrackOverrideRepositoryPort
 from konokashi.application.source_identity import SourceIdentityResolver
 from konokashi.domain.identity import LocalFileIdentity, YouTubeIdentity
@@ -233,3 +235,37 @@ class TrackResolver:
         if candidate.duration_us is None:
             warnings.append("duration is missing")
         return Confidence.MEDIUM, tuple(warnings)
+
+
+def with_youtube_metadata_candidates(
+    track: ResolvedTrack, candidates: tuple[TrackCandidate, ...]
+) -> ResolvedTrack:
+    """Add bounded metadata interpretations without replacing playback evidence.
+
+    Metadata extracted from a public video's title or description is useful
+    enough to query providers, but is not a user-approved recording identity.
+    Its confidence is independent of an inadequate first MPRIS interpretation.
+    """
+
+    if not isinstance(track.source_identity, YouTubeIdentity):
+        raise ValueError("YouTube metadata requires a confirmed video identity")
+    interpretations = list(track.interpretation_candidates or (track.candidate,))
+    seen = {
+        (
+            comparison_key(item.title or ""),
+            tuple(comparison_key(artist) for artist in item.artists),
+            item.duration_us,
+        )
+        for item in interpretations
+    }
+    for item in candidates[:12]:
+        key = (
+            comparison_key(item.title or ""),
+            tuple(comparison_key(artist) for artist in item.artists),
+            item.duration_us,
+        )
+        if not item.title or not item.artists or key in seen:
+            continue
+        seen.add(key)
+        interpretations.append(replace(item, identity_confidence=Confidence.MEDIUM))
+    return replace(track, interpretation_candidates=tuple(interpretations))
