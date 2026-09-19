@@ -205,7 +205,8 @@ class YtDlpYouTubeMetadataEnricher:
             "--no-playlist",
             "--no-warnings",
             "--no-progress",
-            "--no-netrc",
+            "--no-cookies",
+            "--no-cookies-from-browser",
             url,
         )
         cancellation = Event()

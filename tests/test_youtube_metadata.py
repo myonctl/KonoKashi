@@ -3,8 +3,12 @@
 from __future__ import annotations
 
 import json
+import shutil
+import subprocess
 from datetime import UTC, datetime, timedelta
 from threading import Event, Thread
+
+import pytest
 
 from konokashi.domain.lyrics import ProviderCacheEntry
 from konokashi.infrastructure.metadata.youtube import (
@@ -81,7 +85,9 @@ def test_metadata_only_command_and_native_description_extraction() -> None:
     assert "--ignore-config" in argv
     assert "--skip-download" in argv
     assert "--dump-single-json" in argv
-    assert "--no-netrc" in argv
+    assert "--no-cookies" in argv
+    assert "--no-cookies-from-browser" in argv
+    assert "--no-netrc" not in argv
     assert argv[-1] == f"https://www.youtube.com/watch?v={VIDEO_ID}"
     assert timeout <= 12
     assert stdout_limit <= 512 * 1024
@@ -97,6 +103,32 @@ def test_metadata_only_command_and_native_description_extraction() -> None:
     persisted = cache.puts[0].payload.decode()
     assert "Unrelated prose remains ephemeral" not in persisted
     assert "secret-thumbnail" not in persisted
+
+
+def test_installed_yt_dlp_accepts_the_privacy_safe_metadata_flags() -> None:
+    executable = shutil.which("yt-dlp")
+    if executable is None:
+        pytest.skip("optional yt-dlp executable is not installed")
+    completed = subprocess.run(
+        (
+            executable,
+            "--ignore-config",
+            "--skip-download",
+            "--dump-single-json",
+            "--no-playlist",
+            "--no-warnings",
+            "--no-progress",
+            "--no-cookies",
+            "--no-cookies-from-browser",
+            "--help",
+        ),
+        capture_output=True,
+        text=True,
+        timeout=5,
+        check=False,
+    )
+
+    assert completed.returncode == 0, completed.stderr
 
 
 def test_enrichment_reports_latency_without_exposing_metadata_values() -> None:
