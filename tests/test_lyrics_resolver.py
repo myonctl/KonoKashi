@@ -296,6 +296,46 @@ def test_enriched_youtube_identity_finds_lrclib_without_uploader_as_artist(
     )
 
 
+def test_uncorroborated_pipe_hypothesis_is_searchable_but_not_auto_accepted(
+    tmp_path: Path,
+) -> None:
+    source_resolver, _overrides = track_resolver()
+    track = source_resolver.resolve(
+        snapshot(
+            "browser",
+            title="Song | Artist (Official Video)",
+            artists=("Uploader Channel",),
+            url="https://www.youtube.com/watch?v=AbCdEfGhI12",
+            duration_us=198_000_000,
+        )
+    )
+    provider = _FakeProvider(
+        search=LyricsProviderResult(
+            LyricsProviderStatus.RESULTS,
+            (
+                _candidate(
+                    title="Song",
+                    artist="Artist",
+                    album=None,
+                    duration_ms=198_000,
+                ),
+            ),
+        )
+    )
+
+    result = _resolver(tmp_path / "pipe-hypothesis.db", provider).resolve(track)
+
+    assert any(
+        query.title == "Song" and query.artists == ("Artist",)
+        for query in provider.search_queries
+    )
+    assert all(query.source_confidence == "Low" for query in provider.search_queries)
+    assert result.status not in (
+        LyricsResolutionStatus.FOUND_TIMED,
+        LyricsResolutionStatus.FOUND_UNTIMED,
+    )
+
+
 def test_user_approved_match_outranks_local_and_network(tmp_path: Path) -> None:
     path = tmp_path / "approved.sqlite3"
     storage = open_storage(path)

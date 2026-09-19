@@ -14,6 +14,7 @@ from konokashi.domain.normalization import (
     normalize_text,
     parse_artist_credits,
     parse_youtube_title_candidates,
+    parse_youtube_title_hypotheses,
 )
 from konokashi.domain.tracks import (
     Confidence,
@@ -21,6 +22,8 @@ from konokashi.domain.tracks import (
     TrackCandidate,
     semantic_duration_us,
 )
+
+MAX_YOUTUBE_INTERPRETATIONS = 12
 
 
 class TrackResolver:
@@ -138,9 +141,13 @@ class TrackResolver:
         self, snapshot: PlayerSnapshot
     ) -> tuple[TrackCandidate, ...]:
         metadata = snapshot.metadata
-        duration_us = semantic_duration_us(metadata.duration_us)
         parsed_candidates = (
             parse_youtube_title_candidates(metadata.title, metadata.artists)
+            if metadata.title
+            else ()
+        )
+        hypotheses = (
+            parse_youtube_title_hypotheses(metadata.title, metadata.artists)
             if metadata.title
             else ()
         )
@@ -151,30 +158,40 @@ class TrackResolver:
                 for artist in metadata.artists or ()
                 if artist.strip()
             )
-            return (
-                TrackCandidate(
-                    title=reported.title,
-                    artists=(),
-                    album=reported.album,
-                    duration_us=reported.duration_us,
-                    evidence=(
-                        *uploader_evidence,
-                        "video title did not contain unambiguous "
-                        "artist/title separator",
-                    ),
-                    transformations=reported.transformations,
-                    strategy="youtube-unstructured-title",
-                    field_provenance=(
-                        ("title", "mpris-title"),
-                        ("uploader", "mpris-artists"),
-                        *(
-                            (("duration", "mpris-duration"),)
-                            if reported.duration_us
-                            else ()
-                        ),
+            unstructured = TrackCandidate(
+                title=reported.title,
+                artists=(),
+                album=reported.album,
+                duration_us=reported.duration_us,
+                evidence=(
+                    *uploader_evidence,
+                    "video title did not contain unambiguous artist/title separator",
+                ),
+                transformations=reported.transformations,
+                strategy="youtube-unstructured-title",
+                field_provenance=(
+                    ("title", "mpris-title"),
+                    ("uploader", "mpris-artists"),
+                    *(
+                        (("duration", "mpris-duration"),)
+                        if reported.duration_us
+                        else ()
                     ),
                 ),
             )
+            return (
+                unstructured,
+                *self._youtube_parsed_candidates(snapshot, hypotheses),
+            )
+        return self._youtube_parsed_candidates(
+            snapshot, (*parsed_candidates, *hypotheses)
+        )
+
+    def _youtube_parsed_candidates(
+        self, snapshot: PlayerSnapshot, parsed_candidates: tuple[TrackCandidate, ...]
+    ) -> tuple[TrackCandidate, ...]:
+        metadata = snapshot.metadata
+        duration_us = semantic_duration_us(metadata.duration_us)
         uploader_evidence = tuple(
             f"preserved reported artist as uploader evidence: {artist}"
             for artist in metadata.artists or ()
@@ -190,6 +207,7 @@ class TrackResolver:
                 transformations=parsed.transformations,
                 strategy=parsed.strategy,
                 artist_credit=parsed.artist_credit,
+                identity_confidence=parsed.identity_confidence,
                 field_provenance=(
                     *parsed.field_provenance,
                     *((("album", "mpris-album"),) if metadata.album else ()),
@@ -201,7 +219,7 @@ class TrackResolver:
                     *((("uploader", "mpris-artists"),) if metadata.artists else ()),
                 ),
             )
-            for parsed in parsed_candidates
+            for parsed in parsed_candidates[:MAX_YOUTUBE_INTERPRETATIONS]
         )
 
     @staticmethod
@@ -258,7 +276,9 @@ def with_youtube_metadata_candidates(
         )
         for item in interpretations
     }
-    for item in candidates[:12]:
+    for item in candidates:
+        if len(interpretations) >= MAX_YOUTUBE_INTERPRETATIONS:
+            break
         key = (
             comparison_key(item.title or ""),
             tuple(comparison_key(artist) for artist in item.artists),

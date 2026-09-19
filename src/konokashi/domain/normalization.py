@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import re
 import unicodedata
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
-from konokashi.domain.tracks import ArtistCredit, TrackCandidate
+from konokashi.domain.tracks import ArtistCredit, Confidence, TrackCandidate
 
 _DASH_TRANSLATION = str.maketrans(
     {"\N{EN DASH}": "-", "\N{EM DASH}": "-", "\N{MINUS SIGN}": "-"}
@@ -423,6 +423,81 @@ def parse_youtube_title_candidates(
                 )
             )
     return tuple(candidates)
+
+
+def parse_youtube_title_hypotheses(
+    raw_title: str,
+    reported_artists: tuple[str, ...] | None,
+) -> tuple[TrackCandidate, ...]:
+    """Keep a small, review-level alternative when a delimiter has no corroboration.
+
+    The ordinary parser remains the source of strong interpretations. These
+    hypotheses are deliberately Low confidence: a delimiter alone cannot prove
+    which side is the musical artist, even when a provider has a matching song.
+    """
+
+    title_text = _LEADING_BROWSER_COUNT.sub("", normalize_text(raw_title).value)
+    title_text = _BROWSER_YOUTUBE_SUFFIX.sub("", title_text).strip()
+    dash_parts = _SPACED_DASH_SEPARATOR.split(title_text)
+    if len(dash_parts) == 2:
+        parts = dash_parts
+        delimiter = "spaced dash"
+    else:
+        ambiguous_parts = _AMBIGUOUS_TITLE_SEPARATOR.split(title_text)
+        if len(ambiguous_parts) != 3:
+            return ()
+        parts = [ambiguous_parts[0], ambiguous_parts[2]]
+        delimiter = {
+            "/": "slash",
+            "|": "pipe",
+            ":": "colon",
+            "·": "middle dot",
+        }[ambiguous_parts[1]]
+    left, right = (_remove_presentation_suffix(part.strip()).value for part in parts)
+    if not left or not right:
+        return ()
+    reported_keys = {
+        comparison_key(artist) for artist in reported_artists or () if artist.strip()
+    }
+    if comparison_key(left) in reported_keys or comparison_key(right) in reported_keys:
+        return ()
+
+    existing = parse_youtube_title_candidates(raw_title, reported_artists)
+    seen = {
+        (comparison_key(item.title or ""), comparison_key(item.artists[0]))
+        for item in existing
+        if item.artists
+    }
+    hypotheses: list[TrackCandidate] = []
+    for artist, title, orientation in (
+        (left, right, "artist-first"),
+        (right, left, "title-first"),
+    ):
+        key = (comparison_key(title), comparison_key(artist))
+        if key in seen:
+            continue
+        # Reuse the conservative title/credit parser on an explicit hypothesis;
+        # never present its synthetic artist as reported MPRIS corroboration.
+        parsed = parse_youtube_title_candidates(f"{artist} - {title}", ())
+        if not parsed:
+            continue
+        seen.add(key)
+        hypotheses.append(
+            replace(
+                parsed[0],
+                evidence=(
+                    f"uncorroborated {delimiter} delimiter permits "
+                    f"{orientation} hypothesis",
+                ),
+                transformations=(
+                    *parsed[0].transformations,
+                    "retained alternative without changing original video title",
+                ),
+                strategy=f"youtube-title:hypothesis:{delimiter}:{orientation}",
+                identity_confidence=Confidence.LOW,
+            )
+        )
+    return tuple(hypotheses)
 
 
 def parse_youtube_title(

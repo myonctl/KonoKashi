@@ -201,6 +201,10 @@ cached locally for three days; the full description is not retained. Offline
 mode uses only an existing metadata cache entry. Matching still requires an
 independent provider result and does not treat the uploader as the musical
 artist.
+Ambiguous video-title separators can produce at most two extra artist/title
+interpretations. Those delimiter-only guesses retain the original MPRIS title
+and uploader evidence, are searched at Low identity confidence, and cannot by
+themselves authorize an automatic lyric match.
 
 Open **Review lyrics** from the active lyric view to understand the current
 source or repair its match, identity, offset, translation, lyric text, or line

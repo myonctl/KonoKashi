@@ -14,6 +14,7 @@ from konokashi.domain.normalization import (
     parse_title_version,
     parse_youtube_title,
     parse_youtube_title_candidates,
+    parse_youtube_title_hypotheses,
 )
 from konokashi.domain.tracks import ApprovedTrackIdentity, Confidence
 from tests.stage2_helpers import (
@@ -374,3 +375,59 @@ def test_arbitrary_trailing_group_is_an_optional_candidate_variant() -> None:
         "Али Ули",
     ]
     assert candidates[1].strategy.endswith("optional-trailing-group")
+
+
+@pytest.mark.parametrize(
+    "raw_title",
+    (
+        "Song - Artist",
+        "Song — Artist",
+        "Song - Artist (Official Video)",
+        "Song | Artist",
+        "Song : Artist",
+        "Song · Artist",
+    ),
+)
+def test_uncorroborated_video_separator_retains_both_bounded_orientations(
+    raw_title: str,
+) -> None:
+    hypotheses = parse_youtube_title_hypotheses(raw_title, ("Uploader Channel",))
+
+    assert len(hypotheses) <= 2
+    assert any(
+        item.title == "Song" and item.artists == ("Artist",) for item in hypotheses
+    )
+    assert all(item.identity_confidence is Confidence.LOW for item in hypotheses)
+    assert all("uncorroborated" in item.evidence[0] for item in hypotheses)
+    assert all(
+        ("artists", "mpris-title") in item.field_provenance for item in hypotheses
+    )
+
+
+def test_ambiguous_video_title_keeps_raw_evidence_and_review_level_hypotheses() -> None:
+    track_resolver, _repository = resolver()
+    raw = snapshot(
+        "generic",
+        title="Song | Artist (Official Video)",
+        artists=("Unrelated Uploader",),
+        url="https://youtu.be/xa4WrgqI7q0",
+    )
+
+    resolved = track_resolver.resolve(raw)
+
+    assert resolved.raw_snapshot.metadata.title == "Song | Artist (Official Video)"
+    assert resolved.candidate.strategy == "youtube-unstructured-title"
+    assert resolved.candidate.artists == ()
+    assert len(resolved.interpretation_candidates) <= 3
+    assert any(
+        item.title == "Song" and item.artists == ("Artist",)
+        for item in resolved.interpretation_candidates
+    )
+    assert all(
+        item.identity_confidence is Confidence.LOW
+        for item in resolved.interpretation_candidates[1:]
+    )
+    assert all(
+        any("uploader evidence" in evidence for evidence in item.evidence)
+        for item in resolved.interpretation_candidates
+    )
