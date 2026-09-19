@@ -1411,7 +1411,9 @@ def test_slow_provider_cannot_hold_sufficient_evidence_hostage(
     assert slow_started.is_set()
     assert elapsed < 0.5
     assert result.status is LyricsResolutionStatus.FOUND_TIMED
+    assert any("first usable candidate" in item for item in result.diagnostics)
     assert any("first viable candidate" in item for item in result.diagnostics)
+    assert any("sufficient evidence in" in item for item in result.diagnostics)
     assert any("detached 1 running" in item for item in result.diagnostics)
 
 
@@ -1543,6 +1545,7 @@ def test_fast_garbage_does_not_start_the_evidence_deadline(tmp_path: Path) -> No
     assert result.status is LyricsResolutionStatus.FOUND_TIMED
     assert result.source_label == "Unison"
     assert good.exact_queries
+    assert sum("first usable candidate" in item for item in result.diagnostics) == 1
     assert not any("detached" in item for item in result.diagnostics)
 
 

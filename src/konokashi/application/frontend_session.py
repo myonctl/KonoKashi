@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass, replace
 from threading import Lock
+from time import monotonic
 from typing import Protocol
 
 from konokashi.application.frontend_lines import (
@@ -200,6 +201,7 @@ class FrontendSessionService:
         cancel_inflight: Callable[[], None] | None = None,
         youtube_metadata: YouTubeMetadataEnrichmentPort | None = None,
         lyric_corrections: LyricCorrectionService | None = None,
+        monotonic_clock: Callable[[], float] = monotonic,
     ) -> None:
         self._selection = selection
         self._lyrics = lyrics
@@ -210,6 +212,7 @@ class FrontendSessionService:
         self._lyric_corrections = lyric_corrections
         self._cancel_inflight = cancel_inflight or (lambda: None)
         self._youtube_metadata = youtube_metadata
+        self._monotonic = monotonic_clock
         self._generation_lock = Lock()
         self._generation = 0
 
@@ -237,6 +240,7 @@ class FrontendSessionService:
     ) -> FrontendLyricsBundle:
         """Resolve one selected source and collect its aligned display layers."""
 
+        operation_started = self._monotonic()
         generation = self._current_generation()
         resolver_generation = self._lyrics.cancellation_generation
         result = self._lyrics.resolve(
@@ -245,6 +249,7 @@ class FrontendSessionService:
             refresh=refresh,
             expected_generation=resolver_generation,
         )
+        first_pass_ms = max(0, round((self._monotonic() - operation_started) * 1000))
         if (
             result.document is None
             and not track.user_approved
@@ -255,10 +260,13 @@ class FrontendSessionService:
             and generation == self._current_generation()
         ):
             first_pass = result
+            metadata_started = self._monotonic()
             enrichment = self._youtube_metadata.enrich(
                 track, offline=offline, refresh=refresh
             )
+            metadata_ms = max(0, round((self._monotonic() - metadata_started) * 1000))
             retried = False
+            retry_ms = 0
             if enrichment.candidates and generation == self._current_generation():
                 enriched_track = with_youtube_metadata_candidates(
                     track, enrichment.candidates
@@ -267,19 +275,26 @@ class FrontendSessionService:
                     track.interpretation_candidates or (track.candidate,)
                 ):
                     track = enriched_track
+                    retry_started = self._monotonic()
                     result = self._lyrics.resolve(
                         track,
                         offline=offline,
                         refresh=refresh,
                         expected_generation=resolver_generation,
                     )
+                    retry_ms = max(0, round((self._monotonic() - retry_started) * 1000))
                     retried = True
+            total_ms = max(0, round((self._monotonic() - operation_started) * 1000))
             result = replace(
                 result,
                 diagnostics=(
                     *(first_pass.diagnostics if retried else ()),
                     *enrichment.diagnostics,
                     *result.diagnostics,
+                    "automatic YouTube retry: "
+                    f"first_pass={first_pass_ms} ms; "
+                    f"metadata={metadata_ms} ms; retry={retry_ms} ms; "
+                    f"total={total_ms} ms; retried={retried}",
                 ),
                 cache_hit=(
                     first_pass.cache_hit or enrichment.cache_hit or result.cache_hit

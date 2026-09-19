@@ -295,6 +295,7 @@ def test_inadequate_youtube_resolution_enriches_and_retries_automatically() -> N
     lyrics = Lyrics()
     enricher = Enricher()
     settings = _Settings()
+    ticks = iter((1.0, 1.1, 1.1, 1.25, 1.25, 1.4, 1.4))
     service = FrontendSessionService(
         _Selection(weak),  # type: ignore[arg-type]
         lyrics,  # type: ignore[arg-type]
@@ -303,6 +304,7 @@ def test_inadequate_youtube_resolution_enriches_and_retries_automatically() -> N
         _Timing(),  # type: ignore[arg-type]
         object(),  # type: ignore[arg-type]
         youtube_metadata=enricher,  # type: ignore[arg-type]
+        monotonic_clock=lambda: next(ticks, 1.4),
     )
 
     bundle = service.load_track(weak)
@@ -311,10 +313,14 @@ def test_inadequate_youtube_resolution_enriches_and_retries_automatically() -> N
     assert enricher.calls == 1
     assert bundle.resolution.status is LyricsResolutionStatus.FOUND_TIMED
     assert bundle.resolution.cache_hit and bundle.resolution.network_used
-    assert bundle.resolution.diagnostics == (
+    assert bundle.resolution.diagnostics[:3] == (
         "initial query missed",
         "metadata-only enrichment",
         "enriched query succeeded",
+    )
+    assert bundle.resolution.diagnostics[3] == (
+        "automatic YouTube retry: first_pass=100 ms; metadata=150 ms; "
+        "retry=150 ms; total=400 ms; retried=True"
     )
     assert bundle.track.candidate == weak.candidate
     assert bundle.track.raw_snapshot == weak.raw_snapshot

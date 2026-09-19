@@ -348,6 +348,11 @@ class LyricsResolver:
                     queries,
                     rejected_document_ids=rejected_document_ids,
                 ),
+                evidence_usable=partial(
+                    self._results_are_usable,
+                    queries,
+                    rejected_document_ids=rejected_document_ids,
+                ),
                 observations=diagnostics,
             ):
                 provider_outcomes.append(exact)
@@ -402,6 +407,11 @@ class LyricsResolver:
                 refresh=False if offline else refresh,
                 evidence_sufficient=partial(
                     self._results_are_sufficient,
+                    queries,
+                    rejected_document_ids=rejected_document_ids,
+                ),
+                evidence_usable=partial(
+                    self._results_are_usable,
                     queries,
                     rejected_document_ids=rejected_document_ids,
                 ),
@@ -722,6 +732,10 @@ class LyricsResolver:
             [Sequence[tuple[LyricsProviderResult, bool, bool]]], bool
         ]
         | None = None,
+        evidence_usable: Callable[
+            [Sequence[tuple[LyricsProviderResult, bool, bool]]], bool
+        ]
+        | None = None,
         observations: list[str] | None = None,
     ) -> tuple[tuple[LyricsProviderResult, bool, bool], ...]:
         """Collect providers until complete or bounded evidence is sufficient."""
@@ -745,9 +759,21 @@ class LyricsResolver:
             result = (load(self._providers[0]),)
             elapsed_ms = max(0, round((self._monotonic() - collection_started) * 1000))
             if observations is not None:
-                if evidence_sufficient is not None and evidence_sufficient(result):
+                sufficient = evidence_sufficient is not None and evidence_sufficient(
+                    result
+                )
+                if sufficient or (
+                    evidence_usable is not None and evidence_usable(result)
+                ):
+                    observations.append(
+                        f"provider evidence: first usable candidate in {elapsed_ms} ms"
+                    )
+                if sufficient:
                     observations.append(
                         f"provider evidence: first viable candidate in {elapsed_ms} ms"
+                    )
+                    observations.append(
+                        f"provider evidence: sufficient evidence in {elapsed_ms} ms"
                     )
                 observations.append(
                     f"provider evidence: final decision in {elapsed_ms} ms; "
@@ -769,6 +795,7 @@ class LyricsResolver:
         pending = set(futures)
         collected: dict[int, tuple[LyricsProviderResult, bool, bool]] = {}
         first_viable_at: float | None = None
+        first_usable_at: float | None = None
         sufficiency_since: float | None = None
         cancelled_queued = 0
         detached_running = 0
@@ -811,6 +838,19 @@ class LyricsResolver:
                 sufficient = evidence_sufficient is not None and evidence_sufficient(
                     ordered
                 )
+                if first_usable_at is None and (
+                    sufficient
+                    or (evidence_usable is not None and evidence_usable(ordered))
+                ):
+                    first_usable_at = self._monotonic()
+                    if observations is not None:
+                        elapsed_ms = max(
+                            0, round((first_usable_at - collection_started) * 1000)
+                        )
+                        observations.append(
+                            "provider evidence: first usable candidate in "
+                            f"{elapsed_ms} ms"
+                        )
                 if sufficient:
                     now = self._monotonic()
                     if first_viable_at is None:
@@ -821,6 +861,10 @@ class LyricsResolver:
                             )
                             observations.append(
                                 "provider evidence: first viable candidate in "
+                                f"{elapsed_ms} ms"
+                            )
+                            observations.append(
+                                "provider evidence: sufficient evidence in "
                                 f"{elapsed_ms} ms"
                             )
                     if sufficiency_since is None:
@@ -881,6 +925,24 @@ class LyricsResolver:
             not in rejected_document_ids
         ]
         return self._unique_high(_deduplicate_assessments(assessments)) is not None
+
+    def _results_are_usable(
+        self,
+        queries: Sequence[LyricsQuery],
+        outcomes: Sequence[tuple[LyricsProviderResult, bool, bool]],
+        rejected_document_ids: set[str],
+    ) -> bool:
+        return any(
+            self._assess_across(
+                queries, candidate, retrieved_by="provider evidence"
+            ).confidence
+            in (LyricsMatchConfidence.HIGH, LyricsMatchConfidence.MEDIUM)
+            for result, _cached, _network in outcomes
+            if result.status is LyricsProviderStatus.RESULTS
+            for candidate in result.candidates
+            if self._provider_documents.document_id(candidate)
+            not in rejected_document_ids
+        )
 
     def _provider_result(
         self,

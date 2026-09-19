@@ -186,6 +186,9 @@ cache. Frontend generation guards and explicit resolver cancellation prevent a
 late response from attaching lyrics to a superseded track. Diagnostics expose
 first-viable and final-decision latency as well as each provider's request
 duration and cancellation/detachment counts.
+It also records first usable-candidate and sufficient-evidence times, while
+automatic YouTube retries report first-pass, metadata, retry, and total latency
+without logging song titles or description text.
 On a cache miss, each enabled source receives only the provider-safe resolved
 title, musical artist, and available album/duration—not the local media path,
 raw MPRIS URL, player identity, or playback history.

@@ -6,6 +6,7 @@ import json
 import re
 import subprocess
 from collections.abc import Callable
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from hashlib import sha256
 from tempfile import TemporaryFile
@@ -108,11 +109,13 @@ class YtDlpYouTubeMetadataEnricher:
         now: Callable[[], datetime] | None = None,
         command: MetadataCommand = _run_bounded_command,
         executable: str = "yt-dlp",
+        monotonic_clock: Callable[[], float] = monotonic,
     ) -> None:
         self._cache = cache
         self._now = now or (lambda: datetime.now(UTC))
         self._command = command
         self._executable = executable
+        self._monotonic = monotonic_clock
         self._pending_lock = Lock()
         self._pending: set[Event] = set()
 
@@ -138,6 +141,23 @@ class YtDlpYouTubeMetadataEnricher:
             identity.video_id
         ):
             raise ValueError("YouTube enrichment requires a valid stable video ID")
+        started = self._monotonic()
+
+        def observed(
+            result: YouTubeMetadataEnrichmentResult,
+        ) -> YouTubeMetadataEnrichmentResult:
+            elapsed_ms = max(0, round((self._monotonic() - started) * 1000))
+            return replace(
+                result,
+                diagnostics=(
+                    *result.diagnostics,
+                    "YouTube metadata: final decision in "
+                    f"{elapsed_ms} ms; cache_hit={result.cache_hit}; "
+                    f"network_used={result.network_used}; "
+                    f"candidates={len(result.candidates)}",
+                ),
+            )
+
         cache_key = _cache_key(identity.video_id)
         if not refresh or offline:
             cached = self._cache.get(_CACHE_PROVIDER, cache_key)
@@ -153,22 +173,27 @@ class YtDlpYouTubeMetadataEnricher:
                     stale = (
                         cached.expires_at is None or cached.expires_at <= self._now()
                     )
-                    return YouTubeMetadataEnrichmentResult(
-                        identity,
-                        candidates,
-                        (
-                            "offline mode: used stale sanitized YouTube metadata cache"
-                            if stale
-                            else "used current sanitized YouTube metadata cache",
-                        ),
-                        cache_hit=True,
+                    return observed(
+                        YouTubeMetadataEnrichmentResult(
+                            identity,
+                            candidates,
+                            (
+                                "offline mode: used stale sanitized YouTube "
+                                "metadata cache"
+                                if stale
+                                else "used current sanitized YouTube metadata cache",
+                            ),
+                            cache_hit=True,
+                        )
                     )
         if offline:
-            return YouTubeMetadataEnrichmentResult(
-                identity,
-                diagnostics=(
-                    "offline mode: YouTube metadata enrichment was not contacted",
-                ),
+            return observed(
+                YouTubeMetadataEnrichmentResult(
+                    identity,
+                    diagnostics=(
+                        "offline mode: YouTube metadata enrichment was not contacted",
+                    ),
+                )
             )
 
         url = f"https://www.youtube.com/watch?v={identity.video_id}"
@@ -197,31 +222,39 @@ class YtDlpYouTubeMetadataEnricher:
                 raise _CommandFailure("yt-dlp metadata request was cancelled")
             candidates = _extract_payload(payload, track, identity)
         except FileNotFoundError:
-            return YouTubeMetadataEnrichmentResult(
-                identity,
-                diagnostics=(
-                    "optional yt-dlp executable is unavailable; normal metadata "
-                    "resolution remains active",
-                ),
-                network_used=False,
+            return observed(
+                YouTubeMetadataEnrichmentResult(
+                    identity,
+                    diagnostics=(
+                        "optional yt-dlp executable is unavailable; normal metadata "
+                        "resolution remains active",
+                    ),
+                    network_used=False,
+                )
             )
         except (OSError, ValueError, _CommandFailure, json.JSONDecodeError) as error:
-            return YouTubeMetadataEnrichmentResult(
-                identity,
-                diagnostics=(f"YouTube metadata enrichment failed safely: {error}",),
-                network_used=True,
+            return observed(
+                YouTubeMetadataEnrichmentResult(
+                    identity,
+                    diagnostics=(
+                        f"YouTube metadata enrichment failed safely: {error}",
+                    ),
+                    network_used=True,
+                )
             )
         finally:
             with self._pending_lock:
                 self._pending.discard(cancellation)
         if not candidates:
-            return YouTubeMetadataEnrichmentResult(
-                identity,
-                diagnostics=(
-                    "YouTube metadata contained no conservative recording-shaped "
-                    "evidence",
-                ),
-                network_used=True,
+            return observed(
+                YouTubeMetadataEnrichmentResult(
+                    identity,
+                    diagnostics=(
+                        "YouTube metadata contained no conservative recording-shaped "
+                        "evidence",
+                    ),
+                    network_used=True,
+                )
             )
         retrieved_at = self._now()
         self._cache.put(
@@ -233,15 +266,17 @@ class YtDlpYouTubeMetadataEnricher:
                 retrieved_at + _CACHE_TTL,
             )
         )
-        return YouTubeMetadataEnrichmentResult(
-            identity,
-            candidates,
-            (
-                "contacted YouTube for metadata of the current public video only",
-                "description was used only for bounded recording-field extraction "
-                "and was not retained",
-            ),
-            network_used=True,
+        return observed(
+            YouTubeMetadataEnrichmentResult(
+                identity,
+                candidates,
+                (
+                    "contacted YouTube for metadata of the current public video only",
+                    "description was used only for bounded recording-field extraction "
+                    "and was not retained",
+                ),
+                network_used=True,
+            )
         )
 
 

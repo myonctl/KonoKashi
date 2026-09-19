@@ -99,6 +99,38 @@ def test_metadata_only_command_and_native_description_extraction() -> None:
     assert "secret-thumbnail" not in persisted
 
 
+def test_enrichment_reports_latency_without_exposing_metadata_values() -> None:
+    clock = iter((10.0, 10.123))
+
+    def command(
+        _argv: tuple[str, ...],
+        _timeout: float,
+        _limit: int,
+        _cancelled: Event,
+    ) -> bytes:
+        return json.dumps(
+            {
+                "id": VIDEO_ID,
+                "track": "Private-looking title",
+                "artist": "Private-looking artist",
+            }
+        ).encode()
+
+    result = YtDlpYouTubeMetadataEnricher(
+        _Cache(),
+        now=lambda: NOW,
+        command=command,
+        monotonic_clock=lambda: next(clock),
+    ).enrich(_android_track())
+
+    assert result.candidates
+    assert result.diagnostics[-1] == (
+        "YouTube metadata: final decision in 123 ms; "
+        "cache_hit=False; network_used=True; candidates=1"
+    )
+    assert "Private-looking" not in result.diagnostics[-1]
+
+
 def test_cached_sanitized_metadata_avoids_second_command() -> None:
     cache = _Cache()
     calls = 0
