@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import pytest
 
+from konokashi.application.resolve_track import with_youtube_metadata_candidates
 from konokashi.application.source_identity import SourceIdentityResolver
 from konokashi.domain.identity import YouTubeIdentity
 from konokashi.domain.normalization import (
@@ -16,7 +17,7 @@ from konokashi.domain.normalization import (
     parse_youtube_title_candidates,
     parse_youtube_title_hypotheses,
 )
-from konokashi.domain.tracks import ApprovedTrackIdentity, Confidence
+from konokashi.domain.tracks import ApprovedTrackIdentity, Confidence, TrackCandidate
 from tests.stage2_helpers import (
     PredictableLocalPaths,
     fixture_snapshot,
@@ -438,3 +439,45 @@ def test_ambiguous_video_title_keeps_raw_evidence_and_review_level_hypotheses() 
         any("uploader evidence" in evidence for evidence in item.evidence)
         for item in resolved.interpretation_candidates
     )
+
+
+def test_structured_youtube_metadata_upgrades_matching_low_confidence_hypothesis() -> (
+    None
+):
+    track_resolver, _repository = resolver()
+    raw = snapshot(
+        "browser",
+        title="Song | Artist (Official Video)",
+        artists=("Uploader Channel",),
+        url="https://youtu.be/xa4WrgqI7q0",
+        duration_us=180_000_000,
+    )
+    track = track_resolver.resolve(raw)
+    initial_count = len(track.interpretation_candidates)
+    metadata = TrackCandidate(
+        "Song",
+        ("Artist",),
+        None,
+        180_000_000,
+        evidence=("explicit public music-credit fields",),
+        strategy="youtube-enrichment:music-fields",
+        field_provenance=(
+            ("title", "youtube_track"),
+            ("artists", "youtube_artists"),
+        ),
+    )
+
+    enriched = with_youtube_metadata_candidates(track, (metadata,))
+
+    assert len(enriched.interpretation_candidates) == initial_count
+    assert enriched.raw_snapshot == track.raw_snapshot
+    promoted = next(
+        item
+        for item in enriched.interpretation_candidates
+        if item.title == "Song" and item.artists == ("Artist",)
+    )
+    assert promoted.identity_confidence is Confidence.MEDIUM
+    assert promoted.strategy == "youtube-enrichment:music-fields"
+    assert "explicit public music-credit fields" in promoted.evidence
+    assert any("uncorroborated" in item for item in promoted.evidence)
+    assert ("artists", "youtube_artists") in promoted.field_provenance

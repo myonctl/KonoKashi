@@ -374,6 +374,88 @@ def test_superseded_youtube_enrichment_cannot_start_a_stale_provider_retry() -> 
     assert calls == ["lyrics", "enrichment", "cancelled"]
 
 
+def test_automatic_youtube_retry_preserves_offline_and_refresh_intent() -> None:
+    track = _track()
+    calls: list[tuple[str, bool, bool]] = []
+
+    class Lyrics:
+        has_online_providers = True
+        cancellation_generation = 0
+
+        def resolve(
+            self, resolved, *, offline=False, refresh=False, expected_generation=None
+        ):  # type: ignore[no-untyped-def]
+            calls.append(("lyrics", offline, refresh))
+            if len(calls) == 1:
+                return LyricsResolutionResult(
+                    resolved.source_identity,
+                    LyricsResolutionStatus.OFFLINE_MISS,
+                )
+            return LyricsResolutionResult(
+                resolved.source_identity,
+                LyricsResolutionStatus.FOUND_TIMED,
+                document=document(),
+                cache_hit=True,
+            )
+
+    class Enricher:
+        def enrich(self, resolved, *, offline=False, refresh=False):  # type: ignore[no-untyped-def]
+            calls.append(("metadata", offline, refresh))
+            return YouTubeMetadataEnrichmentResult(
+                resolved.source_identity,
+                (TrackCandidate("New Song", ("New Artist",), None, 5_000_000),),
+                cache_hit=True,
+            )
+
+    service = FrontendSessionService(
+        _Selection(track),  # type: ignore[arg-type]
+        Lyrics(),  # type: ignore[arg-type]
+        _Representations(),  # type: ignore[arg-type]
+        _Settings(),  # type: ignore[arg-type]
+        _Timing(),  # type: ignore[arg-type]
+        object(),  # type: ignore[arg-type]
+        youtube_metadata=Enricher(),  # type: ignore[arg-type]
+    )
+
+    bundle = service.load_track(track, offline=True, refresh=True)
+
+    assert calls == [
+        ("lyrics", True, True),
+        ("metadata", True, True),
+        ("lyrics", True, True),
+    ]
+    assert bundle.resolution.status is LyricsResolutionStatus.FOUND_TIMED
+    assert bundle.resolution.cache_hit is True
+    assert bundle.resolution.network_used is False
+
+
+def test_successful_first_pass_never_requests_youtube_metadata() -> None:
+    track = _track()
+    enrichment_calls = 0
+
+    class Enricher:
+        def enrich(self, _track, **_kwargs):  # type: ignore[no-untyped-def]
+            nonlocal enrichment_calls
+            enrichment_calls += 1
+            raise AssertionError("metadata must not be requested after a match")
+
+    service = FrontendSessionService(
+        _Selection(track),  # type: ignore[arg-type]
+        _Lyrics(track),  # type: ignore[arg-type]
+        _Representations(),  # type: ignore[arg-type]
+        _Settings(),  # type: ignore[arg-type]
+        _Timing(),  # type: ignore[arg-type]
+        object(),  # type: ignore[arg-type]
+        youtube_metadata=Enricher(),  # type: ignore[arg-type]
+    )
+
+    assert (
+        service.load_track(track).resolution.status
+        is LyricsResolutionStatus.FOUND_TIMED
+    )
+    assert enrichment_calls == 0
+
+
 def test_opening_review_builds_audit_without_requesting_provider_alternatives() -> None:
     track = _track()
     lyrics = _Lyrics(track)

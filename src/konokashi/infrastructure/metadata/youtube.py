@@ -139,22 +139,28 @@ class YtDlpYouTubeMetadataEnricher:
         ):
             raise ValueError("YouTube enrichment requires a valid stable video ID")
         cache_key = _cache_key(identity.video_id)
-        if not refresh:
+        if not refresh or offline:
             cached = self._cache.get(_CACHE_PROVIDER, cache_key)
-            if (
-                cached is not None
-                and cached.expires_at is not None
-                and cached.expires_at > self._now()
+            if cached is not None and (
+                offline
+                or (cached.expires_at is not None and cached.expires_at > self._now())
             ):
                 try:
                     candidates = _parse_sanitized_cache(cached.payload)
                 except (json.JSONDecodeError, ValueError, TypeError):
                     candidates = ()
                 if candidates:
+                    stale = (
+                        cached.expires_at is None or cached.expires_at <= self._now()
+                    )
                     return YouTubeMetadataEnrichmentResult(
                         identity,
                         candidates,
-                        ("used current sanitized YouTube metadata cache",),
+                        (
+                            "offline mode: used stale sanitized YouTube metadata cache"
+                            if stale
+                            else "used current sanitized YouTube metadata cache",
+                        ),
                         cache_hit=True,
                     )
         if offline:

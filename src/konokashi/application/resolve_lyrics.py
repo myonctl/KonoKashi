@@ -893,7 +893,7 @@ class LyricsResolver:
     ) -> tuple[LyricsProviderResult, bool, bool]:
         started = self._monotonic()
         cache_key = provider_cache_key(provider.name, query, search=search)
-        if not refresh:
+        if not refresh or offline:
             cached = self._provider_cache.get(provider.name, cache_key)
             if cached is not None:
                 current = cached.expires_at is None or cached.expires_at > self._now()

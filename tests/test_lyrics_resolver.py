@@ -297,6 +297,126 @@ def test_enriched_youtube_identity_finds_lrclib_without_uploader_as_artist(
     )
 
 
+def test_automatic_retry_reuses_first_pass_provider_query_cache(tmp_path: Path) -> None:
+    class SearchProvider(_FakeProvider):
+        def search(self, query: LyricsQuery) -> LyricsProviderResult:
+            self.search_queries.append(query)
+            if query.title == "Luce sul mare":
+                return LyricsProviderResult(
+                    LyricsProviderStatus.RESULTS,
+                    (
+                        _candidate(
+                            "recording",
+                            title="Luce sul mare",
+                            artist="Cantante Fittizia",
+                            album=None,
+                            duration_ms=198_000,
+                        ),
+                    ),
+                    raw_payload=b"enriched-hit",
+                )
+            return LyricsProviderResult(
+                LyricsProviderStatus.NO_RESULT,
+                raw_payload=b"initial-miss",
+            )
+
+    track = _track(
+        title="Misleading Caption",
+        artists=("Uploader Channel",),
+        album=None,
+        duration_us=198_000_000,
+    )
+    provider = SearchProvider()
+    resolver = _resolver(tmp_path / "retry-cache.db", provider)
+
+    first = resolver.resolve(track)
+    initial_queries = tuple(provider.search_queries)
+    enriched = with_youtube_metadata_candidates(
+        track,
+        (
+            TrackCandidate(
+                "Luce sul mare",
+                ("Cantante Fittizia",),
+                None,
+                198_000_000,
+                strategy="youtube-enrichment:music-fields",
+            ),
+        ),
+    )
+    retried = resolver.resolve(enriched)
+
+    assert first.status is LyricsResolutionStatus.NO_RESULT
+    assert retried.status is LyricsResolutionStatus.FOUND_TIMED
+    assert retried.cache_hit is True
+    assert provider.search_queries[: len(initial_queries)] == list(initial_queries)
+    assert all(
+        query.title != "Misleading Caption"
+        for query in provider.search_queries[len(initial_queries) :]
+    )
+    assert len(provider.search_queries) == len(initial_queries) + 1
+
+
+def test_enriched_retry_does_not_reaccept_an_explicitly_rejected_result(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "rejected-enriched-retry.db"
+    track = _track(
+        title="Luce sul mare (Official Video)",
+        artists=(),
+        album=None,
+        duration_us=198_000_000,
+    )
+    candidate = _candidate(
+        "rejected-enriched",
+        title="Luce sul mare",
+        artist="Cantante Fittizia",
+        album=None,
+        duration_ms=198_000,
+    )
+    rejected_document, _ = ProviderLyricDocumentBuilder().build(candidate, NOW)
+    assert rejected_document is not None
+    storage = open_storage(path)
+    storage.lyrics.put(rejected_document)
+    rejected_match = LyricsMatch(
+        rejected_document.document_id,
+        LyricsMatchDecision.REJECTED,
+        ContentProvenance.USER,
+        NOW,
+        LyricsMatchConfidence.LOW,
+        ("known wrong result",),
+    )
+    storage.lyrics_matches.put(track.source_identity, rejected_match)
+    storage.lyrics_matches.put_rejection(track.source_identity, rejected_match)
+    provider = _FakeProvider(
+        search=LyricsProviderResult(
+            LyricsProviderStatus.RESULTS,
+            (candidate,),
+            raw_payload=b"rejected-enriched",
+        )
+    )
+    resolver = _resolver(path, provider)
+
+    first = resolver.resolve(track)
+    enriched = with_youtube_metadata_candidates(
+        track,
+        (
+            TrackCandidate(
+                "Luce sul mare",
+                ("Cantante Fittizia",),
+                None,
+                198_000_000,
+                strategy="youtube-enrichment:music-fields",
+            ),
+        ),
+    )
+    retried = resolver.resolve(enriched)
+
+    assert first.status is LyricsResolutionStatus.NO_RESULT
+    assert retried.status is LyricsResolutionStatus.NO_RESULT
+    assert retried.document is None
+    assert storage.lyrics_matches.get(track.source_identity) == rejected_match
+
+
 def test_uncorroborated_pipe_hypothesis_is_searchable_but_not_auto_accepted(
     tmp_path: Path,
 ) -> None:
@@ -912,6 +1032,37 @@ def test_offline_can_reassess_raw_cache_without_a_saved_active_match(
     assert result.status is LyricsResolutionStatus.FOUND_TIMED
     assert result.cache_hit is True
     assert result.network_used is False
+
+
+def test_offline_refresh_uses_existing_provider_cache_instead_of_discarding_it(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "offline-refresh-cache.sqlite3"
+    track = _track()
+    query = LyricsQuery(
+        "Elevate (Radio Edit)", ("Little Sis Nora & S3RL",), "Elevate", 183_771
+    )
+    storage = open_storage(path)
+    storage.provider_cache.put(
+        ProviderCacheEntry(
+            "LRCLIB",
+            provider_cache_key("LRCLIB", query, search=False),
+            b"cached-high",
+            NOW,
+            NOW + timedelta(days=1),
+        )
+    )
+    cached_result = LyricsProviderResult(
+        LyricsProviderStatus.RESULTS, (_candidate(),), raw_payload=b"cached-high"
+    )
+    provider = _FakeProvider(cached={(b"cached-high", False): cached_result})
+
+    result = _resolver(path, provider).resolve(track, offline=True, refresh=True)
+
+    assert result.status is LyricsResolutionStatus.FOUND_TIMED
+    assert result.cache_hit is True
+    assert result.network_used is False
+    assert provider.exact_queries == []
 
 
 def test_black_screen_low_confidence_track_never_searches_with_uploader(

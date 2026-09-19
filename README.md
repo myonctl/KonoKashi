@@ -198,7 +198,8 @@ disable automatic YouTube metadata requests. The request uses the video ID and
 public metadata only: no audio/video download, browser profile, cookies,
 authentication, or playlist traversal. A bounded, sanitized interpretation is
 cached locally for three days; the full description is not retained. Offline
-mode uses only an existing metadata cache entry. Matching still requires an
+mode uses only an existing metadata cache entry, including an expired sanitized
+entry when no network refresh is possible. Matching still requires an
 independent provider result and does not treat the uploader as the musical
 artist.
 Ambiguous video-title separators can produce at most two extra artist/title
@@ -215,6 +216,10 @@ Each provider result is evaluated against the bounded recording interpretations,
 even when a different interpretation's query retrieved it. The selected
 hypothesis, field provenance, and retrieval strategy remain in match evidence;
 Low-confidence delimiter guesses still cannot authorize an automatic match.
+When structured public metadata independently confirms a delimiter-only guess,
+the existing interpretation is promoted with both evidence trails retained.
+The automatic retry keeps offline/refresh intent, reuses normal provider-query
+cache entries, and never replaces an approved or already successful first pass.
 Recording qualifiers are kept intact for matching and timing decisions. Live,
 remix, cover, radio edit, remaster year, sped-up/slowed, nightcore, karaoke,
 instrumental, and named-language versions are not treated as interchangeable

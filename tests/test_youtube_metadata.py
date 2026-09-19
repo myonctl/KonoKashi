@@ -131,6 +131,43 @@ def test_cached_sanitized_metadata_avoids_second_command() -> None:
     assert calls == 1
 
 
+def test_offline_refresh_can_use_expired_sanitized_metadata_without_network() -> None:
+    cache = _Cache()
+    calls = 0
+    current = [NOW]
+
+    def command(
+        _argv: tuple[str, ...],
+        _timeout: float,
+        _limit: int,
+        _cancelled: Event,
+    ) -> bytes:
+        nonlocal calls
+        calls += 1
+        return json.dumps(
+            {
+                "id": VIDEO_ID,
+                "track": "Luce sul mare",
+                "artist": "Cantante Fittizia",
+                "duration": 198.0,
+            }
+        ).encode()
+
+    enricher = YtDlpYouTubeMetadataEnricher(
+        cache, now=lambda: current[0], command=command
+    )
+    first = enricher.enrich(_android_track())
+    current[0] += timedelta(days=4)
+    offline = enricher.enrich(_android_track(), offline=True, refresh=True)
+
+    assert first.candidates
+    assert offline.candidates == first.candidates
+    assert offline.cache_hit is True
+    assert offline.network_used is False
+    assert "stale sanitized" in offline.diagnostics[0]
+    assert calls == 1
+
+
 def test_explicit_music_fields_survive_cache_without_treating_uploader_as_artist() -> (
     None
 ):

@@ -268,24 +268,44 @@ def with_youtube_metadata_candidates(
     if not isinstance(track.source_identity, YouTubeIdentity):
         raise ValueError("YouTube metadata requires a confirmed video identity")
     interpretations = list(track.interpretation_candidates or (track.candidate,))
-    seen = {
+    positions = {
         (
             comparison_key(item.title or ""),
             tuple(comparison_key(artist) for artist in item.artists),
             item.duration_us,
-        )
-        for item in interpretations
+        ): index
+        for index, item in enumerate(interpretations)
     }
     for item in candidates:
-        if len(interpretations) >= MAX_YOUTUBE_INTERPRETATIONS:
-            break
         key = (
             comparison_key(item.title or ""),
             tuple(comparison_key(artist) for artist in item.artists),
             item.duration_us,
         )
-        if not item.title or not item.artists or key in seen:
+        if not item.title or not item.artists:
             continue
-        seen.add(key)
+        existing_index = positions.get(key)
+        if existing_index is not None:
+            existing = interpretations[existing_index]
+            if existing.identity_confidence is Confidence.LOW:
+                interpretations[existing_index] = replace(
+                    item,
+                    evidence=tuple(dict.fromkeys((*existing.evidence, *item.evidence))),
+                    transformations=tuple(
+                        dict.fromkeys(
+                            (*existing.transformations, *item.transformations)
+                        )
+                    ),
+                    field_provenance=tuple(
+                        dict.fromkeys(
+                            (*existing.field_provenance, *item.field_provenance)
+                        )
+                    ),
+                    identity_confidence=Confidence.MEDIUM,
+                )
+            continue
+        if len(interpretations) >= MAX_YOUTUBE_INTERPRETATIONS:
+            continue
+        positions[key] = len(interpretations)
         interpretations.append(replace(item, identity_confidence=Confidence.MEDIUM))
     return replace(track, interpretation_candidates=tuple(interpretations))
