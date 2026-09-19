@@ -510,7 +510,10 @@ def test_provider_candidate_can_corroborate_an_alternate_recording_hypothesis(
     assert track.raw_snapshot.metadata.title == "Misleading Caption"
     assert provider.search_queries[0].title == "Misleading Caption"
     assert "provider result retrieved by" in " ".join(result.evidence)
+    assert "retrieval confidence is Medium" in result.evidence
     assert "youtube-enrichment:music-fields" in " ".join(result.diagnostics)
+    assert "accepted because" in " ".join(result.diagnostics)
+    assert "recording identity=Medium" in " ".join(result.diagnostics)
 
     uncorroborated = replace(
         track,
@@ -524,6 +527,8 @@ def test_provider_candidate_can_corroborate_an_alternate_recording_hypothesis(
     ).resolve(uncorroborated)
     assert weak_result.status is LyricsResolutionStatus.AMBIGUOUS
     assert weak_result.document is None
+    assert "rejected automatic attachment because" in " ".join(weak_result.diagnostics)
+    assert "remained ambiguous because" in " ".join(weak_result.diagnostics)
 
 
 def test_query_ladder_bounds_and_deduplicates_alternative_interpretations() -> None:
@@ -790,6 +795,9 @@ def test_multiple_high_candidates_remain_ambiguous_even_with_closest_duration(
     still_ambiguous = _resolver(tmp_path / "closest.sqlite3", closest).resolve(track)
     assert still_ambiguous.status is LyricsResolutionStatus.AMBIGUOUS
     assert still_ambiguous.document is None
+    assert "2 candidates met the explicit acceptance policy" in " ".join(
+        still_ambiguous.diagnostics
+    )
 
 
 def test_instrumental_provider_state_persists_without_fake_lines(

@@ -8,8 +8,10 @@ from konokashi.domain.lyrics import (
     LyricsMatchConfidence,
     LyricsProviderCandidate,
     LyricsQuery,
+    RetrievalConfidence,
 )
 from konokashi.domain.lyrics_matching import assess_candidate
+from konokashi.domain.tracks import Confidence
 
 
 def _candidate(
@@ -46,6 +48,25 @@ def test_case_punctuation_and_dash_variants_match(title: str, artist: str) -> No
     assert assess_candidate(query, _candidate()).confidence is (
         LyricsMatchConfidence.HIGH
     )
+
+
+def test_matching_retains_separate_identity_text_timing_and_retrieval_dimensions() -> (
+    None
+):
+    query = LyricsQuery(
+        "Elevate (Radio Edit)",
+        ("Little Sis Nora & S3RL",),
+        "Elevate",
+        183_771,
+        source_confidence="Medium",
+    )
+
+    assessment = assess_candidate(query, _candidate())
+
+    assert assessment.recording_identity_confidence is Confidence.MEDIUM
+    assert assessment.text_confidence is LyricsMatchConfidence.HIGH
+    assert assessment.timing_confidence is LyricsMatchConfidence.HIGH
+    assert assessment.retrieval_confidence is RetrievalConfidence.UNKNOWN
 
 
 def test_feat_notation_normalizes_without_using_uploader_as_artist() -> None:

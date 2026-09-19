@@ -227,6 +227,10 @@ Recording qualifiers are kept intact for matching and timing decisions. Live,
 remix, cover, radio edit, remaster year, sped-up/slowed, nightcore, karaoke,
 instrumental, and named-language versions are not treated as interchangeable
 merely because their base titles and durations agree.
+Automatic acceptance evaluates retrieval strength, recording-identity evidence,
+lyric-text agreement, and timestamp trust separately. A broad query can still
+find a correct recording, but broad retrieval alone never proves the match;
+diagnostics explain accepted, rejected, and unresolved competing candidates.
 
 Open **Review lyrics** from the active lyric view to understand the current
 source or repair its match, identity, offset, translation, lyric text, or line

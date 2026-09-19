@@ -10,12 +10,14 @@ from konokashi.domain.lyrics import (
     LyricsMatchConfidence,
     LyricsProviderCandidate,
     LyricsQuery,
+    RetrievalConfidence,
 )
 from konokashi.domain.normalization import (
     comparison_key,
     parse_artist_credits,
     parse_title_version,
 )
+from konokashi.domain.tracks import Confidence
 
 _VERSION_MARKERS = (
     "radio edit",
@@ -72,6 +74,8 @@ class CandidateMatchAssessment:
     text_confidence: LyricsMatchConfidence
     timing_confidence: LyricsMatchConfidence
     query_strategy: str = "resolved-track"
+    retrieval_confidence: RetrievalConfidence = RetrievalConfidence.UNKNOWN
+    recording_identity_confidence: Confidence | None = None
 
 
 def assess_candidate(
@@ -343,6 +347,10 @@ def assess_candidate(
         text_confidence,
         timing_confidence,
         query.strategy,
+        recording_identity_confidence=next(
+            (level for level in Confidence if level.value == query.source_confidence),
+            None,
+        ),
     )
 
 

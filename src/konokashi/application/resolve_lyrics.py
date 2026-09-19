@@ -38,6 +38,7 @@ from konokashi.domain.lyrics import (
     LyricsResolutionResult,
     LyricsResolutionStatus,
     ProviderCacheEntry,
+    RetrievalConfidence,
 )
 from konokashi.domain.lyrics_matching import CandidateMatchAssessment, assess_candidate
 from konokashi.domain.normalization import (
@@ -46,7 +47,12 @@ from konokashi.domain.normalization import (
     parse_artist_credits,
     parse_title_version,
 )
-from konokashi.domain.tracks import ResolvedTrack, TrackCandidate, semantic_duration_us
+from konokashi.domain.tracks import (
+    Confidence,
+    ResolvedTrack,
+    TrackCandidate,
+    semantic_duration_us,
+)
 
 _CONFIDENCE_RANK = {
     LyricsMatchConfidence.HIGH: 0,
@@ -197,11 +203,14 @@ class LyricsResolver:
         provenance = ", ".join(
             f"{field}={source}" for field, source in best_query.provenance
         )
+        retrieval_confidence = _retrieval_confidence(retrieved_by)
         return replace(
             best,
+            retrieval_confidence=retrieval_confidence,
             evidence=(
                 *best.evidence,
                 f"recording hypothesis: {best.query_strategy}",
+                f"retrieval confidence is {retrieval_confidence.value}",
                 *((f"hypothesis provenance: {provenance}",) if provenance else ()),
                 f"provider result retrieved by {retrieved_by}",
                 f"evaluated against {len(queries)} recording interpretation(s)",
@@ -461,12 +470,35 @@ class LyricsResolver:
                 cancellation_token=cancellation_token,
             )
         if assessments:
-            diagnostics.extend(
-                _assessment_diagnostic(item) for item in self._ordered(assessments)
-            )
-            ordered = tuple(item.candidate for item in self._ordered(assessments))
+            ranked = self._ordered(assessments)
+            diagnostics.extend(_assessment_diagnostic(item) for item in ranked)
+            ordered = tuple(item.candidate for item in ranked)
+            if any(
+                item.text_confidence is LyricsMatchConfidence.HIGH
+                and item.timing_confidence is not LyricsMatchConfidence.HIGH
+                and item.candidate.synced_lyrics is not None
+                and item.candidate.plain_lyrics is None
+                for item in assessments
+            ):
+                diagnostics.append(
+                    "candidate lyric text matched, but recording timing was not "
+                    "trusted and no plain lyrics were available"
+                )
+            eligible_count = sum(_automatically_eligible(item) for item in assessments)
+            failures = _acceptance_failures(ranked[0])
+            if failures:
+                diagnostics.append(
+                    "rejected automatic attachment because " + "; ".join(failures)
+                )
             diagnostics.append(
-                "provider candidates did not meet the unique High-confidence policy"
+                "remained ambiguous because "
+                + (
+                    f"{eligible_count} candidates met the explicit acceptance "
+                    "policy without a safe runner-up separation"
+                    if eligible_count > 1
+                    else "no candidate met the explicit identity, text, timing, "
+                    "and version acceptance policy"
+                )
             )
             return self._fallback_or_state(
                 track,
@@ -1129,6 +1161,16 @@ class LyricsResolver:
             ContentProvenance.PROVIDER,
         ):
             return self._cancelled_resolution(track, diagnostics, network_used)
+        diagnostics.append(
+            "accepted because one recording hypothesis had High lyric-text "
+            "agreement, compatible version and identity evidence, and "
+            "no equally strong competing recording; "
+            f"retrieval={assessment.retrieval_confidence.value}, "
+            "recording identity="
+            f"{_identity_confidence_label(assessment)}, "
+            f"text={assessment.text_confidence.value}, "
+            f"timing={assessment.timing_confidence.value}"
+        )
         return self._from_document(
             track,
             document,
@@ -1201,7 +1243,7 @@ class LyricsResolver:
             [
                 assessment
                 for assessment in _deduplicate_assessments(assessments)
-                if assessment.confidence is LyricsMatchConfidence.HIGH
+                if _automatically_eligible(assessment)
             ]
         )
         if len(high) == 1:
@@ -1528,6 +1570,57 @@ def _candidate_search_plan(
     return tuple(plan)
 
 
+def _retrieval_confidence(retrieved_by: str) -> RetrievalConfidence:
+    if retrieved_by.startswith("exact"):
+        return RetrievalConfidence.HIGH
+    if retrieved_by.startswith(
+        (
+            "normalized title and artist",
+            "phonetic title alias and artist",
+            "base title and artist",
+        )
+    ):
+        return RetrievalConfidence.MEDIUM
+    if retrieved_by.startswith(("broader artist catalogue", "broad title query")):
+        return RetrievalConfidence.LOW
+    return RetrievalConfidence.UNKNOWN
+
+
+def _identity_confidence_label(assessment: CandidateMatchAssessment) -> str:
+    confidence = assessment.recording_identity_confidence
+    return "Unknown" if confidence is None else confidence.value
+
+
+def _automatically_eligible(assessment: CandidateMatchAssessment) -> bool:
+    """Require independent identity, text, and usable timing/plain evidence."""
+
+    return not _acceptance_failures(assessment)
+
+
+def _acceptance_failures(assessment: CandidateMatchAssessment) -> tuple[str, ...]:
+    failures: list[str] = []
+    if assessment.confidence is not LyricsMatchConfidence.HIGH:
+        failures.append("overall recording evidence is not High")
+    if assessment.text_confidence is not LyricsMatchConfidence.HIGH:
+        failures.append("lyric-text identity is not High")
+    if assessment.recording_identity_confidence is Confidence.LOW:
+        failures.append("recording interpretation is Low confidence")
+    if assessment.title_relation == "different":
+        failures.append("title relation is not supported")
+    if any(
+        "recording version" in evidence and "conflict" in evidence
+        for evidence in assessment.evidence
+    ):
+        failures.append("recording version conflicts")
+    if (
+        assessment.timing_confidence is not LyricsMatchConfidence.HIGH
+        and assessment.candidate.plain_lyrics is None
+        and not assessment.candidate.instrumental
+    ):
+        failures.append("timing is untrusted and no plain lyrics are available")
+    return tuple(failures)
+
+
 def _assessment_sort_key(
     item: CandidateMatchAssessment,
 ) -> tuple[int, int, int, int, str]:
@@ -1588,6 +1681,8 @@ def _assessment_diagnostic(assessment: CandidateMatchAssessment) -> str:
     return (
         f"candidate {assessment.candidate.record_id}: "
         f"interpretation={assessment.query_strategy}, "
+        f"retrieval={assessment.retrieval_confidence.value}, "
+        f"recording_identity={_identity_confidence_label(assessment)}, "
         f"overall={assessment.confidence.value}, "
         f"title={assessment.title_relation}, "
         f"text={assessment.text_confidence.value}, "

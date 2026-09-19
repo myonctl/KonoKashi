@@ -213,6 +213,15 @@ class LyricsMatchConfidence(Enum):
     LOW = "Low"
 
 
+class RetrievalConfidence(Enum):
+    """How targeted the provider query was, separate from recording agreement."""
+
+    HIGH = "High"
+    MEDIUM = "Medium"
+    LOW = "Low"
+    UNKNOWN = "Unknown"
+
+
 @dataclass(frozen=True, slots=True)
 class LyricsMatch:
     """A typed persisted match decision with retained provenance."""
