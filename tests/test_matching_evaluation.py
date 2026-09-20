@@ -22,6 +22,7 @@ FIXTURE = (
     / "matching_evaluation"
     / "synthetic_cases.json"
 )
+YOUTUBE_FIXTURE = FIXTURE.with_name("youtube_automatic_cases.json")
 
 
 def _payload() -> dict[str, Any]:
@@ -80,6 +81,128 @@ def test_report_retains_structured_real_match_factors() -> None:
     assert "ordered main-artist credits match" in accepted.actual.factors[0].evidence
     assert "normalized title matches" in accepted.actual.factors[0].evidence
     assert "duration differs by 0 ms" in accepted.actual.factors[0].evidence
+
+
+def test_automatic_youtube_corpus_replays_the_real_frontend_retry_without_network(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def forbidden_socket(*_args: object, **_kwargs: object) -> None:
+        raise AssertionError("automatic YouTube evaluation attempted network access")
+
+    monkeypatch.setattr("socket.socket", forbidden_socket)
+
+    report = evaluate((YOUTUBE_FIXTURE,))
+
+    assert report.metrics.passed_cases == 2
+    assert report.metrics.expected_automatic_accepts == 2
+    assert report.metrics.correct_automatic_accepts == 2
+    assert report.metrics.wrong_automatic_accepts == 0
+    assert report.metrics.youtube_enrichment_attempts == 1
+    assert report.metrics.youtube_metadata_network_calls == 1
+    assert report.metrics.youtube_enrichment_fixed_failures == 1
+    assert report.metrics.known_supported_cases == 0
+    assert report.metrics.unclassified_support_cases == 2
+    assert report.metrics.correct_automatic_supported == 0
+    assert report.metrics.ambiguous_supported == 0
+    assert report.metrics.missed_supported == 0
+    recovered, immediate = report.cases
+    assert recovered.actual.enrichment_used is True
+    assert recovered.actual.enrichment_network_used is True
+    assert immediate.actual.enrichment_used is False
+    assert immediate.actual.enrichment_network_used is False
+    assert recovered.actual.track.artists == ()
+    assert any(
+        "automatic YouTube retry" in item for item in recovered.actual.diagnostics
+    )
+    assert "youtube-enrichment:structured-music-fields" in (
+        recovered.actual.factors[0].strategy
+    )
+
+
+def test_youtube_enrichment_contribution_requires_a_correct_outcome(
+    tmp_path: Path,
+) -> None:
+    payload = cast(
+        dict[str, Any], json.loads(YOUTUBE_FIXTURE.read_text(encoding="utf-8"))
+    )
+    payload["cases"] = [payload["cases"][0]]
+    payload["cases"][0]["expected"]["record_id"] = "different-record"
+    corpus = tmp_path / "wrong-youtube-oracle.json"
+    corpus.write_text(json.dumps(payload), encoding="utf-8")
+
+    report = evaluate((corpus,))
+
+    assert report.metrics.wrong_automatic_accepts == 1
+    assert report.metrics.youtube_enrichment_attempts == 1
+    assert report.metrics.youtube_enrichment_fixed_failures == 0
+    assert report.metrics.correct_automatic_supported == 0
+
+
+def test_known_supported_denominator_requires_an_explicit_oracle_label(
+    tmp_path: Path,
+) -> None:
+    payload = cast(
+        dict[str, Any], json.loads(YOUTUBE_FIXTURE.read_text(encoding="utf-8"))
+    )
+    payload["cases"] = [payload["cases"][0]]
+    payload["cases"][0]["expected"]["known_supported"] = True
+    corpus = tmp_path / "labeled-known-supported.json"
+    corpus.write_text(json.dumps(payload), encoding="utf-8")
+
+    report = evaluate((corpus,))
+
+    assert report.metrics.known_supported_cases == 1
+    assert report.metrics.unclassified_support_cases == 0
+    assert report.metrics.correct_automatic_supported == 1
+
+
+def test_oracle_labels_wrong_recording_version_separately(tmp_path: Path) -> None:
+    payload = cast(
+        dict[str, Any], json.loads(YOUTUBE_FIXTURE.read_text(encoding="utf-8"))
+    )
+    payload["cases"] = [payload["cases"][0]]
+    expected = payload["cases"][0]["expected"]
+    expected["record_id"] = "correct-other-version-record"
+    expected["wrong_version_record_ids"] = ["invented-italian-provider-record"]
+    corpus = tmp_path / "wrong-version-oracle.json"
+    corpus.write_text(json.dumps(payload), encoding="utf-8")
+
+    report = evaluate((corpus,))
+
+    assert report.metrics.wrong_automatic_accepts == 1
+    assert report.metrics.wrong_version_automatic_accepts == 1
+    assert report.metrics.correct_automatic_supported == 0
+
+
+def test_query_specific_provider_replay_does_not_leak_a_candidate_to_wrong_artist(
+    tmp_path: Path,
+) -> None:
+    payload = cast(
+        dict[str, Any], json.loads(YOUTUBE_FIXTURE.read_text(encoding="utf-8"))
+    )
+    payload["cases"] = [payload["cases"][0]]
+    case = payload["cases"][0]
+    case["youtube_metadata"]["artist"] = "Another Performer"
+    case["youtube_metadata"]["description"] = ""
+    case["expected"].update(
+        {
+            "category": "reject",
+            "status": "No result",
+            "record_id": None,
+            "timing": "none",
+            "origin": "none",
+        }
+    )
+    corpus = tmp_path / "wrong-artist.json"
+    corpus.write_text(json.dumps(payload), encoding="utf-8")
+
+    report = evaluate((corpus,))
+
+    assert report.metrics.passed_cases == 1
+    assert report.metrics.youtube_enrichment_attempts == 1
+    assert report.metrics.youtube_enrichment_fixed_failures == 0
+    assert report.metrics.wrong_automatic_accepts == 0
+    assert report.cases[0].actual.factors == ()
 
 
 def test_wrong_oracle_document_counts_a_dangerous_automatic_accept(

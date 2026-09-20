@@ -3,6 +3,10 @@
 `synthetic_cases.json` contains invented metadata and tiny invented lyric lines.
 It exercises the development evaluator without network access, personal playback
 history, local media paths, credentials, or commercial lyrics.
+`youtube_automatic_cases.json` additionally replays the real frontend's automatic
+YouTube retry with an injected, lyric-free metadata response. It verifies both
+recovery after missing musical-artist evidence and skipping enrichment after a
+strong first pass. These synthetic checks do not establish real-world accuracy.
 
 Run it from an editable development environment:
 
@@ -14,6 +18,25 @@ Run it from an editable development environment:
 The evaluator accepts multiple files and directories and can emit a stable JSON
 report with `--json`. By default, an oracle mismatch exits 1; input/schema errors
 exit 2.
+An optional `youtube_metadata` object on a YouTube case is passed through the real
+fields-only metadata parser and automatic frontend retry without contacting YouTube. For those
+cases, set `expected.enrichment_used` explicitly. The report separately counts
+enrichment invocation, metadata network contact, and correct automatic recoveries;
+set `expected.enrichment_network_used` when the distinction matters. It never treats a wrong
+automatic document as an enrichment success. Store only bounded, sanitized
+recording fields and, if essential, a short credit line—never a full description
+or lyric body.
+Optional `provider.query_results` rules bind a recorded response to an exact query
+mode, title, and artist tuple; unmatched queries return no result. Use these rules
+for YouTube cases so an unrelated first-pass search cannot see a candidate that
+was actually found only after enrichment. Cases without rules retain schema-1
+provider behavior for backward compatibility.
+Real-world cases must explicitly set `expected.known_supported` only when an
+independent source/recording oracle justifies it; unlabeled cases are reported
+as unclassified, never silently folded into the known-supported denominator.
+The committed invented cases intentionally remain unclassified.
+`expected.wrong_version_record_ids` can classify known incorrect versions
+without weakening the general wrong-automatic-accept counter.
 
 ## Private empirical corpus
 

@@ -1,0 +1,105 @@
+{
+  "schema_version": 1,
+  "cases": [
+    {
+      "id": "synthetic-youtube-enrichment-recovers-missing-artist",
+      "description": "automatic metadata-only enrichment supplies musical artist evidence missing from browser metadata",
+      "track": {
+        "service_name": "youtube-evaluation01",
+        "title": "Luce sul mare (Official Video) - YouTube",
+        "artists": [],
+        "duration_ms": 198000,
+        "url": "https://www.youtube.com/watch?v=AbCdEf12345"
+      },
+      "youtube_metadata": {
+        "id": "AbCdEf12345",
+        "title": "Luce sul mare (Official Video)",
+        "uploader": "Example Label",
+        "channel": "Example Label",
+        "duration": 198.0,
+        "track": "Luce sul mare",
+        "artist": "Cantante Fittizia",
+        "description": "Artist: Cantante Fittizia"
+      },
+      "provider": {
+        "query_results": [
+          {
+            "title": "Luce sul mare",
+            "artists": ["Cantante Fittizia"],
+            "result": {
+              "candidates": [
+                {
+                  "record_id": "invented-italian-provider-record",
+                  "track_name": "Luce sul mare",
+                  "artist_name": "Cantante Fittizia",
+                  "duration_ms": 198000,
+                  "plain_lyrics": "La luce inventata arriva.",
+                  "synced_lyrics": "[00:01.00]La luce inventata arriva."
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "expected": {
+        "category": "automatic-accept",
+        "status": "Timed",
+        "record_id": "invented-italian-provider-record",
+        "timing": "synced",
+        "origin": "provider-auto",
+        "network_used": true,
+        "enrichment_used": true,
+        "enrichment_network_used": true
+      }
+    },
+    {
+      "id": "synthetic-youtube-strong-first-pass-skips-enrichment",
+      "description": "a clear first-pass lyric match does not contact YouTube metadata",
+      "track": {
+        "service_name": "youtube-evaluation02",
+        "title": "Aster Vale - Glass Horizon (Official Audio)",
+        "artists": ["Aster Vale"],
+        "album": "Sky Archive",
+        "duration_ms": 180000,
+        "url": "https://www.youtube.com/watch?v=ZyXwVu98765"
+      },
+      "youtube_metadata": {
+        "id": "ZyXwVu98765",
+        "title": "Unrelated upload title",
+        "uploader": "Unrelated uploader",
+        "duration": 180.0
+      },
+      "provider": {
+        "query_results": [
+          {
+            "title": "Glass Horizon",
+            "artists": ["Aster Vale"],
+            "result": {
+              "candidates": [
+                {
+                  "record_id": "invented-strong-provider-record",
+                  "track_name": "Glass Horizon",
+                  "artist_name": "Aster Vale",
+                  "album_name": "Sky Archive",
+                  "duration_ms": 180000,
+                  "plain_lyrics": "An invented horizon line.",
+                  "synced_lyrics": "[00:01.00]An invented horizon line."
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "expected": {
+        "category": "automatic-accept",
+        "status": "Timed",
+        "record_id": "invented-strong-provider-record",
+        "timing": "synced",
+        "origin": "provider-auto",
+        "network_used": true,
+        "enrichment_used": false,
+        "enrichment_network_used": false
+      }
+    }
+  ]
+}

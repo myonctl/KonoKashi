@@ -8,15 +8,20 @@ import json
 import sys
 import tempfile
 from collections.abc import Mapping, Sequence
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, replace
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import cast
 
+from konokashi.application.frontend_session import FrontendSessionService
 from konokashi.application.ports import LocalPathResolution
+from konokashi.application.representations import RepresentationService
 from konokashi.application.resolve_lyrics import LyricsResolver
 from konokashi.application.resolve_track import TrackResolver
+from konokashi.application.review_corrections import ReviewCorrectionService
+from konokashi.application.select_player import PlayerSelectionService
 from konokashi.application.source_identity import SourceIdentityResolver
+from konokashi.domain.identity import YouTubeIdentity
 from konokashi.domain.lyrics import (
     ContentProvenance,
     LocalLyricsResult,
@@ -38,11 +43,17 @@ from konokashi.domain.models import (
     RawTrackMetadata,
 )
 from konokashi.domain.tracks import ApprovedTrackIdentity, ResolvedTrack
+from konokashi.domain.youtube_metadata import YouTubeMetadataEnrichmentResult
 from konokashi.infrastructure.lyrics.documents import build_lyric_document
 from konokashi.infrastructure.lyrics.lrc import parse_lyrics_text
 from konokashi.infrastructure.lyrics.provider_documents import (
     ProviderLyricDocumentBuilder,
 )
+from konokashi.infrastructure.metadata.youtube import (
+    _PRINT_FIELDS,
+    YtDlpYouTubeMetadataEnricher,
+)
+from konokashi.infrastructure.romanization.offline import OfflineRomanizationProvider
 from konokashi.infrastructure.storage.bootstrap import StorageRepositories, open_storage
 
 SCHEMA_VERSION = 1
@@ -91,6 +102,10 @@ class ExpectedOutcome:
     timing: str
     origin: str
     network_used: bool
+    enrichment_used: bool | None = None
+    enrichment_network_used: bool | None = None
+    known_supported: bool | None = None
+    wrong_version_record_ids: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -135,6 +150,8 @@ class ActualOutcome:
     source_label: str | None
     network_used: bool
     cache_hit: bool
+    enrichment_used: bool
+    enrichment_network_used: bool
     track: TrackFactorReport
     evidence: tuple[str, ...]
     diagnostics: tuple[str, ...]
@@ -170,6 +187,15 @@ class EvaluationMetrics:
     fallback_failures: int
     provider_search_fallback_cases: int
     provider_search_fallback_failures: int
+    youtube_enrichment_attempts: int
+    youtube_metadata_network_calls: int
+    youtube_enrichment_fixed_failures: int
+    known_supported_cases: int
+    unclassified_support_cases: int
+    correct_automatic_supported: int
+    ambiguous_supported: int
+    missed_supported: int
+    wrong_version_automatic_accepts: int
 
 
 @dataclass(frozen=True, slots=True)
@@ -189,8 +215,17 @@ class _LoadedCase:
     provider: Mapping[str, object]
     local: Mapping[str, object] | None
     prior: Mapping[str, object]
+    youtube_metadata: Mapping[str, object] | None
     expected: ExpectedOutcome
     corpus_path: str
+
+
+@dataclass(frozen=True, slots=True)
+class _QueryRule:
+    mode: str
+    title: str
+    artists: tuple[str, ...]
+    result: LyricsProviderResult
 
 
 class _FixtureLocalPathCanonicalizer:
@@ -205,21 +240,77 @@ class _FixtureProvider:
         self,
         exact_result: LyricsProviderResult,
         search_result: LyricsProviderResult,
+        query_rules: tuple[_QueryRule, ...] = (),
     ) -> None:
         self._exact_result = exact_result
         self._search_result = search_result
+        self._query_rules = query_rules
+
+    def _result_for(self, query: LyricsQuery, mode: str) -> LyricsProviderResult:
+        if not self._query_rules:
+            return self._search_result if mode == "search" else self._exact_result
+        for index, rule in enumerate(self._query_rules):
+            if rule.mode not in {mode, "either"}:
+                continue
+            if rule.title.casefold() != query.title.casefold() or tuple(
+                artist.casefold() for artist in rule.artists
+            ) != tuple(artist.casefold() for artist in query.artists):
+                continue
+            return replace(
+                rule.result,
+                diagnostics=(
+                    *rule.result.diagnostics,
+                    f"matched replay query rule {index + 1}",
+                ),
+            )
+        relevant = tuple(
+            rule for rule in self._query_rules if rule.mode in {mode, "either"}
+        )
+        title_rule_match = any(
+            rule.title.casefold() == query.title.casefold() for rule in relevant
+        )
+        artist_rule_match = any(
+            tuple(artist.casefold() for artist in rule.artists)
+            == tuple(artist.casefold() for artist in query.artists)
+            for rule in relevant
+        )
+        return LyricsProviderResult(
+            LyricsProviderStatus.NO_RESULT,
+            diagnostics=(
+                "no recorded provider response for this query; "
+                f"title_rule_match={title_rule_match}; "
+                f"artist_rule_match={artist_rule_match}",
+            ),
+        )
 
     def exact(self, query: LyricsQuery) -> LyricsProviderResult:
-        del query
-        return self._exact_result
+        return self._result_for(query, "exact")
 
     def search(self, query: LyricsQuery) -> LyricsProviderResult:
-        del query
-        return self._search_result
+        return self._result_for(query, "search")
 
     def parse_cached(self, payload: bytes, *, search: bool) -> LyricsProviderResult:
         del payload
         return self._search_result if search else self._exact_result
+
+
+class _RecordedYouTubeMetadataEnricher(YtDlpYouTubeMetadataEnricher):
+    """Observe the real adapter's invocation and network decisions separately."""
+
+    calls = 0
+    network_calls = 0
+
+    def enrich(
+        self,
+        track: ResolvedTrack,
+        *,
+        offline: bool = False,
+        refresh: bool = False,
+    ) -> YouTubeMetadataEnrichmentResult:
+        self.calls += 1
+        result = super().enrich(track, offline=offline, refresh=refresh)
+        self.network_calls += int(result.network_used)
+        return result
 
 
 class _FixtureLocalSource:
@@ -305,6 +396,28 @@ def _expected(value: object, context: str) -> ExpectedOutcome:
         timing,
         origin,
         _boolean(raw.get("network_used"), f"{context}.network_used", default=False),
+        (
+            None
+            if raw.get("enrichment_used") is None
+            else _boolean(raw["enrichment_used"], f"{context}.enrichment_used")
+        ),
+        (
+            None
+            if raw.get("enrichment_network_used") is None
+            else _boolean(
+                raw["enrichment_network_used"],
+                f"{context}.enrichment_network_used",
+            )
+        ),
+        (
+            None
+            if raw.get("known_supported") is None
+            else _boolean(raw["known_supported"], f"{context}.known_supported")
+        ),
+        _strings(
+            raw.get("wrong_version_record_ids", []),
+            f"{context}.wrong_version_record_ids",
+        ),
     )
 
 
@@ -349,6 +462,9 @@ def _load_file(path: Path) -> tuple[_LoadedCase, ...]:
                 _mapping(raw.get("provider", {}), f"{context}.provider"),
                 _optional_mapping(raw.get("local"), f"{context}.local"),
                 _mapping(raw.get("prior", {}), f"{context}.prior"),
+                _optional_mapping(
+                    raw.get("youtube_metadata"), f"{context}.youtube_metadata"
+                ),
                 _expected(raw.get("expected"), f"{context}.expected"),
                 path.name,
             )
@@ -450,7 +566,30 @@ def _provider(value: Mapping[str, object], context: str) -> _FixtureProvider:
         f"{context}.search",
         default_candidates=default_candidates,
     )
-    return _FixtureProvider(exact, search)
+    rules: list[_QueryRule] = []
+    for index, item in enumerate(
+        _sequence(value.get("query_results", []), f"{context}.query_results")
+    ):
+        rule_context = f"{context}.query_results[{index}]"
+        raw = _mapping(item, rule_context)
+        mode = _string(raw.get("mode", "search"), f"{rule_context}.mode")
+        title = _string(raw.get("title"), f"{rule_context}.title")
+        assert mode is not None and title is not None
+        if mode not in {"exact", "search", "either"}:
+            raise EvaluationInputError(f"{rule_context}.mode is unsupported")
+        rules.append(
+            _QueryRule(
+                mode,
+                title,
+                _strings(raw.get("artists", []), f"{rule_context}.artists"),
+                _provider_result(
+                    raw.get("result", {}),
+                    f"{rule_context}.result",
+                    default_candidates=(),
+                ),
+            )
+        )
+    return _FixtureProvider(exact, search, tuple(rules))
 
 
 def _snapshot(value: Mapping[str, object], context: str) -> PlayerSnapshot:
@@ -535,6 +674,19 @@ def _find_candidate(
         nested = _mapping(provider.get(key, {}), f"{context}.{key}")
         pools.extend(
             _sequence(nested.get("candidates", []), f"{context}.{key}.candidates")
+        )
+    for index, item in enumerate(
+        _sequence(provider.get("query_results", []), f"{context}.query_results")
+    ):
+        rule = _mapping(item, f"{context}.query_results[{index}]")
+        result = _mapping(
+            rule.get("result", {}), f"{context}.query_results[{index}].result"
+        )
+        pools.extend(
+            _sequence(
+                result.get("candidates", []),
+                f"{context}.query_results[{index}].result.candidates",
+            )
         )
     candidates = tuple(
         _candidate(value, f"{context}.candidate[{index}]")
@@ -648,18 +800,38 @@ def _origin(
 
 
 def _mismatches(expected: ExpectedOutcome, actual: ActualOutcome) -> tuple[str, ...]:
-    values = (
+    values: tuple[tuple[str, object, object], ...] = (
         ("status", expected.status, actual.status),
         ("record_id", expected.record_id, actual.record_id),
         ("timing", expected.timing, actual.timing),
         ("origin", expected.origin, actual.origin),
         ("network_used", expected.network_used, actual.network_used),
     )
-    return tuple(
+    mismatches = tuple(
         f"{name}: expected {wanted!r}, observed {observed!r}"
         for name, wanted, observed in values
         if wanted != observed
     )
+    if (
+        expected.enrichment_used is not None
+        and expected.enrichment_used != actual.enrichment_used
+    ):
+        mismatches = (
+            *mismatches,
+            "enrichment_used: expected "
+            f"{expected.enrichment_used!r}, observed {actual.enrichment_used!r}",
+        )
+    if (
+        expected.enrichment_network_used is not None
+        and expected.enrichment_network_used != actual.enrichment_network_used
+    ):
+        return (
+            *mismatches,
+            "enrichment_network_used: expected "
+            f"{expected.enrichment_network_used!r}, "
+            f"observed {actual.enrichment_network_used!r}",
+        )
+    return mismatches
 
 
 def _run_case(case: _LoadedCase, database_path: Path) -> CaseReport:
@@ -684,7 +856,61 @@ def _run_case(case: _LoadedCase, database_path: Path) -> CaseReport:
         now=lambda: FIXED_NOW,
         sleeper=lambda _seconds: None,
     )
-    resolution = resolver.resolve(track)
+    enricher: _RecordedYouTubeMetadataEnricher | None = None
+    if case.youtube_metadata is None:
+        resolution = resolver.resolve(track)
+    else:
+        if not isinstance(track.source_identity, YouTubeIdentity):
+            raise EvaluationInputError(
+                f"{case.case_id}.youtube_metadata requires a YouTube source identity"
+            )
+        metadata_id = _string(
+            case.youtube_metadata.get("id"), f"{case.case_id}.youtube_metadata.id"
+        )
+        if metadata_id != track.source_identity.video_id:
+            raise EvaluationInputError(
+                f"{case.case_id}.youtube_metadata.id must match the source video ID"
+            )
+        metadata_payload = "\t".join(
+            (
+                json.dumps(case.youtube_metadata[name], ensure_ascii=False)
+                if name in case.youtube_metadata
+                else "NA"
+            )
+            for name in _PRINT_FIELDS
+        ).encode("utf-8")
+
+        def metadata_command(  # type: ignore[no-untyped-def]
+            _argv, _timeout, _max_stdout_bytes, _cancelled
+        ) -> bytes:
+            return metadata_payload
+
+        enricher = _RecordedYouTubeMetadataEnricher(
+            storage.provider_cache,
+            now=lambda: FIXED_NOW,
+            command=metadata_command,
+        )
+        frontend = FrontendSessionService(
+            PlayerSelectionService(track_resolver),
+            resolver,
+            RepresentationService(
+                OfflineRomanizationProvider(), storage.representations
+            ),
+            storage.settings,
+            storage.timing_calibrations,
+            ReviewCorrectionService(
+                track_overrides=storage.track_overrides,
+                lyrics=storage.lyrics,
+                matches=storage.lyrics_matches,
+                provider_documents=builder,
+                timing=storage.timing_calibrations,
+            ),
+            resolver.cancel_inflight,
+            enricher,
+        )
+        bundle = frontend.load_track(track)
+        track = bundle.track
+        resolution = bundle.resolution
     alternatives = resolver.alternatives(track)
     factors = tuple(
         CandidateFactorReport(
@@ -713,6 +939,8 @@ def _run_case(case: _LoadedCase, database_path: Path) -> CaseReport:
         source_label=resolution.source_label,
         network_used=resolution.network_used,
         cache_hit=resolution.cache_hit,
+        enrichment_used=enricher is not None and enricher.calls > 0,
+        enrichment_network_used=enricher is not None and enricher.network_calls > 0,
         track=TrackFactorReport(
             track.candidate.title,
             track.candidate.artists,
@@ -751,6 +979,15 @@ def _metrics(cases: Sequence[CaseReport]) -> EvaluationMetrics:
     fallback_failures = 0
     provider_search_fallback_cases = 0
     provider_search_fallback_failures = 0
+    youtube_enrichment_attempts = 0
+    youtube_metadata_network_calls = 0
+    youtube_enrichment_fixed_failures = 0
+    known_supported_cases = 0
+    unclassified_support_cases = 0
+    correct_automatic_supported = 0
+    ambiguous_supported = 0
+    missed_supported = 0
+    wrong_version_automatic_accepts = 0
     for case in cases:
         expected_accept = case.expected.status in _ACCEPTED_STATUSES
         actual_accept = case.actual.status in _ACCEPTED_STATUSES
@@ -768,6 +1005,24 @@ def _metrics(cases: Sequence[CaseReport]) -> EvaluationMetrics:
             not expects_auto or case.actual.record_id != case.expected.record_id
         ):
             wrong_auto += 1
+        if actual_auto and case.actual.record_id in (
+            case.expected.wrong_version_record_ids
+        ):
+            wrong_version_automatic_accepts += 1
+        if case.expected.known_supported is None:
+            unclassified_support_cases += 1
+        elif case.expected.known_supported:
+            known_supported_cases += 1
+            if (
+                actual_auto
+                and case.actual.record_id == case.expected.record_id
+                and case.actual.timing == case.expected.timing
+            ):
+                correct_automatic_supported += 1
+            elif case.actual.status == "Ambiguous":
+                ambiguous_supported += 1
+            elif not actual_accept:
+                missed_supported += 1
         if expected_accept and case.actual.status == "Ambiguous":
             unnecessary_ambiguities += 1
         elif expected_accept and not actual_accept:
@@ -782,6 +1037,12 @@ def _metrics(cases: Sequence[CaseReport]) -> EvaluationMetrics:
             provider_search_fallback_cases += 1
             if not case.passed:
                 provider_search_fallback_failures += 1
+        if case.actual.enrichment_used:
+            youtube_enrichment_attempts += 1
+            if actual_auto and case.passed:
+                youtube_enrichment_fixed_failures += 1
+        if case.actual.enrichment_network_used:
+            youtube_metadata_network_calls += 1
     return EvaluationMetrics(
         total_cases=len(cases),
         passed_cases=sum(case.passed for case in cases),
@@ -795,6 +1056,15 @@ def _metrics(cases: Sequence[CaseReport]) -> EvaluationMetrics:
         fallback_failures=fallback_failures,
         provider_search_fallback_cases=provider_search_fallback_cases,
         provider_search_fallback_failures=provider_search_fallback_failures,
+        youtube_enrichment_attempts=youtube_enrichment_attempts,
+        youtube_metadata_network_calls=youtube_metadata_network_calls,
+        youtube_enrichment_fixed_failures=youtube_enrichment_fixed_failures,
+        known_supported_cases=known_supported_cases,
+        unclassified_support_cases=unclassified_support_cases,
+        correct_automatic_supported=correct_automatic_supported,
+        ambiguous_supported=ambiguous_supported,
+        missed_supported=missed_supported,
+        wrong_version_automatic_accepts=wrong_version_automatic_accepts,
     )
 
 
@@ -821,6 +1091,18 @@ def _human(report: EvaluationReport) -> str:
             f"{metrics.expected_automatic_accepts} correct"
         ),
         f"wrong automatic accepts: {metrics.wrong_automatic_accepts}",
+        (
+            "explicitly known-supported cases: "
+            f"{metrics.known_supported_cases}; "
+            f"unclassified: {metrics.unclassified_support_cases}"
+        ),
+        (
+            "known-supported automatic outcomes: "
+            f"{metrics.correct_automatic_supported} correct, "
+            f"{metrics.ambiguous_supported} ambiguous, "
+            f"{metrics.missed_supported} missed"
+        ),
+        f"wrong-version automatic accepts: {metrics.wrong_version_automatic_accepts}",
         f"unnecessary ambiguities: {metrics.unnecessary_ambiguities}",
         f"missed matches: {metrics.missed_matches}",
         f"wrong timing trust: {metrics.wrong_timing_trust}",
@@ -833,6 +1115,11 @@ def _human(report: EvaluationReport) -> str:
             f"{metrics.provider_search_fallback_failures}/"
             f"{metrics.provider_search_fallback_cases}"
         ),
+        (
+            "YouTube enrichment fixed first-pass failures: "
+            f"{metrics.youtube_enrichment_fixed_failures}/"
+            f"{metrics.youtube_enrichment_attempts} attempts"
+        ),
     ]
     for case in report.cases:
         lines.append(
@@ -843,6 +1130,11 @@ def _human(report: EvaluationReport) -> str:
             "  observed: "
             f"{case.actual.status}, record={case.actual.record_id or '-'}, "
             f"timing={case.actual.timing}, origin={case.actual.origin}"
+        )
+        lines.append(
+            "  YouTube enrichment: "
+            f"invoked={case.actual.enrichment_used}, "
+            f"network={case.actual.enrichment_network_used}"
         )
         lines.append(
             "  track: "
