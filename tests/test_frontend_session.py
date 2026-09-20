@@ -10,7 +10,7 @@ from konokashi.application.frontend_session import (
 )
 from konokashi.application.lyric_corrections import LyricCorrectionService
 from konokashi.application.settings import DesktopInteractionSettings
-from konokashi.domain.identity import YouTubeIdentity
+from konokashi.domain.identity import GenericMprisIdentity, YouTubeIdentity
 from konokashi.domain.lyric_corrections import LyricLineCorrection, LyricLineEdit
 from konokashi.domain.lyrics import (
     LyricsAlternativeResult,
@@ -37,8 +37,11 @@ from konokashi.domain.tracks import (
     ResolvedTrack,
     TrackCandidate,
 )
-from konokashi.domain.youtube_metadata import YouTubeMetadataEnrichmentResult
-from tests.stage2_helpers import fixture_snapshot
+from konokashi.domain.youtube_metadata import (
+    YouTubeMetadataDiscoveryResult,
+    YouTubeMetadataEnrichmentResult,
+)
+from tests.stage2_helpers import fixture_snapshot, resolver, snapshot
 from tests.test_lyrics_sync import document
 
 
@@ -460,6 +463,141 @@ def test_successful_first_pass_never_requests_youtube_metadata() -> None:
         is LyricsResolutionStatus.FOUND_TIMED
     )
     assert enrichment_calls == 0
+
+
+def test_url_less_browser_discovery_retries_without_upgrading_source_identity() -> None:
+    track_resolver, _repository = resolver()
+    track = track_resolver.resolve(
+        snapshot(
+            "chromium.instance-test",
+            title="FABLE - Glass Horizon",
+            artists=("Example Maker - Topic",),
+            duration_us=133_641_000,
+        )
+    )
+    assert isinstance(track.source_identity, GenericMprisIdentity)
+    candidate = TrackCandidate(
+        "FABLE - Glass Horizon",
+        ("Example Maker", "Guest Artist"),
+        "Fictional Album",
+        134_000_000,
+        strategy="youtube-enrichment:structured-music-fields",
+    )
+
+    class Lyrics:
+        has_online_providers = True
+        cancellation_generation = 0
+
+        def __init__(self) -> None:
+            self.calls: list[ResolvedTrack] = []
+
+        def resolve(self, resolved, **_kwargs):  # type: ignore[no-untyped-def]
+            self.calls.append(resolved)
+            if not any(
+                item.strategy == candidate.strategy
+                and item.title == candidate.title
+                and item.artists == candidate.artists
+                for item in resolved.interpretation_candidates
+            ):
+                return LyricsResolutionResult(
+                    resolved.source_identity,
+                    LyricsResolutionStatus.AMBIGUOUS,
+                    diagnostics=("initial browser interpretation was ambiguous",),
+                )
+            return LyricsResolutionResult(
+                resolved.source_identity,
+                LyricsResolutionStatus.FOUND_TIMED,
+                document=document(),
+                diagnostics=("discovered recording metadata matched",),
+            )
+
+    class Discovery:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def discover(self, resolved, **kwargs):  # type: ignore[no-untyped-def]
+            self.calls += 1
+            assert resolved is track
+            assert kwargs == {"offline": False, "refresh": False}
+            return YouTubeMetadataDiscoveryResult(
+                (candidate,), ("unique public-video metadata match",), network_used=True
+            )
+
+    lyrics = Lyrics()
+    discovery = Discovery()
+    settings = _Settings()
+    service = FrontendSessionService(
+        _Selection(track),  # type: ignore[arg-type]
+        lyrics,  # type: ignore[arg-type]
+        _Representations(),  # type: ignore[arg-type]
+        settings,  # type: ignore[arg-type]
+        _Timing(),  # type: ignore[arg-type]
+        object(),  # type: ignore[arg-type]
+        youtube_discovery=discovery,  # type: ignore[arg-type]
+    )
+
+    bundle = service.load_track(track)
+
+    assert len(lyrics.calls) == 2
+    assert discovery.calls == 1
+    assert bundle.resolution.status is LyricsResolutionStatus.FOUND_TIMED
+    assert bundle.resolution.network_used is True
+    assert bundle.track.source_identity == track.source_identity
+    assert bundle.track.raw_snapshot == track.raw_snapshot
+    assert any(
+        item.startswith("automatic URL-less browser retry:")
+        for item in bundle.resolution.diagnostics
+    )
+    settings.automatic_web_metadata = False
+    disabled = service.load_track(track)
+    assert disabled.resolution.status is LyricsResolutionStatus.AMBIGUOUS
+    assert discovery.calls == 1
+
+
+def test_superseded_url_less_discovery_cannot_retry_provider() -> None:
+    track_resolver, _repository = resolver()
+    track = track_resolver.resolve(
+        snapshot(
+            "chromium.instance-test",
+            title="FABLE - Glass Horizon",
+            artists=("Example Maker - Topic",),
+        )
+    )
+    calls: list[str] = []
+    service: FrontendSessionService
+
+    class Lyrics:
+        has_online_providers = True
+        cancellation_generation = 0
+
+        def resolve(self, resolved, **_kwargs):  # type: ignore[no-untyped-def]
+            calls.append("lyrics")
+            return LyricsResolutionResult(
+                resolved.source_identity, LyricsResolutionStatus.NO_RESULT
+            )
+
+    class Discovery:
+        def discover(self, _resolved, **_kwargs):  # type: ignore[no-untyped-def]
+            calls.append("discovery")
+            service.cancel_inflight()
+            return YouTubeMetadataDiscoveryResult(
+                (TrackCandidate("Song", ("Artist",), None, 180_000_000),)
+            )
+
+    service = FrontendSessionService(
+        _Selection(track),  # type: ignore[arg-type]
+        Lyrics(),  # type: ignore[arg-type]
+        _Representations(),  # type: ignore[arg-type]
+        _Settings(),  # type: ignore[arg-type]
+        _Timing(),  # type: ignore[arg-type]
+        object(),  # type: ignore[arg-type]
+        youtube_discovery=Discovery(),  # type: ignore[arg-type]
+    )
+
+    bundle = service.load_track(track)
+
+    assert bundle.resolution.document is None
+    assert calls == ["lyrics", "discovery"]
 
 
 def test_opening_review_builds_audit_without_requesting_provider_alternatives() -> None:

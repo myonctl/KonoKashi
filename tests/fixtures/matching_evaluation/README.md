@@ -13,7 +13,9 @@ ambiguous. It uses invented metadata and lyrics only.
 `browser_url_less_cases.json` is based on an observed Chromium MPRIS field
 shape, with invented artist, title, and lyric text. It checks that a clear
 artist-first title can retrieve lyrics without a URL while uploader-only and
-reversed interpretations stay ambiguous. The evaluator preserves an empty
+reversed interpretations stay ambiguous. A separate invented Topic case checks
+that bounded, fields-only video discovery supplies credits without making the
+browser source permanent. The evaluator preserves an empty
 `track.album` because browsers can report it distinctly from an absent field.
 
 Run it from an editable development environment:
@@ -34,6 +36,11 @@ set `expected.enrichment_network_used` when the distinction matters. It never tr
 automatic document as an enrichment success. Store only bounded, sanitized
 recording fields and, if essential, a short credit line—never a full description
 or lyric body.
+An optional `web_discovery` object on a URL-less browser case supplies at most
+five `search_results` rows and one `video_metadata` object. The real discovery
+adapter and frontend retry run against these injected fields without network
+access. A search match is only an ephemeral evidence hint; it does not change
+the case's source identity or authorize a lyric by itself.
 Optional `provider.query_results` rules bind a recorded response to an exact query
 mode, title, and artist tuple. Rules may also bind `album`, `duration_ms`, and
 `broad` when those fields were recorded; unmatched queries return no result. Use

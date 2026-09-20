@@ -235,6 +235,25 @@ def test_url_less_browser_without_clear_title_does_not_promote_uploader() -> Non
     assert len(resolved.interpretation_candidates) == 1
 
 
+def test_url_less_topic_channel_conflict_cannot_auto_confirm_dash_artist() -> None:
+    track_resolver, _repository = resolver()
+    raw = snapshot(
+        "chromium.instance_topic",
+        title="FABLE - Glass Horizon",
+        artists=("Example Maker - Topic",),
+        url=None,
+        duration_us=133_641_000,
+    )
+
+    resolved = track_resolver.resolve(raw)
+
+    assert resolved.candidate.title == "Glass Horizon"
+    assert resolved.candidate.artists == ("FABLE",)
+    assert resolved.candidate.identity_confidence is Confidence.LOW
+    assert resolved.confidence is Confidence.LOW
+    assert any("Topic channel conflicts" in item for item in resolved.evidence)
+
+
 def test_url_less_nonbrowser_keeps_reported_metadata_policy() -> None:
     track_resolver, _repository = resolver()
     raw = snapshot(

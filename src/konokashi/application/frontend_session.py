@@ -16,11 +16,16 @@ from konokashi.application.lyric_corrections import LyricCorrectionService
 from konokashi.application.ports import (
     SettingsRepositoryPort,
     TimingCalibrationRepositoryPort,
+    YouTubeMetadataDiscoveryPort,
     YouTubeMetadataEnrichmentPort,
 )
 from konokashi.application.representations import RepresentationService
 from konokashi.application.resolve_lyrics import LyricsResolver
-from konokashi.application.resolve_track import with_youtube_metadata_candidates
+from konokashi.application.resolve_track import (
+    is_url_less_browser,
+    with_discovered_web_metadata_candidates,
+    with_youtube_metadata_candidates,
+)
 from konokashi.application.review_corrections import (
     ReviewCorrectionService,
     ReviewCorrectionSnapshot,
@@ -28,7 +33,11 @@ from konokashi.application.review_corrections import (
 )
 from konokashi.application.select_player import PlayerSelectionService
 from konokashi.application.settings import DesktopInteractionSettings
-from konokashi.domain.identity import PersistenceScope, YouTubeIdentity
+from konokashi.domain.identity import (
+    GenericMprisIdentity,
+    PersistenceScope,
+    YouTubeIdentity,
+)
 from konokashi.domain.lyric_corrections import (
     LyricCorrectionProjection,
     LyricLineEdit,
@@ -202,6 +211,7 @@ class FrontendSessionService:
         youtube_metadata: YouTubeMetadataEnrichmentPort | None = None,
         lyric_corrections: LyricCorrectionService | None = None,
         monotonic_clock: Callable[[], float] = monotonic,
+        youtube_discovery: YouTubeMetadataDiscoveryPort | None = None,
     ) -> None:
         self._selection = selection
         self._lyrics = lyrics
@@ -212,6 +222,7 @@ class FrontendSessionService:
         self._lyric_corrections = lyric_corrections
         self._cancel_inflight = cancel_inflight or (lambda: None)
         self._youtube_metadata = youtube_metadata
+        self._youtube_discovery = youtube_discovery
         self._monotonic = monotonic_clock
         self._generation_lock = Lock()
         self._generation = 0
@@ -302,6 +313,62 @@ class FrontendSessionService:
                 network_used=(
                     first_pass.network_used
                     or enrichment.network_used
+                    or result.network_used
+                ),
+            )
+        if (
+            result.document is None
+            and not track.user_approved
+            and isinstance(track.source_identity, GenericMprisIdentity)
+            and is_url_less_browser(track.raw_snapshot)
+            and self._youtube_discovery is not None
+            and self._lyrics.has_online_providers
+            and self._settings.get_automatic_web_metadata()
+            and generation == self._current_generation()
+        ):
+            first_pass = result
+            discovery_started = self._monotonic()
+            discovery = self._youtube_discovery.discover(
+                track, offline=offline, refresh=refresh
+            )
+            discovery_ms = max(0, round((self._monotonic() - discovery_started) * 1000))
+            retried = False
+            retry_ms = 0
+            if discovery.candidates and generation == self._current_generation():
+                enriched_track = with_discovered_web_metadata_candidates(
+                    track, discovery.candidates
+                )
+                if enriched_track.interpretation_candidates != (
+                    track.interpretation_candidates or (track.candidate,)
+                ):
+                    track = enriched_track
+                    retry_started = self._monotonic()
+                    result = self._lyrics.resolve(
+                        track,
+                        offline=offline,
+                        refresh=refresh,
+                        expected_generation=resolver_generation,
+                    )
+                    retry_ms = max(0, round((self._monotonic() - retry_started) * 1000))
+                    retried = True
+            total_ms = max(0, round((self._monotonic() - operation_started) * 1000))
+            result = replace(
+                result,
+                diagnostics=(
+                    *(first_pass.diagnostics if retried else ()),
+                    *discovery.diagnostics,
+                    *result.diagnostics,
+                    "automatic URL-less browser retry: "
+                    f"first_pass={first_pass_ms} ms; "
+                    f"discovery={discovery_ms} ms; retry={retry_ms} ms; "
+                    f"total={total_ms} ms; retried={retried}",
+                ),
+                cache_hit=(
+                    first_pass.cache_hit or discovery.cache_hit or result.cache_hit
+                ),
+                network_used=(
+                    first_pass.network_used
+                    or discovery.network_used
                     or result.network_used
                 ),
             )
@@ -620,6 +687,10 @@ class FrontendSessionService:
         self._cancel_inflight()
         if self._youtube_metadata is not None:
             cancellation = getattr(self._youtube_metadata, "cancel_inflight", None)
+            if callable(cancellation):
+                cancellation()
+        if self._youtube_discovery is not None:
+            cancellation = getattr(self._youtube_discovery, "cancel_inflight", None)
             if callable(cancellation):
                 cancellation()
 

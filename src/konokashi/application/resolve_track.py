@@ -17,6 +17,7 @@ from konokashi.domain.normalization import (
     normalize_artist,
     normalize_text,
     parse_artist_credits,
+    parse_topic_channel_label,
     parse_youtube_title_candidates,
     parse_youtube_title_hypotheses,
 )
@@ -44,7 +45,7 @@ _BROWSER_SERVICE_NAMES = frozenset(
 )
 
 
-def _is_url_less_browser(snapshot: PlayerSnapshot) -> bool:
+def is_url_less_browser(snapshot: PlayerSnapshot) -> bool:
     """Recognize only browser MPRIS services when no source URL was reported."""
 
     if snapshot.metadata.url:
@@ -74,7 +75,7 @@ class TrackResolver:
         source = self._sources.resolve(snapshot)
         if isinstance(source.identity, YouTubeIdentity):
             interpretations = self._youtube_candidates(snapshot)
-        elif isinstance(source.identity, GenericMprisIdentity) and _is_url_less_browser(
+        elif isinstance(source.identity, GenericMprisIdentity) and is_url_less_browser(
             snapshot
         ):
             interpretations = self._url_less_browser_candidates(snapshot)
@@ -201,6 +202,21 @@ class TrackResolver:
         interpreted = self._youtube_parsed_candidates(
             snapshot, (parsed[0], *hypotheses)
         )
+        reported_artists = snapshot.metadata.artists or ()
+        topic_label = (
+            parse_topic_channel_label(reported_artists[0])
+            if len(reported_artists) == 1
+            else None
+        )
+        parsed_credit = interpreted[0].artist_credit
+        parsed_artists = (
+            parsed_credit.main_artists
+            if parsed_credit is not None
+            else interpreted[0].artists
+        )
+        topic_conflict = topic_label is not None and comparison_key(
+            topic_label
+        ) not in {comparison_key(artist) for artist in parsed_artists}
         candidates = tuple(
             replace(
                 item,
@@ -212,10 +228,20 @@ class TrackResolver:
                         for evidence in item.evidence
                     ),
                     "browser MPRIS omitted the media URL; source remains unconfirmed",
+                    *(
+                        (
+                            "Topic channel conflicts with parsed artist; "
+                            "await source confirmation",
+                        )
+                        if index == 0 and topic_conflict
+                        else ()
+                    ),
                 ),
                 strategy=item.strategy.replace("youtube-title:", "browser-title:", 1),
                 identity_confidence=(
-                    Confidence.MEDIUM if index == 0 else Confidence.LOW
+                    Confidence.MEDIUM
+                    if index == 0 and not topic_conflict
+                    else Confidence.LOW
                 ),
             )
             for index, item in enumerate(interpreted)
@@ -332,13 +358,15 @@ class TrackResolver:
             return Confidence.LOW, tuple(warnings)
         if isinstance(source_identity, LocalFileIdentity):
             return Confidence.HIGH, tuple(warnings)
-        if (
-            isinstance(source_identity, GenericMprisIdentity)
-            and _is_url_less_browser(snapshot)
-            and candidate.strategy == "reported-mpris"
+        if isinstance(source_identity, GenericMprisIdentity) and is_url_less_browser(
+            snapshot
         ):
-            warnings.append("browser reported artist may be an uploader")
-            return Confidence.LOW, tuple(warnings)
+            if candidate.strategy == "reported-mpris":
+                warnings.append("browser reported artist may be an uploader")
+                return Confidence.LOW, tuple(warnings)
+            if candidate.identity_confidence is Confidence.LOW:
+                warnings.append("browser recording interpretation lacks corroboration")
+                return Confidence.LOW, tuple(warnings)
         if isinstance(source_identity, YouTubeIdentity) and any(
             evidence == "artist/title parsed from video title"
             for evidence in candidate.evidence
@@ -369,6 +397,24 @@ def with_youtube_metadata_candidates(
 
     if not isinstance(track.source_identity, YouTubeIdentity):
         raise ValueError("YouTube metadata requires a confirmed video identity")
+    return _with_metadata_candidates(track, candidates)
+
+
+def with_discovered_web_metadata_candidates(
+    track: ResolvedTrack, candidates: tuple[TrackCandidate, ...]
+) -> ResolvedTrack:
+    """Add search-discovered hypotheses without upgrading session-only identity."""
+
+    if not isinstance(
+        track.source_identity, GenericMprisIdentity
+    ) or not is_url_less_browser(track.raw_snapshot):
+        raise ValueError("web discovery requires a URL-less browser source")
+    return _with_metadata_candidates(track, candidates)
+
+
+def _with_metadata_candidates(
+    track: ResolvedTrack, candidates: tuple[TrackCandidate, ...]
+) -> ResolvedTrack:
     interpretations = list(track.interpretation_candidates or (track.candidate,))
     positions = {
         (

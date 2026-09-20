@@ -25,6 +25,9 @@ from konokashi.infrastructure.metadata.local_paths import (
 from konokashi.infrastructure.metadata.youtube import (
     YtDlpYouTubeMetadataEnricher,
 )
+from konokashi.infrastructure.metadata.youtube_discovery import (
+    YtDlpYouTubeMediaDiscoverer,
+)
 from konokashi.infrastructure.romanization.offline import (
     IcuHanLanguageEvidenceAdapter,
     OfflineRomanizationProvider,
@@ -67,6 +70,7 @@ def create_frontend_session(
 
     documents = ProviderLyricDocumentBuilder()
     lyrics_resolver = create_lyrics_resolver(storage, provider, documents=documents)
+    youtube_metadata = YtDlpYouTubeMetadataEnricher(storage.provider_cache)
     return FrontendSessionService(
         PlayerSelectionService(
             TrackResolver(
@@ -90,9 +94,10 @@ def create_frontend_session(
             timing=storage.timing_calibrations,
         ),
         lyrics_resolver.cancel_inflight,
-        YtDlpYouTubeMetadataEnricher(storage.provider_cache),
+        youtube_metadata,
         LyricCorrectionService(
             storage.lyric_corrections,
             parser=lambda text, duration: parse_lyrics_text(text, duration_ms=duration),
         ),
+        youtube_discovery=YtDlpYouTubeMediaDiscoverer(youtube_metadata),
     )

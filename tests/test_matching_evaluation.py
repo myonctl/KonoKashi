@@ -287,12 +287,20 @@ def test_album_free_get_replay_preserves_recovery_and_conflict() -> None:
 def test_url_less_browser_replay_recovers_clear_title_without_uploader_trust() -> None:
     report = evaluate((BROWSER_URL_LESS_FIXTURE,))
 
-    assert report.metrics.total_cases == 3
-    assert report.metrics.passed_cases == 3
-    assert report.metrics.correct_automatic_accepts == 1
+    assert report.metrics.total_cases == 5
+    assert report.metrics.passed_cases == 5
+    assert report.metrics.correct_automatic_accepts == 2
     assert report.metrics.wrong_automatic_accepts == 0
-    assert report.metrics.youtube_enrichment_attempts == 0
+    assert report.metrics.youtube_enrichment_attempts == 2
+    assert report.cases[1].actual.enrichment_used is True
+    assert report.cases[1].actual.enrichment_network_used is True
+    assert any(
+        item.startswith("automatic URL-less browser retry:")
+        for item in report.cases[1].actual.diagnostics
+    )
     assert [case.actual.status for case in report.cases] == [
+        "Ambiguous",
+        "Timed",
         "Timed",
         "Ambiguous",
         "Ambiguous",

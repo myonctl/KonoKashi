@@ -46,7 +46,10 @@ migration still requires a separate bounded review.
   cache miss, and retrieve metadata for a confirmed public YouTube video when
   its first automatic match lacks reliable music identity. This automatic
   enrichment can be disabled in Settings; the explicit **Use YouTube metadata**
-  action remains available.
+  action remains available. For a URL-less browser source with an exact Topic
+  channel hint, it may also send the observed title and channel to a bounded
+  five-result public-video metadata search. That search never promotes its
+  result to a confirmed source identity or downloads media.
 - `--socket=wayland` and `--socket=fallback-x11`: display the Qt desktop UI.
 - `--share=ipc` and `--device=dri`: Qt/X11 shared-memory and accelerated display
   support; neither grants file or bus access.

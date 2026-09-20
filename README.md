@@ -187,8 +187,9 @@ late response from attaching lyrics to a superseded track. Diagnostics expose
 first-viable and final-decision latency as well as each provider's request
 duration and cancellation/detachment counts.
 It also records first usable-candidate and sufficient-evidence times, while
-automatic YouTube retries report first-pass, metadata, retry, and total latency
-without logging song titles or description text.
+automatic YouTube and URL-less browser retries report first-pass, metadata or
+discovery, retry, and total latency without logging song titles or description
+text.
 On a cache miss, each enabled source receives only the provider-safe resolved
 title, musical artist, and available album/duration—not the local media path,
 raw MPRIS URL, player identity, or playback history.
@@ -197,7 +198,7 @@ When a confirmed public YouTube video still has no trustworthy lyrics after
 that first pass, KonoKashi can automatically request metadata for that one video
 using `yt-dlp`. This is enabled by default through **Automatically improve
 metadata for web media** (`lyrics.web_media.automatic_metadata`); turn it off to
-disable automatic YouTube metadata requests. The request uses the video ID and
+disable automatic web-media metadata requests. The request uses the video ID and
 public metadata only: no audio/video download, browser profile, cookies,
 authentication, or playlist traversal. A bounded, sanitized interpretation is
 cached locally for three days; the full description is not retained. Offline
@@ -209,8 +210,19 @@ Some browser MPRIS implementations omit the media URL entirely. For those
 session-only sources, a clear artist-first browser title can still drive lyric
 search, but the reported browser artist is treated as possible uploader
 evidence, not artist truth. Without a video ID, KonoKashi cannot request
-video-specific YouTube metadata or remember a correction for that video across
-sessions; reversed or unstructured titles remain conservative recovery cases.
+video-specific YouTube metadata directly. If an inadequate first pass also has
+one `Artist - Topic` channel label and a usable duration, the enabled automatic
+metadata setting permits one fields-only YouTube search of at most five public
+videos using the reported title and channel label. KonoKashi requires one unique
+exact title/channel match within two seconds of the browser duration before
+requesting that video's bounded metadata. It sends the title and channel label
+to YouTube for this search, but no browser URL, cookies, profile, authentication,
+audio, video, lyrics, or history. The candidate video ID is only a metadata hint:
+the playing source stays session-only, and provider evidence must still decide
+whether any lyric is safe to show. A conflicting Topic label also lowers a
+dash-split title guess to Low confidence. Other URL-less titles remain
+conservative recovery cases, and corrections cannot be remembered for a video
+whose ID the browser did not report.
 The metadata command requests only the fields needed for interpretation; it
 does not retain yt-dlp's large format/subtitle catalogue.
 Ambiguous video-title separators can produce at most two extra artist/title

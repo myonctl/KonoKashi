@@ -56,6 +56,7 @@ _PRESENTATION_BARE = re.compile(
     re.IGNORECASE,
 )
 _TOPIC_SUFFIX = re.compile(r"\s+-\s+.+?\s+-\s+topic\s*$", re.IGNORECASE)
+_TOPIC_CHANNEL_LABEL = re.compile(r"^(.+?)\s+-\s+topic$", re.IGNORECASE)
 _VERSION_GROUP = re.compile(r"^(?P<base>.+?)\s*[\[(](?P<qualifier>[^\[\]()]+)[\])]\s*$")
 _VERSION_QUALIFIER = re.compile(
     r"^(?:radio\s+(?:edit|version)|edit|extended\s+mix|original(?:\s+mix)?|"
@@ -124,6 +125,13 @@ def normalize_artist(value: str) -> NormalizedValue:
     if artist != normalized.value:
         transformations.append("normalized feat./ft./featuring notation")
     return NormalizedValue(artist, tuple(transformations))
+
+
+def parse_topic_channel_label(value: str) -> str | None:
+    """Return a YouTube Topic channel label as a hint, never artist truth."""
+
+    match = _TOPIC_CHANNEL_LABEL.fullmatch(normalize_text(value).value)
+    return match[1].strip() if match is not None else None
 
 
 def parse_artist_credits(values: tuple[str, ...]) -> ArtistCredit:

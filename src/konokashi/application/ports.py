@@ -53,7 +53,10 @@ from konokashi.domain.tracks import (
     ResolvedTrack,
     TrackCandidate,
 )
-from konokashi.domain.youtube_metadata import YouTubeMetadataEnrichmentResult
+from konokashi.domain.youtube_metadata import (
+    YouTubeMetadataDiscoveryResult,
+    YouTubeMetadataEnrichmentResult,
+)
 
 
 class DiagnosticStatus(Enum):
@@ -300,6 +303,19 @@ class YouTubeMetadataEnrichmentPort(Protocol):
         refresh: bool = False,
     ) -> YouTubeMetadataEnrichmentResult:
         """Return sanitized candidates without downloading media or lyric text."""
+
+
+class YouTubeMetadataDiscoveryPort(Protocol):
+    """Find bounded public-video evidence for a URL-less browser session."""
+
+    def discover(
+        self,
+        track: ResolvedTrack,
+        *,
+        offline: bool = False,
+        refresh: bool = False,
+    ) -> YouTubeMetadataDiscoveryResult:
+        """Return only corroborated hypotheses, never a stable source identity."""
 
 
 class TrackOverrideRepositoryPort(Protocol):

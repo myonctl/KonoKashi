@@ -2,6 +2,132 @@
   "schema_version": 1,
   "cases": [
     {
+      "id": "synthetic-browser-topic-conflicting-parser-result",
+      "description": "a Topic label conflicting with a dash-split artist prevents a coincidental provider result from auto-attaching",
+      "track": {
+        "service_name": "chromium.instance_topic_conflict",
+        "title": "FABLE - Glass Horizon",
+        "artists": ["Example Maker - Topic"],
+        "duration_ms": 133641
+      },
+      "provider": {
+        "query_results": [
+          {
+            "mode": "search",
+            "title": "Glass Horizon",
+            "artists": ["FABLE"],
+            "result": {
+              "candidates": [
+                {
+                  "record_id": "coincidental-wrong-artist",
+                  "track_name": "Glass Horizon",
+                  "artist_name": "FABLE",
+                  "duration_ms": 134000,
+                  "plain_lyrics": "Invented unrelated text.",
+                  "synced_lyrics": "[00:01.00]Invented unrelated text."
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "web_discovery": {
+        "search_results": [],
+        "video_metadata": {"id": "AbCdEfGh123"}
+      },
+      "expected": {
+        "category": "ambiguous",
+        "status": "Ambiguous",
+        "record_id": null,
+        "timing": "none",
+        "origin": "none",
+        "network_used": true,
+        "enrichment_used": true,
+        "enrichment_network_used": true
+      }
+    },
+    {
+      "id": "synthetic-browser-topic-discovery",
+      "description": "a conflicting Topic channel triggers bounded source discovery and selects independently corroborated credits",
+      "track": {
+        "service_name": "chromium.instance_topic",
+        "title": "FABLE - Glass Horizon",
+        "artists": ["Example Maker - Topic"],
+        "album": "",
+        "duration_ms": 133641
+      },
+      "provider": {
+        "query_results": [
+          {
+            "mode": "search",
+            "title": "Glass Horizon",
+            "artists": ["FABLE"],
+            "result": {
+              "candidates": [
+                {
+                  "record_id": "topic-wrong-credit",
+                  "track_name": "FABLE - Glass Horizon",
+                  "artist_name": "Example Maker",
+                  "album_name": "Fictional Album",
+                  "duration_ms": 134000,
+                  "plain_lyrics": "Invented different line.",
+                  "synced_lyrics": "[00:01.00]Invented different line."
+                },
+                {
+                  "record_id": "topic-corroborated",
+                  "track_name": "FABLE - Glass Horizon",
+                  "artist_name": "Example Maker & Guest Artist",
+                  "album_name": "Fictional Album",
+                  "duration_ms": 134000,
+                  "plain_lyrics": "Invented selected line.",
+                  "synced_lyrics": "[00:01.00]Invented selected line."
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "web_discovery": {
+        "search_results": [
+          {
+            "id": "AbCdEfGh123",
+            "title": "FABLE - Glass Horizon",
+            "channel": "Example Maker",
+            "uploader": "Example Maker",
+            "duration": 134
+          },
+          {
+            "id": "ZyXwVuTs987",
+            "title": "Unrelated song",
+            "channel": "Example Maker",
+            "uploader": "Example Maker",
+            "duration": 135
+          }
+        ],
+        "video_metadata": {
+          "id": "AbCdEfGh123",
+          "title": "FABLE - Glass Horizon",
+          "uploader": "Example Maker",
+          "channel": "Example Maker",
+          "duration": 134,
+          "track": "FABLE - Glass Horizon",
+          "artist": "Example Maker & Guest Artist",
+          "artists": ["Example Maker", "Guest Artist"],
+          "album": "Fictional Album"
+        }
+      },
+      "expected": {
+        "category": "automatic-accept",
+        "status": "Timed",
+        "record_id": "topic-corroborated",
+        "timing": "synced",
+        "origin": "provider-auto",
+        "network_used": true,
+        "enrichment_used": true,
+        "enrichment_network_used": true
+      }
+    },
+    {
       "id": "synthetic-browser-no-url-artist-first",
       "description": "a Chromium-shaped title and uploader without a URL still retrieve a clear provider lyric",
       "track": {

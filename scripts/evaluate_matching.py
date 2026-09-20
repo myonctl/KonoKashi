@@ -21,7 +21,7 @@ from konokashi.application.resolve_track import TrackResolver
 from konokashi.application.review_corrections import ReviewCorrectionService
 from konokashi.application.select_player import PlayerSelectionService
 from konokashi.application.source_identity import SourceIdentityResolver
-from konokashi.domain.identity import YouTubeIdentity
+from konokashi.domain.identity import GenericMprisIdentity, YouTubeIdentity
 from konokashi.domain.lyrics import (
     ContentProvenance,
     LocalLyricsResult,
@@ -43,7 +43,10 @@ from konokashi.domain.models import (
     RawTrackMetadata,
 )
 from konokashi.domain.tracks import ApprovedTrackIdentity, ResolvedTrack
-from konokashi.domain.youtube_metadata import YouTubeMetadataEnrichmentResult
+from konokashi.domain.youtube_metadata import (
+    YouTubeMetadataDiscoveryResult,
+    YouTubeMetadataEnrichmentResult,
+)
 from konokashi.infrastructure.lyrics.documents import build_lyric_document
 from konokashi.infrastructure.lyrics.lrc import parse_lyrics_text
 from konokashi.infrastructure.lyrics.provider_documents import (
@@ -52,6 +55,12 @@ from konokashi.infrastructure.lyrics.provider_documents import (
 from konokashi.infrastructure.metadata.youtube import (
     _PRINT_FIELDS,
     YtDlpYouTubeMetadataEnricher,
+)
+from konokashi.infrastructure.metadata.youtube_discovery import (
+    _PRINT_FIELDS as _DISCOVERY_PRINT_FIELDS,
+)
+from konokashi.infrastructure.metadata.youtube_discovery import (
+    YtDlpYouTubeMediaDiscoverer,
 )
 from konokashi.infrastructure.romanization.offline import OfflineRomanizationProvider
 from konokashi.infrastructure.storage.bootstrap import StorageRepositories, open_storage
@@ -216,6 +225,7 @@ class _LoadedCase:
     local: Mapping[str, object] | None
     prior: Mapping[str, object]
     youtube_metadata: Mapping[str, object] | None
+    web_discovery: Mapping[str, object] | None
     expected: ExpectedOutcome
     corpus_path: str
 
@@ -320,6 +330,25 @@ class _RecordedYouTubeMetadataEnricher(YtDlpYouTubeMetadataEnricher):
     ) -> YouTubeMetadataEnrichmentResult:
         self.calls += 1
         result = super().enrich(track, offline=offline, refresh=refresh)
+        self.network_calls += int(result.network_used)
+        return result
+
+
+class _RecordedYouTubeMediaDiscoverer(YtDlpYouTubeMediaDiscoverer):
+    """Count browser discovery separately from confirmed-video enrichment."""
+
+    calls = 0
+    network_calls = 0
+
+    def discover(
+        self,
+        track: ResolvedTrack,
+        *,
+        offline: bool = False,
+        refresh: bool = False,
+    ) -> YouTubeMetadataDiscoveryResult:
+        self.calls += 1
+        result = super().discover(track, offline=offline, refresh=refresh)
         self.network_calls += int(result.network_used)
         return result
 
@@ -476,6 +505,7 @@ def _load_file(path: Path) -> tuple[_LoadedCase, ...]:
                 _optional_mapping(
                     raw.get("youtube_metadata"), f"{context}.youtube_metadata"
                 ),
+                _optional_mapping(raw.get("web_discovery"), f"{context}.web_discovery"),
                 _expected(raw.get("expected"), f"{context}.expected"),
                 path.name,
             )
@@ -894,24 +924,42 @@ def _run_case(case: _LoadedCase, database_path: Path) -> CaseReport:
         sleeper=lambda _seconds: None,
     )
     enricher: _RecordedYouTubeMetadataEnricher | None = None
-    if case.youtube_metadata is None:
+    discoverer: _RecordedYouTubeMediaDiscoverer | None = None
+    if case.youtube_metadata is not None and case.web_discovery is not None:
+        raise EvaluationInputError(
+            f"{case.case_id} cannot combine confirmed and searched video metadata"
+        )
+    if case.youtube_metadata is None and case.web_discovery is None:
         resolution = resolver.resolve(track)
     else:
-        if not isinstance(track.source_identity, YouTubeIdentity):
-            raise EvaluationInputError(
-                f"{case.case_id}.youtube_metadata requires a YouTube source identity"
+        if case.youtube_metadata is not None:
+            if not isinstance(track.source_identity, YouTubeIdentity):
+                raise EvaluationInputError(
+                    f"{case.case_id}.youtube_metadata requires a YouTube "
+                    "source identity"
+                )
+            video_metadata = case.youtube_metadata
+            metadata_id = _string(
+                video_metadata.get("id"), f"{case.case_id}.youtube_metadata.id"
             )
-        metadata_id = _string(
-            case.youtube_metadata.get("id"), f"{case.case_id}.youtube_metadata.id"
-        )
-        if metadata_id != track.source_identity.video_id:
-            raise EvaluationInputError(
-                f"{case.case_id}.youtube_metadata.id must match the source video ID"
+            if metadata_id != track.source_identity.video_id:
+                raise EvaluationInputError(
+                    f"{case.case_id}.youtube_metadata.id must match the source video ID"
+                )
+        else:
+            if not isinstance(track.source_identity, GenericMprisIdentity):
+                raise EvaluationInputError(
+                    f"{case.case_id}.web_discovery requires a generic browser source"
+                )
+            assert case.web_discovery is not None
+            video_metadata = _mapping(
+                case.web_discovery.get("video_metadata"),
+                f"{case.case_id}.web_discovery.video_metadata",
             )
         metadata_payload = "\t".join(
             (
-                json.dumps(case.youtube_metadata[name], ensure_ascii=False)
-                if name in case.youtube_metadata
+                json.dumps(video_metadata[name], ensure_ascii=False)
+                if name in video_metadata
                 else "NA"
             )
             for name in _PRINT_FIELDS
@@ -927,6 +975,37 @@ def _run_case(case: _LoadedCase, database_path: Path) -> CaseReport:
             now=lambda: FIXED_NOW,
             command=metadata_command,
         )
+        if case.web_discovery is not None:
+            search_values = _sequence(
+                case.web_discovery.get("search_results", []),
+                f"{case.case_id}.web_discovery.search_results",
+            )
+            if len(search_values) > 5:
+                raise EvaluationInputError(
+                    f"{case.case_id}.web_discovery exceeds five search results"
+                )
+            search_payload = "\n".join(
+                "\t".join(
+                    json.dumps(row[name], ensure_ascii=False) if name in row else "NA"
+                    for name in _DISCOVERY_PRINT_FIELDS
+                )
+                for index, value in enumerate(search_values)
+                for row in (
+                    _mapping(
+                        value,
+                        f"{case.case_id}.web_discovery.search_results[{index}]",
+                    ),
+                )
+            ).encode("utf-8")
+
+            def discovery_command(  # type: ignore[no-untyped-def]
+                _argv, _timeout, _max_stdout_bytes, _cancelled
+            ) -> bytes:
+                return search_payload
+
+            discoverer = _RecordedYouTubeMediaDiscoverer(
+                enricher, command=discovery_command
+            )
         frontend = FrontendSessionService(
             PlayerSelectionService(track_resolver),
             resolver,
@@ -944,6 +1023,7 @@ def _run_case(case: _LoadedCase, database_path: Path) -> CaseReport:
             ),
             resolver.cancel_inflight,
             enricher,
+            youtube_discovery=discoverer,
         )
         bundle = frontend.load_track(track)
         track = bundle.track
@@ -976,8 +1056,14 @@ def _run_case(case: _LoadedCase, database_path: Path) -> CaseReport:
         source_label=resolution.source_label,
         network_used=resolution.network_used,
         cache_hit=resolution.cache_hit,
-        enrichment_used=enricher is not None and enricher.calls > 0,
-        enrichment_network_used=enricher is not None and enricher.network_calls > 0,
+        enrichment_used=(
+            (enricher is not None and enricher.calls > 0)
+            or (discoverer is not None and discoverer.calls > 0)
+        ),
+        enrichment_network_used=(
+            (enricher is not None and enricher.network_calls > 0)
+            or (discoverer is not None and discoverer.network_calls > 0)
+        ),
         track=TrackFactorReport(
             track.candidate.title,
             track.candidate.artists,

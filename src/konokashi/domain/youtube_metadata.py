@@ -17,3 +17,13 @@ class YouTubeMetadataEnrichmentResult:
     diagnostics: tuple[str, ...] = field(default_factory=tuple)
     cache_hit: bool = False
     network_used: bool = False
+
+
+@dataclass(frozen=True, slots=True)
+class YouTubeMetadataDiscoveryResult:
+    """Recording hypotheses from a searched, not confirmed, public video."""
+
+    candidates: tuple[TrackCandidate, ...] = field(default_factory=tuple)
+    diagnostics: tuple[str, ...] = field(default_factory=tuple)
+    cache_hit: bool = False
+    network_used: bool = False
