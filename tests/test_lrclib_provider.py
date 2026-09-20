@@ -90,17 +90,31 @@ def test_duration_conversion_preserves_millisecond_boundaries(
     assert seen == [seconds]
 
 
-def test_exact_is_skipped_when_album_or_duration_is_missing() -> None:
+def test_album_free_duration_get_omits_album_without_inventing_it() -> None:
+    requests: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(200, json=_record(albumName=None))
+
+    result = _provider(handler).exact(LyricsQuery("Song", ("Artist",), None, 1000))
+
+    assert result.status is LyricsProviderStatus.RESULTS
+    assert dict(requests[0].url.params) == {
+        "track_name": "Song",
+        "artist_name": "Artist",
+        "duration": "1",
+    }
+
+
+def test_exact_is_skipped_when_duration_is_missing() -> None:
     def unexpected(_request: httpx.Request) -> httpx.Response:
         raise AssertionError("network request should have been skipped")
 
     provider = _provider(unexpected)
 
-    no_album = provider.exact(LyricsQuery("Song", ("Artist",), None, 1000))
     no_duration = provider.exact(LyricsQuery("Song", ("Artist",), "Album", None))
 
-    assert no_album.status is LyricsProviderStatus.NO_RESULT
-    assert "album" in no_album.diagnostics[0]
     assert no_duration.status is LyricsProviderStatus.NO_RESULT
     assert "duration" in no_duration.diagnostics[0]
 

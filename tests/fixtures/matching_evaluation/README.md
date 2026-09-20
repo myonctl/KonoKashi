@@ -7,6 +7,9 @@ history, local media paths, credentials, or commercial lyrics.
 YouTube retry with an injected, lyric-free metadata response. It verifies both
 recovery after missing musical-artist evidence and skipping enrichment after a
 strong first pass. These synthetic checks do not establish real-world accuracy.
+`album_free_get_cases.json` replays a duration-bounded LRCLIB lookup after
+unhelpful search results, plus a conflicting-result case that must stay
+ambiguous. It uses invented metadata and lyrics only.
 
 Run it from an editable development environment:
 

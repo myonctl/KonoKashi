@@ -736,6 +736,62 @@ def test_missing_album_skips_exact_and_uses_search_without_fabrication(
     assert any("exact provider lookup skipped" in item for item in result.diagnostics)
 
 
+def test_album_free_duration_lookup_recovers_candidate_missed_by_search(
+    tmp_path: Path,
+) -> None:
+    provider = _FakeProvider(
+        search=LyricsProviderResult(
+            LyricsProviderStatus.RESULTS,
+            tuple(
+                _candidate(f"noise-{index}", title=f"Unrelated {index}", artist="Other")
+                for index in range(20)
+            ),
+        ),
+        exact=LyricsProviderResult(
+            LyricsProviderStatus.RESULTS,
+            (_candidate("duration-get", album="Provider Album"),),
+        ),
+    )
+
+    result = _resolver(tmp_path / "album-free-get.sqlite3", provider).resolve(
+        _track(album=None)
+    )
+
+    assert result.status is LyricsResolutionStatus.FOUND_TIMED
+    assert result.document is not None
+    assert result.document.provider_record_id == "duration-get"
+    assert provider.search_queries
+    assert len(provider.exact_queries) == 1
+    assert provider.exact_queries[0].album is None
+    assert any("album-free duration lookup" in item for item in result.diagnostics)
+
+
+def test_album_free_get_cannot_break_conflicting_search_results(
+    tmp_path: Path,
+) -> None:
+    first = _candidate("first", album="Provider Album One")
+    second = _candidate(
+        "second",
+        album="Provider Album Two",
+        synced="[00:01.00]Different\n[00:02.00]Words",
+    )
+    provider = _FakeProvider(
+        search=LyricsProviderResult(
+            LyricsProviderStatus.RESULTS,
+            (first, second),
+        ),
+        exact=LyricsProviderResult(LyricsProviderStatus.RESULTS, (first,)),
+    )
+
+    result = _resolver(tmp_path / "album-free-conflict.sqlite3", provider).resolve(
+        _track(album=None)
+    )
+
+    assert result.status is LyricsResolutionStatus.AMBIGUOUS
+    assert {item.record_id for item in result.alternatives} == {"first", "second"}
+    assert len(provider.exact_queries) == 1
+
+
 def test_low_or_medium_candidates_are_ambiguous_and_not_auto_attached(
     tmp_path: Path,
 ) -> None:

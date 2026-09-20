@@ -26,6 +26,7 @@ FIXTURE = (
     / "synthetic_cases.json"
 )
 YOUTUBE_FIXTURE = FIXTURE.with_name("youtube_automatic_cases.json")
+ALBUM_FREE_GET_FIXTURE = FIXTURE.with_name("album_free_get_cases.json")
 
 
 def _payload() -> dict[str, Any]:
@@ -269,6 +270,17 @@ def test_query_rule_can_match_album_duration_and_broad_mode() -> None:
     assert broad.status is LyricsProviderStatus.NO_RESULT
     assert wrong_duration.status is LyricsProviderStatus.NO_RESULT
     assert no_album.candidates[0].record_id == "no-album"
+
+
+def test_album_free_get_replay_preserves_recovery_and_conflict() -> None:
+    report = evaluate((ALBUM_FREE_GET_FIXTURE,))
+
+    assert report.metrics.total_cases == 2
+    assert report.metrics.passed_cases == 2
+    assert report.metrics.correct_automatic_accepts == 1
+    assert report.metrics.wrong_automatic_accepts == 0
+    assert report.cases[0].actual.status == "Timed"
+    assert report.cases[1].actual.status == "Ambiguous"
 
 
 def test_wrong_oracle_document_counts_a_dangerous_automatic_accept(

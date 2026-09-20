@@ -68,15 +68,13 @@ class LrclibLyricsProvider:
             client.close()
 
     def exact(self, query: LyricsQuery) -> LyricsProviderResult:
-        """Use `/api/get` only when every official signature field is available."""
+        """Use duration-bounded `/api/get`, omitting an unknown optional album."""
 
         missing: list[str] = []
         if not query.title.strip():
             missing.append("track title")
         if not query.artist_name.strip():
             missing.append("musical artist")
-        if query.album is None or not query.album.strip():
-            missing.append("album")
         if query.duration_ms is None:
             missing.append("duration")
         if missing:
@@ -86,14 +84,14 @@ class LrclibLyricsProvider:
                     "exact LRCLIB lookup skipped; missing " + ", ".join(missing),
                 ),
             )
-        assert query.album is not None
         assert query.duration_ms is not None
         params: dict[str, str] = {
             "track_name": query.title,
             "artist_name": query.artist_name,
-            "album_name": query.album,
             "duration": _duration_query(query.duration_ms),
         }
+        if query.album and query.album.strip():
+            params["album_name"] = query.album
         return self._request("/api/get", params, search=False)
 
     def search(self, query: LyricsQuery) -> LyricsProviderResult:

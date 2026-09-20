@@ -1,0 +1,140 @@
+{
+  "schema_version": 1,
+  "cases": [
+    {
+      "id": "synthetic-album-free-get-recovery",
+      "description": "a search capped at unrelated records is followed by a duration-bounded album-free get",
+      "track": {
+        "service_name": "album-free-get-recovery",
+        "title": "Paper Signal",
+        "artists": ["Copper Avenue"],
+        "duration_ms": 180000,
+        "url": "file:///synthetic/album-free-get-recovery.flac"
+      },
+      "provider": {
+        "query_results": [
+          {
+            "mode": "search",
+            "title": "Paper Signal",
+            "artists": ["Copper Avenue"],
+            "album": null,
+            "duration_ms": 180000,
+            "broad": false,
+            "result": {
+              "status": "results",
+              "candidates": [
+                {
+                  "record_id": "unrelated-search-record",
+                  "track_name": "Different Song",
+                  "artist_name": "Other Artist",
+                  "duration_ms": 180000,
+                  "synced_lyrics": "[00:01.00]Invented unrelated line."
+                }
+              ]
+            }
+          },
+          {
+            "mode": "exact",
+            "title": "Paper Signal",
+            "artists": ["Copper Avenue"],
+            "album": null,
+            "duration_ms": 180000,
+            "broad": false,
+            "result": {
+              "status": "results",
+              "candidates": [
+                {
+                  "record_id": "album-free-get-record",
+                  "track_name": "Paper Signal",
+                  "artist_name": "Copper Avenue",
+                  "album_name": "Provider Album",
+                  "duration_ms": 180000,
+                  "plain_lyrics": "An invented paper signal.",
+                  "synced_lyrics": "[00:01.00]An invented paper signal."
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "expected": {
+        "category": "automatic-accept",
+        "status": "Timed",
+        "record_id": "album-free-get-record",
+        "timing": "synced",
+        "origin": "provider-auto",
+        "network_used": true
+      }
+    },
+    {
+      "id": "synthetic-album-free-get-conflict",
+      "description": "one result from album-free get cannot overrule conflicting search records",
+      "track": {
+        "service_name": "album-free-get-conflict",
+        "title": "Twin Lantern",
+        "artists": ["North Room"],
+        "duration_ms": 201000,
+        "url": "file:///synthetic/album-free-get-conflict.flac"
+      },
+      "provider": {
+        "query_results": [
+          {
+            "mode": "search",
+            "title": "Twin Lantern",
+            "artists": ["North Room"],
+            "album": null,
+            "duration_ms": 201000,
+            "broad": false,
+            "result": {
+              "status": "results",
+              "candidates": [
+                {
+                  "record_id": "lantern-one",
+                  "track_name": "Twin Lantern",
+                  "artist_name": "North Room",
+                  "duration_ms": 201000,
+                  "synced_lyrics": "[00:01.00]First invented lantern line."
+                },
+                {
+                  "record_id": "lantern-two",
+                  "track_name": "Twin Lantern",
+                  "artist_name": "North Room",
+                  "duration_ms": 201000,
+                  "synced_lyrics": "[00:01.00]Second invented lantern line."
+                }
+              ]
+            }
+          },
+          {
+            "mode": "exact",
+            "title": "Twin Lantern",
+            "artists": ["North Room"],
+            "album": null,
+            "duration_ms": 201000,
+            "broad": false,
+            "result": {
+              "status": "results",
+              "candidates": [
+                {
+                  "record_id": "lantern-one",
+                  "track_name": "Twin Lantern",
+                  "artist_name": "North Room",
+                  "duration_ms": 201000,
+                  "synced_lyrics": "[00:01.00]First invented lantern line."
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "expected": {
+        "category": "ambiguous",
+        "status": "Ambiguous",
+        "record_id": null,
+        "timing": "none",
+        "origin": "none",
+        "network_used": true
+      }
+    }
+  ]
+}

@@ -345,7 +345,8 @@ class LyricsResolver:
         network_used = False
         cache_hit = False
 
-        exact_possible = query.album is not None and query.duration_ms is not None
+        album_available = bool(query.album and query.album.strip())
+        exact_possible = album_available and query.duration_ms is not None
         if exact_possible:
             for exact, exact_cached, exact_network in self._provider_results(
                 query,
@@ -391,7 +392,7 @@ class LyricsResolver:
                 )
         else:
             missing = []
-            if query.album is None:
+            if not album_available:
                 missing.append("album")
             if query.duration_ms is None:
                 missing.append("duration")
@@ -458,6 +459,45 @@ class LyricsResolver:
                     network_used=network_used,
                     cancellation_token=cancellation_token,
                 )
+        if not album_available and query.duration_ms is not None:
+            diagnostics.append(
+                "provider strategy: album-free duration lookup after search "
+                "did not find a unique match"
+            )
+            for exact, exact_cached, exact_network in self._provider_results(
+                query,
+                search=False,
+                offline=offline,
+                refresh=refresh,
+                evidence_sufficient=partial(
+                    self._results_are_sufficient,
+                    queries,
+                    rejected_document_ids=rejected_document_ids,
+                ),
+                evidence_usable=partial(
+                    self._results_are_usable,
+                    queries,
+                    rejected_document_ids=rejected_document_ids,
+                ),
+                observations=diagnostics,
+            ):
+                provider_outcomes.append(exact)
+                cache_hit |= exact_cached
+                network_used |= exact_network
+                diagnostics.extend(exact.diagnostics)
+                if exact.status is LyricsProviderStatus.RESULTS:
+                    all_assessments.extend(
+                        self._assess_across(
+                            queries,
+                            candidate,
+                            retrieved_by="album-free duration lookup",
+                        )
+                        for candidate in exact.candidates
+                        if self._provider_documents.document_id(candidate)
+                        not in rejected_document_ids
+                    )
+            if not self._is_current(cancellation_token):
+                return self._cancelled_resolution(track, diagnostics, network_used)
         assessments = _deduplicate_assessments(all_assessments)
         accepted = self._unique_high(assessments)
         if accepted is not None:
@@ -1578,6 +1618,7 @@ def _retrieval_confidence(retrieved_by: str) -> RetrievalConfidence:
             "normalized title and artist",
             "phonetic title alias and artist",
             "base title and artist",
+            "album-free duration lookup",
         )
     ):
         return RetrievalConfidence.MEDIUM
