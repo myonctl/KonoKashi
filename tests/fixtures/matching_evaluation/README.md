@@ -10,6 +10,11 @@ strong first pass. These synthetic checks do not establish real-world accuracy.
 `album_free_get_cases.json` replays a duration-bounded LRCLIB lookup after
 unhelpful search results, plus a conflicting-result case that must stay
 ambiguous. It uses invented metadata and lyrics only.
+`browser_url_less_cases.json` is based on an observed Chromium MPRIS field
+shape, with invented artist, title, and lyric text. It checks that a clear
+artist-first title can retrieve lyrics without a URL while uploader-only and
+reversed interpretations stay ambiguous. The evaluator preserves an empty
+`track.album` because browsers can report it distinctly from an absent field.
 
 Run it from an editable development environment:
 

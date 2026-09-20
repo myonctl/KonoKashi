@@ -64,6 +64,22 @@ def test_observed_browser_fixtures_preserve_raw_values(
         )
 
 
+def test_url_less_chromium_shape_preserves_uploader_without_inventing_a_url() -> None:
+    fixture = load_fixture("chromium_url_less.json")
+    snapshot = map_player_snapshot(
+        full_service_name(cast(str, fixture["service"])),
+        cast(dict[str, object], fixture["root"]),
+        cast(dict[str, object], fixture["player"]),
+    )
+
+    assert snapshot.service_name == "chromium.instance_1"
+    assert snapshot.metadata.title == "Aster Vale - Glass Horizon (Official Video)"
+    assert snapshot.metadata.artists == ("AsterValeChannel",)
+    assert snapshot.metadata.album == ""
+    assert snapshot.metadata.duration_us == 180_000_000
+    assert snapshot.metadata.url is None
+
+
 def test_unicode_metadata_and_empty_artist_array_are_preserved() -> None:
     snapshot = map_player_snapshot(
         full_service_name("unicode-player"),

@@ -15,3 +15,8 @@ expected values.
 shape exposed by live Firefox during Stage 1 retest #2. The binding did not
 expose the map members, so the fixture deliberately records no invented payload
 values; its regression covers the typed-property refresh recovery path.
+
+`chromium_url_less.json` is a synthetic artist/title example with the field
+shape observed during isolated, public YouTube playback on 2026-09-20:
+Chromium exposed title, reported channel, empty album, track ID, and duration,
+but no `xesam:url`. It is a structural regression, not an audio or lyric oracle.

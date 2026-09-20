@@ -1,0 +1,17 @@
+{
+  "service": "chromium.instance_1",
+  "root": {
+    "Identity": "Chromium",
+    "DesktopEntry": "chromium"
+  },
+  "player": {
+    "PlaybackStatus": "Playing",
+    "Metadata": {
+      "mpris:trackid": "/org/chromium/MediaPlayer2/TrackList/TrackSynthetic",
+      "xesam:title": "Aster Vale - Glass Horizon (Official Video)",
+      "xesam:artist": ["AsterValeChannel"],
+      "xesam:album": "",
+      "mpris:length": 180000000
+    }
+  }
+}

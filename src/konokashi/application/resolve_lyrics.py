@@ -1289,8 +1289,10 @@ class LyricsResolver:
         if len(high) == 1:
             return high[0]
         if len(high) > 1:
-            first_relation = _title_relation_rank(high[0])
-            if all(first_relation < _title_relation_rank(other) for other in high[1:]):
+            first_relation = _title_relation_strength(high[0])
+            if all(
+                first_relation < _title_relation_strength(other) for other in high[1:]
+            ):
                 return high[0]
             if high[0].candidate.synced_lyrics and all(
                 _same_recording_fields(high[0], other)
@@ -1716,6 +1718,17 @@ def _title_relation_rank(assessment: CandidateMatchAssessment) -> int:
         "base-title": 2,
         "phonetic-transliteration": 3,
     }.get(assessment.title_relation, 4)
+
+
+def _title_relation_strength(assessment: CandidateMatchAssessment) -> int:
+    """Do not let casing or punctuation alone separate competing recordings."""
+
+    return {
+        "exact-raw": 0,
+        "normalized": 0,
+        "base-title": 1,
+        "phonetic-transliteration": 2,
+    }.get(assessment.title_relation, 3)
 
 
 def _assessment_diagnostic(assessment: CandidateMatchAssessment) -> str:

@@ -27,6 +27,7 @@ FIXTURE = (
 )
 YOUTUBE_FIXTURE = FIXTURE.with_name("youtube_automatic_cases.json")
 ALBUM_FREE_GET_FIXTURE = FIXTURE.with_name("album_free_get_cases.json")
+BROWSER_URL_LESS_FIXTURE = FIXTURE.with_name("browser_url_less_cases.json")
 
 
 def _payload() -> dict[str, Any]:
@@ -281,6 +282,21 @@ def test_album_free_get_replay_preserves_recovery_and_conflict() -> None:
     assert report.metrics.wrong_automatic_accepts == 0
     assert report.cases[0].actual.status == "Timed"
     assert report.cases[1].actual.status == "Ambiguous"
+
+
+def test_url_less_browser_replay_recovers_clear_title_without_uploader_trust() -> None:
+    report = evaluate((BROWSER_URL_LESS_FIXTURE,))
+
+    assert report.metrics.total_cases == 3
+    assert report.metrics.passed_cases == 3
+    assert report.metrics.correct_automatic_accepts == 1
+    assert report.metrics.wrong_automatic_accepts == 0
+    assert report.metrics.youtube_enrichment_attempts == 0
+    assert [case.actual.status for case in report.cases] == [
+        "Timed",
+        "Ambiguous",
+        "Ambiguous",
+    ]
 
 
 def test_wrong_oracle_document_counts_a_dangerous_automatic_accept(

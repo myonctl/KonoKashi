@@ -856,6 +856,36 @@ def test_multiple_high_candidates_remain_ambiguous_even_with_closest_duration(
     )
 
 
+def test_exact_raw_case_cannot_break_conflicting_high_lyric_content(
+    tmp_path: Path,
+) -> None:
+    provider = _FakeProvider(
+        search=LyricsProviderResult(
+            LyricsProviderStatus.RESULTS,
+            (
+                _candidate("raw-case", album=None),
+                _candidate(
+                    "normalized-case",
+                    title="elevate (radio edit)",
+                    album=None,
+                    plain="Different first\nDifferent second",
+                    synced="[00:01.00]Different first\n[00:02.00]Different second",
+                ),
+            ),
+        )
+    )
+
+    result = _resolver(tmp_path / "raw-case-conflict.sqlite3", provider).resolve(
+        _track(album=None)
+    )
+
+    assert result.status is LyricsResolutionStatus.AMBIGUOUS
+    assert {item.record_id for item in result.alternatives} == {
+        "raw-case",
+        "normalized-case",
+    }
+
+
 def test_instrumental_provider_state_persists_without_fake_lines(
     tmp_path: Path,
 ) -> None:

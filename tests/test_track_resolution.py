@@ -6,7 +6,11 @@ import pytest
 
 from konokashi.application.resolve_track import with_youtube_metadata_candidates
 from konokashi.application.source_identity import SourceIdentityResolver
-from konokashi.domain.identity import YouTubeIdentity
+from konokashi.domain.identity import (
+    GenericMprisIdentity,
+    PersistenceScope,
+    YouTubeIdentity,
+)
 from konokashi.domain.normalization import (
     comparison_key,
     normalize_artist,
@@ -185,6 +189,67 @@ def test_jesskah_youtube_fixture_uses_title_artist_and_preserves_uploader() -> N
     assert any(
         "presentation suffix" in item for item in resolved.candidate.transformations
     )
+
+
+def test_url_less_chromium_title_is_parsed_without_trusting_uploader_or_url() -> None:
+    track_resolver, _repository = resolver()
+    raw = fixture_snapshot("mpris/chromium_url_less.json")
+
+    resolved = track_resolver.resolve(raw)
+
+    assert isinstance(resolved.source_identity, GenericMprisIdentity)
+    assert resolved.source_identity.persistence_scope is PersistenceScope.SESSION_ONLY
+    assert resolved.raw_snapshot.metadata.url is None
+    assert resolved.raw_snapshot.metadata.artists == ("AsterValeChannel",)
+    assert resolved.candidate.title == "Glass Horizon"
+    assert resolved.candidate.artists == ("Aster Vale",)
+    assert resolved.candidate.duration_us == 180_000_000
+    assert resolved.confidence is Confidence.MEDIUM
+    assert resolved.candidate.strategy == "browser-title:spaced dash"
+    assert all(
+        candidate.identity_confidence is Confidence.LOW
+        for candidate in resolved.interpretation_candidates[1:]
+    )
+    assert resolved.interpretation_candidates[-1].title == (
+        "Aster Vale - Glass Horizon (Official Video)"
+    )
+    assert resolved.interpretation_candidates[-1].artists == ("AsterValeChannel",)
+
+
+def test_url_less_browser_without_clear_title_does_not_promote_uploader() -> None:
+    track_resolver, _repository = resolver()
+    raw = snapshot(
+        "chromium.instance_2",
+        title="An unclear public upload",
+        artists=("Example Upload Channel",),
+        url=None,
+    )
+
+    resolved = track_resolver.resolve(raw)
+
+    assert isinstance(resolved.source_identity, GenericMprisIdentity)
+    assert resolved.candidate.title == "An unclear public upload"
+    assert resolved.candidate.artists == ("Example Upload Channel",)
+    assert resolved.candidate.identity_confidence is Confidence.LOW
+    assert resolved.confidence is Confidence.LOW
+    assert len(resolved.interpretation_candidates) == 1
+
+
+def test_url_less_nonbrowser_keeps_reported_metadata_policy() -> None:
+    track_resolver, _repository = resolver()
+    raw = snapshot(
+        "radio",
+        title="Artist - Song",
+        artists=("Station Channel",),
+        url=None,
+    )
+
+    resolved = track_resolver.resolve(raw)
+
+    assert resolved.candidate.title == "Artist - Song"
+    assert resolved.candidate.artists == ("Station Channel",)
+    assert resolved.candidate.strategy == "reported-mpris"
+    assert len(resolved.interpretation_candidates) == 1
 
 
 def test_existing_megacorp_fixture_keeps_removed_suffix_as_evidence() -> None:

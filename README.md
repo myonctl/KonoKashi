@@ -205,6 +205,12 @@ mode uses only an existing metadata cache entry, including an expired sanitized
 entry when no network refresh is possible. Matching still requires an
 independent provider result and does not treat the uploader as the musical
 artist.
+Some browser MPRIS implementations omit the media URL entirely. For those
+session-only sources, a clear artist-first browser title can still drive lyric
+search, but the reported browser artist is treated as possible uploader
+evidence, not artist truth. Without a video ID, KonoKashi cannot request
+video-specific YouTube metadata or remember a correction for that video across
+sessions; reversed or unstructured titles remain conservative recovery cases.
 The metadata command requests only the fields needed for interpretation; it
 does not retain yt-dlp's large format/subtitle catalogue.
 Ambiguous video-title separators can produce at most two extra artist/title

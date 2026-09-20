@@ -6,7 +6,11 @@ from dataclasses import replace
 
 from konokashi.application.ports import TrackOverrideRepositoryPort
 from konokashi.application.source_identity import SourceIdentityResolver
-from konokashi.domain.identity import LocalFileIdentity, YouTubeIdentity
+from konokashi.domain.identity import (
+    GenericMprisIdentity,
+    LocalFileIdentity,
+    YouTubeIdentity,
+)
 from konokashi.domain.models import PlayerSnapshot
 from konokashi.domain.normalization import (
     comparison_key,
@@ -24,6 +28,33 @@ from konokashi.domain.tracks import (
 )
 
 MAX_YOUTUBE_INTERPRETATIONS = 12
+_BROWSER_DESKTOP_ENTRIES = frozenset(
+    {
+        "chromium",
+        "chromium-browser",
+        "firefox",
+        "org.mozilla.firefox",
+        "google-chrome",
+        "brave-browser",
+        "vivaldi-stable",
+    }
+)
+_BROWSER_SERVICE_NAMES = frozenset(
+    {*_BROWSER_DESKTOP_ENTRIES, "plasma-browser-integration"}
+)
+
+
+def _is_url_less_browser(snapshot: PlayerSnapshot) -> bool:
+    """Recognize only browser MPRIS services when no source URL was reported."""
+
+    if snapshot.metadata.url:
+        return False
+    desktop_entry = (snapshot.desktop_entry or "").casefold()
+    service_name = snapshot.service_name.casefold()
+    return desktop_entry in _BROWSER_DESKTOP_ENTRIES or any(
+        service_name == name or service_name.startswith(f"{name}.")
+        for name in _BROWSER_SERVICE_NAMES
+    )
 
 
 class TrackResolver:
@@ -43,6 +74,10 @@ class TrackResolver:
         source = self._sources.resolve(snapshot)
         if isinstance(source.identity, YouTubeIdentity):
             interpretations = self._youtube_candidates(snapshot)
+        elif isinstance(source.identity, GenericMprisIdentity) and _is_url_less_browser(
+            snapshot
+        ):
+            interpretations = self._url_less_browser_candidates(snapshot)
         else:
             interpretations = (
                 self._reported_candidate(
@@ -134,6 +169,66 @@ class TrackResolver:
                     (("duration", "mpris-duration"), duration_us is not None),
                 )
                 if present
+            ),
+        )
+
+    def _url_less_browser_candidates(
+        self, snapshot: PlayerSnapshot
+    ) -> tuple[TrackCandidate, ...]:
+        """Parse a clear browser title without claiming a YouTube video identity.
+
+        Browser MPRIS can expose title, uploader, and duration without a media
+        URL. Only the conventional artist-first title interpretation may support
+        automatic matching; the reverse guess and raw uploader remain Low.
+        """
+
+        title = snapshot.metadata.title
+        parsed = parse_youtube_title_candidates(title, ()) if title else ()
+        reported = self._reported_candidate(snapshot)
+        if not parsed:
+            return (
+                replace(
+                    reported,
+                    evidence=(
+                        *reported.evidence,
+                        "browser reported artist may be an uploader, "
+                        "not a musical artist",
+                    ),
+                    identity_confidence=Confidence.LOW,
+                ),
+            )
+        hypotheses = parse_youtube_title_hypotheses(title, ()) if title else ()
+        interpreted = self._youtube_parsed_candidates(
+            snapshot, (parsed[0], *hypotheses)
+        )
+        candidates = tuple(
+            replace(
+                item,
+                evidence=(
+                    *(
+                        "artist/title parsed from browser media title"
+                        if evidence == "artist/title parsed from video title"
+                        else evidence
+                        for evidence in item.evidence
+                    ),
+                    "browser MPRIS omitted the media URL; source remains unconfirmed",
+                ),
+                strategy=item.strategy.replace("youtube-title:", "browser-title:", 1),
+                identity_confidence=(
+                    Confidence.MEDIUM if index == 0 else Confidence.LOW
+                ),
+            )
+            for index, item in enumerate(interpreted)
+        )
+        return (
+            *candidates,
+            replace(
+                reported,
+                evidence=(
+                    *reported.evidence,
+                    "preserved raw browser MPRIS title and reported uploader",
+                ),
+                identity_confidence=Confidence.LOW,
             ),
         )
 
@@ -237,6 +332,13 @@ class TrackResolver:
             return Confidence.LOW, tuple(warnings)
         if isinstance(source_identity, LocalFileIdentity):
             return Confidence.HIGH, tuple(warnings)
+        if (
+            isinstance(source_identity, GenericMprisIdentity)
+            and _is_url_less_browser(snapshot)
+            and candidate.strategy == "reported-mpris"
+        ):
+            warnings.append("browser reported artist may be an uploader")
+            return Confidence.LOW, tuple(warnings)
         if isinstance(source_identity, YouTubeIdentity) and any(
             evidence == "artist/title parsed from video title"
             for evidence in candidate.evidence

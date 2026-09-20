@@ -633,6 +633,11 @@ def _snapshot(value: Mapping[str, object], context: str) -> PlayerSnapshot:
     duration_ms = _integer(
         value.get("duration_ms"), f"{context}.duration_ms", optional=True
     )
+    raw_album = value.get("album")
+    # Browser MPRIS commonly reports an empty album instead of omitting it.
+    album = (
+        "" if raw_album == "" else _string(raw_album, f"{context}.album", optional=True)
+    )
     assert service_name is not None
     return PlayerSnapshot(
         service_name=service_name,
@@ -643,7 +648,7 @@ def _snapshot(value: Mapping[str, object], context: str) -> PlayerSnapshot:
         metadata=RawTrackMetadata(
             title=title,
             artists=artists,
-            album=_string(value.get("album"), f"{context}.album", optional=True),
+            album=album,
             url=_string(value.get("url"), f"{context}.url", optional=True),
             duration_us=None if duration_ms is None else duration_ms * 1_000,
             track_id=_string(
