@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from dataclasses import replace
 from threading import Event
 
 from konokashi.application.resolve_track import with_discovered_web_metadata_candidates
@@ -27,6 +28,18 @@ def _track(*, artist: str = "Example Maker - Topic"):
             artists=(artist,),
             duration_us=133_641_000,
         )
+    )
+
+
+def _track_with_id(track_id: str):
+    track = _track()
+    return replace(
+        track,
+        source_identity=replace(track.source_identity, track_id=track_id),
+        raw_snapshot=replace(
+            track.raw_snapshot,
+            metadata=replace(track.raw_snapshot.metadata, track_id=track_id),
+        ),
     )
 
 
@@ -125,6 +138,90 @@ def test_multiple_exact_videos_or_conflicting_metadata_do_not_enrich() -> None:
         assert result.candidates == ()
         assert result.network_used is True
     assert enricher.calls == []
+
+
+def test_exact_browser_track_reuses_only_short_lived_session_hypotheses() -> None:
+    clock = [0.0]
+    command_calls = 0
+    enricher = _Enricher()
+
+    def command(*_args):  # type: ignore[no-untyped-def]
+        nonlocal command_calls
+        command_calls += 1
+        return _entry()
+
+    discoverer = YtDlpYouTubeMediaDiscoverer(
+        enricher,
+        command=command,  # type: ignore[arg-type]
+        clock=lambda: clock[0],
+    )
+    track = _track_with_id("/org/mpris/MediaPlayer2/TrackList/Track1")
+    first = discoverer.discover(track)
+    repeat = discoverer.discover(track)
+    offline_repeat = discoverer.discover(track, offline=True)
+
+    assert first.network_used is True
+    assert repeat.candidates == first.candidates == offline_repeat.candidates
+    assert repeat.cache_hit is True
+    assert repeat.network_used is False
+    assert offline_repeat.network_used is False
+    assert command_calls == len(enricher.calls) == 1
+
+    refreshed = discoverer.discover(track, refresh=True)
+    assert refreshed.network_used is True
+    assert command_calls == len(enricher.calls) == 2
+
+    distinct = discoverer.discover(
+        _track_with_id("/org/mpris/MediaPlayer2/TrackList/Track2")
+    )
+    assert distinct.network_used is True
+    assert command_calls == len(enricher.calls) == 3
+
+    clock[0] = 601.0
+    expired = discoverer.discover(track)
+    assert expired.network_used is True
+    assert command_calls == len(enricher.calls) == 4
+
+
+def test_browser_observation_without_track_id_is_not_cached() -> None:
+    command_calls = 0
+
+    def command(*_args):  # type: ignore[no-untyped-def]
+        nonlocal command_calls
+        command_calls += 1
+        return _entry()
+
+    discoverer = YtDlpYouTubeMediaDiscoverer(
+        _Enricher(),
+        command=command,  # type: ignore[arg-type]
+    )
+    discoverer.discover(_track())
+    discoverer.discover(_track())
+    assert command_calls == 2
+
+
+def test_cancelled_discovery_does_not_seed_session_cache() -> None:
+    command_calls = 0
+
+    def command(*_args):  # type: ignore[no-untyped-def]
+        nonlocal command_calls
+        command_calls += 1
+        return _entry()
+
+    class CancellingEnricher(_Enricher):
+        def enrich(self, track, *, offline=False, refresh=False):  # type: ignore[no-untyped-def]
+            result = super().enrich(track, offline=offline, refresh=refresh)
+            discoverer.cancel_inflight()
+            return result
+
+    discoverer = YtDlpYouTubeMediaDiscoverer(
+        CancellingEnricher(),
+        command=command,  # type: ignore[arg-type]
+    )
+    track = _track_with_id("/org/mpris/MediaPlayer2/TrackList/Track1")
+    assert discoverer.discover(track).candidates == ()
+    assert discoverer.discover(track).candidates == ()
+    assert command_calls == 2
 
 
 def test_title_only_video_metadata_cannot_corroborate_credits() -> None:

@@ -223,6 +223,10 @@ whether any lyric is safe to show. A conflicting Topic label also lowers a
 dash-split title guess to Low confidence. Other URL-less titles remain
 conservative recovery cases, and corrections cannot be remembered for a video
 whose ID the browser did not report.
+For one unchanged browser track ID, successful discovery hypotheses are reused
+from memory for up to ten minutes to avoid repeating that public-video search.
+This cache is not durable, does not contain lyrics, and cannot identify a new
+browser track after its MPRIS track ID changes.
 `konokashi lyrics current` uses the same automatic enrichment and retry policy
 as the desktop; its bounded preview remains the default for lyric text.
 The metadata command requests only the fields needed for interpretation; it

@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import json
 import re
+from collections import OrderedDict
+from collections.abc import Callable
 from dataclasses import replace
 from threading import Event, Lock
 from time import monotonic
@@ -24,8 +26,11 @@ _VIDEO_ID = re.compile(r"^[A-Za-z0-9_-]{11}$")
 _SEARCH_LIMIT = 5
 _MAX_STDOUT_BYTES = 16_000
 _TIMEOUT_SECONDS = 10.0
+_SESSION_CACHE_SECONDS = 600.0
+_SESSION_CACHE_LIMIT = 16
 _PRINT_FIELDS = ("id", "title", "channel", "uploader", "duration")
 _PRINT_TEMPLATE = "\t".join(f"%({field})j" for field in _PRINT_FIELDS)
+_CacheKey = tuple[GenericMprisIdentity, str, str, int]
 
 
 def _hint(track: ResolvedTrack) -> tuple[str, str, int] | None:
@@ -92,6 +97,21 @@ def _search_matches(payload: bytes, hint: tuple[str, str, int]) -> tuple[str, ..
     return tuple(sorted(matches))
 
 
+def _cache_key(track: ResolvedTrack, hint: tuple[str, str, int]) -> _CacheKey | None:
+    """Reuse only the identical session-scoped browser track observation."""
+
+    identity = track.source_identity
+    if not isinstance(identity, GenericMprisIdentity) or not identity.track_id:
+        return None
+    title, channel, duration_us = hint
+    return (
+        identity,
+        comparison_key(title),
+        comparison_key(channel),
+        duration_us,
+    )
+
+
 class YtDlpYouTubeMediaDiscoverer:
     """Find one exact public-video hint, then reuse the confirmed-ID enricher.
 
@@ -105,17 +125,24 @@ class YtDlpYouTubeMediaDiscoverer:
         *,
         command: MetadataCommand = _run_bounded_command,
         executable: str = "yt-dlp",
+        clock: Callable[[], float] = monotonic,
     ) -> None:
         self._enricher = enricher
         self._command = command
         self._executable = executable
-        self._pending_lock = Lock()
+        self._clock = clock
+        self._state_lock = Lock()
         self._pending: set[Event] = set()
+        self._epoch = 0
+        self._session_cache: OrderedDict[
+            _CacheKey, tuple[float, tuple[TrackCandidate, ...]]
+        ] = OrderedDict()
 
     def cancel_inflight(self) -> None:
         """Stop any active fields-only search after a source change."""
 
-        with self._pending_lock:
+        with self._state_lock:
+            self._epoch += 1
             pending = tuple(self._pending)
         for cancellation in pending:
             cancellation.set()
@@ -132,6 +159,25 @@ class YtDlpYouTubeMediaDiscoverer:
             return YouTubeMetadataDiscoveryResult(
                 diagnostics=("URL-less browser metadata lacks a bounded Topic hint",)
             )
+        key = _cache_key(track, hint)
+        with self._state_lock:
+            epoch = self._epoch
+            if key is not None and refresh and not offline:
+                self._session_cache.pop(key, None)
+            if key is not None and not refresh:
+                cached = self._session_cache.get(key)
+                if cached is not None:
+                    if self._clock() - cached[0] <= _SESSION_CACHE_SECONDS:
+                        self._session_cache.move_to_end(key)
+                        return YouTubeMetadataDiscoveryResult(
+                            candidates=cached[1],
+                            diagnostics=(
+                                "session-only browser discovery cache hit; "
+                                "source identity remains unconfirmed",
+                            ),
+                            cache_hit=True,
+                        )
+                    self._session_cache.pop(key, None)
         if offline:
             return YouTubeMetadataDiscoveryResult(
                 diagnostics=("offline mode: public-video discovery was not contacted",)
@@ -152,7 +198,7 @@ class YtDlpYouTubeMediaDiscoverer:
             f"ytsearch{_SEARCH_LIMIT}:{title} {channel}",
         )
         cancellation = Event()
-        with self._pending_lock:
+        with self._state_lock:
             self._pending.add(cancellation)
         try:
             payload = self._command(
@@ -171,7 +217,7 @@ class YtDlpYouTubeMediaDiscoverer:
                 network_used=True,
             )
         finally:
-            with self._pending_lock:
+            with self._state_lock:
                 self._pending.discard(cancellation)
         elapsed_ms = max(0, round((monotonic() - started) * 1000))
         if len(matches) != 1:
@@ -208,6 +254,17 @@ class YtDlpYouTubeMediaDiscoverer:
                 "youtube-enrichment:labelled-description",
             }
         )
+        with self._state_lock:
+            if epoch != self._epoch:
+                return YouTubeMetadataDiscoveryResult(
+                    diagnostics=("public-video discovery was cancelled",),
+                    network_used=True,
+                )
+            if key is not None and candidates:
+                self._session_cache[key] = (self._clock(), candidates)
+                self._session_cache.move_to_end(key)
+                if len(self._session_cache) > _SESSION_CACHE_LIMIT:
+                    self._session_cache.popitem(last=False)
         return YouTubeMetadataDiscoveryResult(
             candidates=candidates,
             diagnostics=(
