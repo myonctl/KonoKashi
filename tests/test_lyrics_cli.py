@@ -15,6 +15,8 @@ from konokashi.domain.lyrics import (
     LyricsQuery,
 )
 from konokashi.domain.models import PlayerInspection, PlayerListResult
+from konokashi.domain.youtube_metadata import YouTubeMetadataEnrichmentResult
+from konokashi.infrastructure.metadata.youtube import YtDlpYouTubeMetadataEnricher
 from tests.stage2_helpers import fixture_snapshot
 from tests.test_players_cli import FakeClient, FakeRuntime
 
@@ -144,7 +146,9 @@ def test_full_output_requires_explicit_flag(
 
 
 def test_no_result_is_valid_diagnostic_without_traceback(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     provider = _CliProvider(
         LyricsProviderResult(
@@ -153,6 +157,14 @@ def test_no_result_is_valid_diagnostic_without_traceback(
             raw_payload=b"",
         )
     )
+
+    def no_metadata(self, track, *, offline=False, refresh=False):  # type: ignore[no-untyped-def]
+        del self, offline, refresh
+        return YouTubeMetadataEnrichmentResult(
+            track.source_identity, diagnostics=("bounded metadata probe was empty",)
+        )
+
+    monkeypatch.setattr(YtDlpYouTubeMetadataEnricher, "enrich", no_metadata)
 
     exit_code = cli.main(
         ["lyrics", "current"],
@@ -166,6 +178,8 @@ def test_no_result_is_valid_diagnostic_without_traceback(
     assert "lyrics status: No result" in output
     assert "network: used" in output
     assert "LRCLIB reported no matching record" in output
+    assert "automatic YouTube retry:" in output
+    assert "bounded metadata probe was empty" in output
     assert "Traceback" not in output
 
 

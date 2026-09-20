@@ -223,6 +223,8 @@ whether any lyric is safe to show. A conflicting Topic label also lowers a
 dash-split title guess to Low confidence. Other URL-less titles remain
 conservative recovery cases, and corrections cannot be remembered for a video
 whose ID the browser did not report.
+`konokashi lyrics current` uses the same automatic enrichment and retry policy
+as the desktop; its bounded preview remains the default for lyric text.
 The metadata command requests only the fields needed for interpretation; it
 does not retain yt-dlp's large format/subtitle catalogue.
 Ambiguous video-title separators can produce at most two extra artist/title

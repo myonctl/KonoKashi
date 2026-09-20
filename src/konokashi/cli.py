@@ -1226,7 +1226,7 @@ def _run_lyrics(
     from konokashi.application.select_player import PlayerSelectionService
     from konokashi.application.source_identity import SourceIdentityResolver
     from konokashi.domain.lyrics import LyricsResolutionStatus
-    from konokashi.infrastructure.frontend import create_lyrics_resolver
+    from konokashi.infrastructure.frontend import create_frontend_session
     from konokashi.infrastructure.metadata.local_paths import (
         FilesystemLocalPathCanonicalizer,
     )
@@ -1248,7 +1248,7 @@ def _run_lyrics(
                 print(f"  - {diagnostic}")
             return 1
         provider = _configured_lyrics_providers(provider_factory(), canonical)
-        result = create_lyrics_resolver(storage, provider).resolve(
+        result = create_frontend_session(storage, provider, canonical).resolve_lyrics(
             selection.selected.track,
             offline=offline,
             refresh=refresh,

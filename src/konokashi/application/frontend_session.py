@@ -95,6 +95,15 @@ class FrontendSessionPort(Protocol):
     ) -> FrontendLyricsBundle:
         """Resolve one selected track into frontend-ready application values."""
 
+    def resolve_lyrics(
+        self,
+        track: ResolvedTrack,
+        *,
+        offline: bool = False,
+        refresh: bool = False,
+    ) -> LyricsResolutionResult:
+        """Resolve without display layers, sharing desktop enrichment policy."""
+
     def put_display_settings(self, settings: RepresentationDisplaySettings) -> None:
         """Persist shared multilingual display settings."""
 
@@ -251,6 +260,31 @@ class FrontendSessionService:
     ) -> FrontendLyricsBundle:
         """Resolve one selected source and collect its aligned display layers."""
 
+        resolved_track, result = self._resolve_with_metadata(
+            track, offline=offline, refresh=refresh
+        )
+        return self._build_bundle(resolved_track, result)
+
+    def resolve_lyrics(
+        self,
+        track: ResolvedTrack,
+        *,
+        offline: bool = False,
+        refresh: bool = False,
+    ) -> LyricsResolutionResult:
+        """Run desktop's automatic resolution without generating display layers."""
+
+        return self._resolve_with_metadata(track, offline=offline, refresh=refresh)[1]
+
+    def _resolve_with_metadata(
+        self,
+        track: ResolvedTrack,
+        *,
+        offline: bool,
+        refresh: bool,
+    ) -> tuple[ResolvedTrack, LyricsResolutionResult]:
+        """Keep automatic enrichment and retries in one application boundary."""
+
         operation_started = self._monotonic()
         generation = self._current_generation()
         resolver_generation = self._lyrics.cancellation_generation
@@ -372,6 +406,13 @@ class FrontendSessionService:
                     or result.network_used
                 ),
             )
+        return track, result
+
+    def _build_bundle(
+        self, track: ResolvedTrack, result: LyricsResolutionResult
+    ) -> FrontendLyricsBundle:
+        """Project a resolved source into the shared display representation."""
+
         settings = self._settings.get_representation_display()
         document = result.document
         if document is None:
