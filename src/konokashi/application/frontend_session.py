@@ -104,6 +104,15 @@ class FrontendSessionPort(Protocol):
     ) -> LyricsResolutionResult:
         """Resolve without display layers, sharing desktop enrichment policy."""
 
+    def resolve_lyrics_with_track(
+        self,
+        track: ResolvedTrack,
+        *,
+        offline: bool = False,
+        refresh: bool = False,
+    ) -> tuple[ResolvedTrack, LyricsResolutionResult]:
+        """Resolve lyrics and return the bounded interpretation set used."""
+
     def put_display_settings(self, settings: RepresentationDisplaySettings) -> None:
         """Persist shared multilingual display settings."""
 
@@ -260,7 +269,7 @@ class FrontendSessionService:
     ) -> FrontendLyricsBundle:
         """Resolve one selected source and collect its aligned display layers."""
 
-        resolved_track, result = self._resolve_with_metadata(
+        resolved_track, result = self.resolve_lyrics_with_track(
             track, offline=offline, refresh=refresh
         )
         return self._build_bundle(resolved_track, result)
@@ -274,14 +283,16 @@ class FrontendSessionService:
     ) -> LyricsResolutionResult:
         """Run desktop's automatic resolution without generating display layers."""
 
-        return self._resolve_with_metadata(track, offline=offline, refresh=refresh)[1]
+        return self.resolve_lyrics_with_track(track, offline=offline, refresh=refresh)[
+            1
+        ]
 
-    def _resolve_with_metadata(
+    def resolve_lyrics_with_track(
         self,
         track: ResolvedTrack,
         *,
-        offline: bool,
-        refresh: bool,
+        offline: bool = False,
+        refresh: bool = False,
     ) -> tuple[ResolvedTrack, LyricsResolutionResult]:
         """Keep automatic enrichment and retries in one application boundary."""
 

@@ -28,6 +28,11 @@ Run it from an editable development environment:
 The evaluator accepts multiple files and directories and can emit a stable JSON
 report with `--json`. By default, an oracle mismatch exits 1; input/schema errors
 exit 2.
+Each case records elapsed time from starting the automatic resolver to its
+decision. The report includes the median and nearest-rank p95 of those values.
+These timings use local, network-free fixture responses; they help detect replay
+regressions but are not live playback latency or a substitute for the release
+gate's private real-world latency measurements.
 An optional `youtube_metadata` object on a YouTube case is passed through the real
 fields-only metadata parser and automatic frontend retry without contacting YouTube. For those
 cases, set `expected.enrichment_used` explicitly. The report separately counts

@@ -9,6 +9,7 @@ from typing import Any, cast
 import pytest
 from scripts.evaluate_matching import (
     EvaluationInputError,
+    _human,
     _provider,
     evaluate,
     load_cases,
@@ -122,6 +123,20 @@ def test_automatic_youtube_corpus_replays_the_real_frontend_retry_without_networ
     assert "youtube-enrichment:structured-music-fields" in (
         recovered.actual.factors[0].strategy
     )
+
+
+def test_replay_reports_per_case_decision_latency_and_nearest_rank_p95(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    values = iter((1.0, 1.005, 2.0, 2.025))
+    monkeypatch.setattr("scripts.evaluate_matching.perf_counter", lambda: next(values))
+
+    report = evaluate((YOUTUBE_FIXTURE,))
+
+    assert [case.actual.decision_latency_ms for case in report.cases] == [5.0, 25.0]
+    assert report.metrics.replay_decision_median_ms == 15.0
+    assert report.metrics.replay_decision_p95_ms == 25.0
+    assert "not live playback latency" in _human(report)
 
 
 def test_youtube_enrichment_contribution_requires_a_correct_outcome(

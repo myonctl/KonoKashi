@@ -11,6 +11,8 @@ from collections.abc import Mapping, Sequence
 from dataclasses import asdict, dataclass, field, replace
 from datetime import UTC, datetime
 from pathlib import Path
+from statistics import median
+from time import perf_counter
 from typing import cast
 
 from konokashi.application.frontend_session import FrontendSessionService
@@ -161,6 +163,7 @@ class ActualOutcome:
     cache_hit: bool
     enrichment_used: bool
     enrichment_network_used: bool
+    decision_latency_ms: float
     track: TrackFactorReport
     evidence: tuple[str, ...]
     diagnostics: tuple[str, ...]
@@ -205,6 +208,8 @@ class EvaluationMetrics:
     ambiguous_supported: int
     missed_supported: int
     wrong_version_automatic_accepts: int
+    replay_decision_median_ms: float
+    replay_decision_p95_ms: float
 
 
 @dataclass(frozen=True, slots=True)
@@ -930,7 +935,11 @@ def _run_case(case: _LoadedCase, database_path: Path) -> CaseReport:
             f"{case.case_id} cannot combine confirmed and searched video metadata"
         )
     if case.youtube_metadata is None and case.web_discovery is None:
+        decision_started = perf_counter()
         resolution = resolver.resolve(track)
+        decision_latency_ms = max(
+            0.0, round((perf_counter() - decision_started) * 1000, 3)
+        )
     else:
         if case.youtube_metadata is not None:
             if not isinstance(track.source_identity, YouTubeIdentity):
@@ -1025,9 +1034,11 @@ def _run_case(case: _LoadedCase, database_path: Path) -> CaseReport:
             enricher,
             youtube_discovery=discoverer,
         )
-        bundle = frontend.load_track(track)
-        track = bundle.track
-        resolution = bundle.resolution
+        decision_started = perf_counter()
+        track, resolution = frontend.resolve_lyrics_with_track(track)
+        decision_latency_ms = max(
+            0.0, round((perf_counter() - decision_started) * 1000, 3)
+        )
     alternatives = resolver.alternatives(track)
     factors = tuple(
         CandidateFactorReport(
@@ -1064,6 +1075,7 @@ def _run_case(case: _LoadedCase, database_path: Path) -> CaseReport:
             (enricher is not None and enricher.network_calls > 0)
             or (discoverer is not None and discoverer.network_calls > 0)
         ),
+        decision_latency_ms=decision_latency_ms,
         track=TrackFactorReport(
             track.candidate.title,
             track.candidate.artists,
@@ -1092,6 +1104,15 @@ def _run_case(case: _LoadedCase, database_path: Path) -> CaseReport:
 
 
 def _metrics(cases: Sequence[CaseReport]) -> EvaluationMetrics:
+    decision_latencies = sorted(case.actual.decision_latency_ms for case in cases)
+    replay_decision_median_ms = (
+        round(float(median(decision_latencies)), 3) if decision_latencies else 0.0
+    )
+    replay_decision_p95_ms = (
+        decision_latencies[(95 * len(decision_latencies) + 99) // 100 - 1]
+        if decision_latencies
+        else 0.0
+    )
     correct_auto = 0
     wrong_auto = 0
     expected_auto = 0
@@ -1188,6 +1209,8 @@ def _metrics(cases: Sequence[CaseReport]) -> EvaluationMetrics:
         ambiguous_supported=ambiguous_supported,
         missed_supported=missed_supported,
         wrong_version_automatic_accepts=wrong_version_automatic_accepts,
+        replay_decision_median_ms=replay_decision_median_ms,
+        replay_decision_p95_ms=replay_decision_p95_ms,
     )
 
 
@@ -1230,6 +1253,12 @@ def _human(report: EvaluationReport) -> str:
         f"missed matches: {metrics.missed_matches}",
         f"wrong timing trust: {metrics.wrong_timing_trust}",
         (
+            "network-free replay decision latency: "
+            f"median={metrics.replay_decision_median_ms:.3f} ms; "
+            f"p95={metrics.replay_decision_p95_ms:.3f} ms "
+            "(not live playback latency)"
+        ),
+        (
             "recovery/fallback failures: "
             f"{metrics.fallback_failures}/{metrics.fallback_cases}"
         ),
@@ -1253,6 +1282,9 @@ def _human(report: EvaluationReport) -> str:
             "  observed: "
             f"{case.actual.status}, record={case.actual.record_id or '-'}, "
             f"timing={case.actual.timing}, origin={case.actual.origin}"
+        )
+        lines.append(
+            f"  network-free replay decision: {case.actual.decision_latency_ms:.3f} ms"
         )
         lines.append(
             "  YouTube enrichment: "
