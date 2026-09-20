@@ -9,10 +9,13 @@ from typing import Any, cast
 import pytest
 from scripts.evaluate_matching import (
     EvaluationInputError,
+    _provider,
     evaluate,
     load_cases,
     main,
 )
+
+from konokashi.domain.lyrics import LyricsProviderStatus, LyricsQuery
 
 REPOSITORY_ROOT = Path(__file__).parents[1]
 FIXTURE = (
@@ -203,6 +206,69 @@ def test_query_specific_provider_replay_does_not_leak_a_candidate_to_wrong_artis
     assert report.metrics.youtube_enrichment_fixed_failures == 0
     assert report.metrics.wrong_automatic_accepts == 0
     assert report.cases[0].actual.factors == ()
+
+
+def test_query_rule_can_match_album_duration_and_broad_mode() -> None:
+    def candidate(record_id: str) -> dict[str, object]:
+        return {
+            "record_id": record_id,
+            "track_name": "Paper Signal",
+            "artist_name": "Copper Avenue",
+            "duration_ms": 180_000,
+            "plain_lyrics": "An invented paper signal.",
+        }
+
+    provider = _provider(
+        {
+            "query_results": [
+                {
+                    "title": "Paper Signal",
+                    "artists": ["Copper Avenue"],
+                    "album": "Wrong Album",
+                    "duration_ms": 180_000,
+                    "broad": False,
+                    "result": {"candidates": [candidate("wrong-album")]},
+                },
+                {
+                    "title": "Paper Signal",
+                    "artists": ["Copper Avenue"],
+                    "album": "Correct Album",
+                    "duration_ms": 180_000,
+                    "broad": False,
+                    "result": {"candidates": [candidate("correct-album")]},
+                },
+                {
+                    "title": "Paper Signal",
+                    "artists": ["Copper Avenue"],
+                    "album": None,
+                    "duration_ms": None,
+                    "broad": True,
+                    "result": {"candidates": [candidate("no-album")]},
+                },
+            ]
+        },
+        "synthetic.provider",
+    )
+
+    correct = provider.search(
+        LyricsQuery("Paper Signal", ("Copper Avenue",), "Correct Album", 180_000)
+    )
+    broad = provider.search(
+        LyricsQuery(
+            "Paper Signal", ("Copper Avenue",), "Correct Album", 180_000, broad=True
+        )
+    )
+    wrong_duration = provider.search(
+        LyricsQuery("Paper Signal", ("Copper Avenue",), "Correct Album", 181_000)
+    )
+    no_album = provider.search(
+        LyricsQuery("Paper Signal", ("Copper Avenue",), None, None, broad=True)
+    )
+
+    assert correct.candidates[0].record_id == "correct-album"
+    assert broad.status is LyricsProviderStatus.NO_RESULT
+    assert wrong_duration.status is LyricsProviderStatus.NO_RESULT
+    assert no_album.candidates[0].record_id == "no-album"
 
 
 def test_wrong_oracle_document_counts_a_dangerous_automatic_accept(

@@ -226,6 +226,11 @@ class _QueryRule:
     title: str
     artists: tuple[str, ...]
     result: LyricsProviderResult
+    album: str | None = None
+    match_album: bool = False
+    duration_ms: int | None = None
+    match_duration: bool = False
+    broad: bool | None = None
 
 
 class _FixtureLocalPathCanonicalizer:
@@ -255,6 +260,12 @@ class _FixtureProvider:
             if rule.title.casefold() != query.title.casefold() or tuple(
                 artist.casefold() for artist in rule.artists
             ) != tuple(artist.casefold() for artist in query.artists):
+                continue
+            if rule.match_album and rule.album != query.album:
+                continue
+            if rule.match_duration and rule.duration_ms != query.duration_ms:
+                continue
+            if rule.broad is not None and rule.broad != query.broad:
                 continue
             return replace(
                 rule.result,
@@ -579,13 +590,34 @@ def _provider(value: Mapping[str, object], context: str) -> _FixtureProvider:
             raise EvaluationInputError(f"{rule_context}.mode is unsupported")
         rules.append(
             _QueryRule(
-                mode,
-                title,
-                _strings(raw.get("artists", []), f"{rule_context}.artists"),
-                _provider_result(
+                mode=mode,
+                title=title,
+                artists=_strings(raw.get("artists", []), f"{rule_context}.artists"),
+                result=_provider_result(
                     raw.get("result", {}),
                     f"{rule_context}.result",
                     default_candidates=(),
+                ),
+                album=(
+                    _string(raw.get("album"), f"{rule_context}.album", optional=True)
+                    if "album" in raw
+                    else None
+                ),
+                match_album="album" in raw,
+                duration_ms=(
+                    _integer(
+                        raw.get("duration_ms"),
+                        f"{rule_context}.duration_ms",
+                        optional=True,
+                    )
+                    if "duration_ms" in raw
+                    else None
+                ),
+                match_duration="duration_ms" in raw,
+                broad=(
+                    _boolean(raw.get("broad"), f"{rule_context}.broad")
+                    if "broad" in raw
+                    else None
                 ),
             )
         )

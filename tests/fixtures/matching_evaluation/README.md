@@ -27,10 +27,11 @@ automatic document as an enrichment success. Store only bounded, sanitized
 recording fields and, if essential, a short credit line—never a full description
 or lyric body.
 Optional `provider.query_results` rules bind a recorded response to an exact query
-mode, title, and artist tuple; unmatched queries return no result. Use these rules
-for YouTube cases so an unrelated first-pass search cannot see a candidate that
-was actually found only after enrichment. Cases without rules retain schema-1
-provider behavior for backward compatibility.
+mode, title, and artist tuple. Rules may also bind `album`, `duration_ms`, and
+`broad` when those fields were recorded; unmatched queries return no result. Use
+these rules for YouTube cases so an unrelated first-pass search cannot see a
+candidate that was actually found only after enrichment. Cases without rules
+retain schema-1 provider behavior for backward compatibility.
 Real-world cases must explicitly set `expected.known_supported` only when an
 independent source/recording oracle justifies it; unlabeled cases are reported
 as unclassified, never silently folded into the known-supported denominator.
