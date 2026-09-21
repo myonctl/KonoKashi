@@ -1,18 +1,22 @@
-"""Deliberate provider-search and alternative-selection surface."""
+"""Deliberate recovery search and candidate-card selection surface."""
 
 from __future__ import annotations
 
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
-    QComboBox,
+    QAbstractItemView,
     QFormLayout,
+    QFrame,
     QGroupBox,
     QHBoxLayout,
     QLabel,
     QLineEdit,
+    QListWidget,
+    QListWidgetItem,
     QPushButton,
     QSizePolicy,
     QVBoxLayout,
+    QWidget,
 )
 
 from konokashi.application.review_corrections import ReviewCorrectionSnapshot
@@ -51,32 +55,79 @@ def _alternative_text(value: LyricsAlternative) -> str:
     duration = _duration_text(candidate.duration_ms)
     rejected = " · previously rejected" if value.rejected else ""
     return (
-        f"{_alternative_strength(value.confidence)} — {candidate.artist_name} — "
-        f"{candidate.track_name} · {candidate.provider} · {duration}{rejected}"
+        f"{candidate.artist_name} — {candidate.track_name} · {candidate.provider} · "
+        f"{duration} · {_alternative_strength(value.confidence)}{rejected}"
     )
 
 
+class _AlternativeCard(QFrame):
+    """Readable result summary with actions attached to that exact result."""
+
+    use_requested = Signal(object)
+    why_requested = Signal(object)
+
+    def __init__(self, value: LyricsAlternative, *, durable: bool) -> None:
+        super().__init__()
+        self.value = value
+        self.setFrameShape(QFrame.Shape.StyledPanel)
+        self.setAccessibleName(_alternative_text(value))
+        layout = QVBoxLayout(self)
+
+        candidate = value.candidate
+        heading = _plain_label(f"{candidate.artist_name} — {candidate.track_name}")
+        heading_font = heading.font()
+        heading_font.setBold(True)
+        heading.setFont(heading_font)
+        layout.addWidget(heading)
+
+        summary = _plain_label(
+            f"{candidate.provider} · {_duration_text(candidate.duration_ms)} · "
+            f"{_alternative_strength(value.confidence)}"
+            + (" · previously rejected" if value.rejected else "")
+        )
+        layout.addWidget(summary)
+
+        buttons = QHBoxLayout()
+        self.use_button = QPushButton("Use this")
+        self.use_button.setEnabled(durable)
+        self.why_button = QPushButton("Why this result?")
+        self.why_button.setFlat(True)
+        self.use_button.clicked.connect(lambda: self.use_requested.emit(self.value))
+        self.why_button.clicked.connect(lambda: self.why_requested.emit(self.value))
+        buttons.addWidget(self.use_button)
+        buttons.addWidget(self.why_button)
+        buttons.addStretch(1)
+        layout.addLayout(buttons)
+
+
 class ReviewAlternativePanel(QGroupBox):
-    """Own search inputs, usefulness filtering, and explicit result selection."""
+    """Own recovery search, usefulness filtering, and explicit result selection."""
 
     search_requested = Signal(str, object)
     refresh_requested = Signal(str, object)
-    enrichment_requested = Signal()
     choose_requested = Signal(object)
     reject_requested = Signal(object)
 
     def __init__(self, snapshot: ReviewCorrectionSnapshot) -> None:
         super().__init__("Find different lyrics")
         self._snapshot = snapshot
+        self._cards: list[_AlternativeCard] = []
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Maximum)
         layout = QVBoxLayout(self)
         layout.addWidget(
             _plain_label(
-                "Search deliberately when the current lyrics are wrong or missing. "
-                "A search never replaces the current result until you choose one."
+                "Use this only when the automatic result is missing or wrong. "
+                "Nothing changes until you choose a result."
             )
         )
 
+        self.search_controls_button = QPushButton("Search with corrected terms…")
+        self.search_controls_button.setCheckable(True)
+        layout.addWidget(self.search_controls_button, 0, Qt.AlignmentFlag.AlignLeft)
+
+        self.search_controls = QWidget()
+        search_controls_layout = QVBoxLayout(self.search_controls)
+        search_controls_layout.setContentsMargins(0, 0, 0, 0)
         search_layout = QFormLayout()
         self.search_title_edit = QLineEdit(
             snapshot.search_title or snapshot.track.effective_title or ""
@@ -91,26 +142,20 @@ class ReviewAlternativePanel(QGroupBox):
         )
         search_layout.addRow("Search title", self.search_title_edit)
         search_layout.addRow("Search artist(s)", self.search_artists_edit)
-        layout.addLayout(search_layout)
+        search_controls_layout.addLayout(search_layout)
 
         search_buttons = QHBoxLayout()
         self.search_button = QPushButton("Search")
         self.refresh_button = QPushButton("Refresh")
-        self.enrich_button = QPushButton("Use YouTube metadata")
         self.search_button.clicked.connect(self._request_search)
         self.refresh_button.clicked.connect(self._request_refresh)
-        self.enrich_button.setEnabled(snapshot.youtube_enrichment_available)
-        self.enrich_button.setToolTip(
-            "Contact YouTube for this public video's title, description credits, "
-            "uploader, and duration. Audio, video, cookies, and lyric text are "
-            "never sent or downloaded."
-        )
-        self.enrich_button.clicked.connect(self.enrichment_requested)
         search_buttons.addWidget(self.search_button)
         search_buttons.addWidget(self.refresh_button)
-        search_buttons.addWidget(self.enrich_button)
         search_buttons.addStretch(1)
-        layout.addLayout(search_buttons)
+        search_controls_layout.addLayout(search_buttons)
+        self.search_controls.setVisible(False)
+        self.search_controls_button.toggled.connect(self.search_controls.setVisible)
+        layout.addWidget(self.search_controls)
 
         self._visible_alternatives = tuple(
             item
@@ -144,34 +189,40 @@ class ReviewAlternativePanel(QGroupBox):
         self.results_status.setAccessibleName("Alternative lyric search status")
         layout.addWidget(self.results_status)
 
-        self.alternatives = QComboBox()
+        self.alternatives = QListWidget()
         self.alternatives.setAccessibleName("Alternative lyric results")
+        self.alternatives.setSelectionMode(
+            QAbstractItemView.SelectionMode.SingleSelection
+        )
+        self.alternatives.currentRowChanged.connect(self._selection_changed)
         layout.addWidget(self.alternatives)
+
         self.show_weak_results_button = QPushButton(
             f"Show weak results ({len(self._weak_alternatives)})"
         )
         self.show_weak_results_button.setCheckable(True)
         self.show_weak_results_button.setVisible(bool(self._weak_alternatives))
         self.show_weak_results_button.toggled.connect(self._toggle_weak_results)
-        layout.addWidget(self.show_weak_results_button)
+        layout.addWidget(self.show_weak_results_button, 0, Qt.AlignmentFlag.AlignLeft)
+
         self.alternative_details = _plain_label("")
         self.alternative_details.setAccessibleName("Selected lyric match evidence")
+        self.alternative_details.setVisible(False)
         layout.addWidget(self.alternative_details)
 
-        match_buttons = QHBoxLayout()
-        self.choose_button = QPushButton("Choose alternative")
-        self.reject_alternative_button = QPushButton("Reject alternative")
-        self.choose_button.setEnabled(False)
+        self.reject_alternative_button = QPushButton("Reject this result")
+        self.reject_alternative_button.setFlat(True)
         self.reject_alternative_button.setEnabled(False)
-        self.choose_button.clicked.connect(self._choose_alternative)
         self.reject_alternative_button.clicked.connect(self._reject_alternative)
-        match_buttons.addWidget(self.choose_button)
-        match_buttons.addWidget(self.reject_alternative_button)
-        match_buttons.addStretch(1)
-        layout.addLayout(match_buttons)
+        layout.addWidget(self.reject_alternative_button, 0, Qt.AlignmentFlag.AlignLeft)
 
-        self.alternatives.currentIndexChanged.connect(self._update_alternative_details)
         self._populate_alternatives(include_weak=False)
+
+    @property
+    def cards(self) -> tuple[_AlternativeCard, ...]:
+        """Return visible result cards for UI automation and accessibility tests."""
+
+        return tuple(self._cards)
 
     def _search_values(self) -> tuple[str, tuple[str, ...]]:
         artists = tuple(
@@ -189,30 +240,40 @@ class ReviewAlternativePanel(QGroupBox):
         title, artists = self._search_values()
         self.refresh_requested.emit(title, artists)
 
-    def _choose_alternative(self) -> None:
-        value = self.alternatives.currentData()
-        if isinstance(value, LyricsAlternative):
-            self.choose_requested.emit(value)
-
     def _reject_alternative(self) -> None:
-        value = self.alternatives.currentData()
-        if isinstance(value, LyricsAlternative):
+        value = self._selected_alternative()
+        if value is not None:
             self.reject_requested.emit(value)
+
+    def _selected_alternative(self) -> LyricsAlternative | None:
+        item = self.alternatives.currentItem()
+        if item is None:
+            return None
+        value = item.data(Qt.ItemDataRole.UserRole)
+        return value if isinstance(value, LyricsAlternative) else None
 
     def _populate_alternatives(self, *, include_weak: bool) -> None:
         self.alternatives.blockSignals(True)
         self.alternatives.clear()
+        self._cards.clear()
         values = self._visible_alternatives + (
             self._weak_alternatives if include_weak else ()
         )
-        for item in values:
-            self.alternatives.addItem(_alternative_text(item), item)
-        self.alternatives.setEnabled(bool(values))
-        self.alternatives.setCurrentIndex(-1)
+        for value in values:
+            item = QListWidgetItem(_alternative_text(value))
+            item.setData(Qt.ItemDataRole.UserRole, value)
+            card = _AlternativeCard(value, durable=self._snapshot.durable)
+            card.use_requested.connect(self.choose_requested)
+            card.why_requested.connect(self._show_details)
+            item.setSizeHint(card.sizeHint())
+            self.alternatives.addItem(item)
+            self.alternatives.setItemWidget(item, card)
+            self._cards.append(card)
+        self.alternatives.setVisible(bool(values))
+        self.alternatives.setCurrentRow(-1)
         self.alternatives.blockSignals(False)
-        self.choose_button.setEnabled(False)
         self.reject_alternative_button.setEnabled(False)
-        self._update_alternative_details()
+        self.alternative_details.setVisible(False)
 
     def _toggle_weak_results(self, visible: bool) -> None:
         self.show_weak_results_button.setText(
@@ -222,34 +283,18 @@ class ReviewAlternativePanel(QGroupBox):
         )
         self._populate_alternatives(include_weak=visible)
 
-    def _update_alternative_details(self) -> None:
-        value = self.alternatives.currentData()
-        selection_available = isinstance(value, LyricsAlternative)
-        enabled = self._snapshot.durable and selection_available
-        self.choose_button.setEnabled(enabled)
-        self.reject_alternative_button.setEnabled(enabled)
-        if not isinstance(value, LyricsAlternative):
-            if self.alternatives.count():
-                text = (
-                    "Select an alternative to inspect it. Nothing changes until you "
-                    "choose one."
-                )
-            elif not self._snapshot.alternatives_searched:
-                text = "Search has not been run for this review."
-            elif self._weak_alternatives:
-                text = (
-                    "No strong or possible alternatives are available. Weak results "
-                    "remain hidden unless you deliberately show them."
-                )
-            else:
-                text = (
-                    "No alternative result was useful enough to show. Try corrected "
-                    "title or artist text if the recording metadata is wrong."
-                )
-            self.alternative_details.setText(text)
-            return
+    def _selection_changed(self, _row: int) -> None:
+        self.reject_alternative_button.setEnabled(
+            self._snapshot.durable and self._selected_alternative() is not None
+        )
+
+    def _show_details(self, value: LyricsAlternative) -> None:
+        for row in range(self.alternatives.count()):
+            item = self.alternatives.item(row)
+            if item.data(Qt.ItemDataRole.UserRole) == value:
+                self.alternatives.setCurrentRow(row)
+                break
         candidate = value.candidate
-        duration = _duration_text(candidate.duration_ms)
         explanation = {
             LyricsMatchConfidence.APPROVED: "You previously saved this match.",
             LyricsMatchConfidence.HIGH: (
@@ -267,5 +312,7 @@ class ReviewAlternativePanel(QGroupBox):
         rejected = " You previously rejected this result." if value.rejected else ""
         self.alternative_details.setText(
             f"{candidate.artist_name} — {candidate.track_name}\n"
-            f"{candidate.provider} · {duration}\n{explanation}{rejected}"
+            f"{candidate.provider} · {_duration_text(candidate.duration_ms)}\n"
+            f"{explanation}{rejected}"
         )
+        self.alternative_details.setVisible(True)

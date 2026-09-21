@@ -20,6 +20,7 @@ from PySide6.QtWidgets import (
     QDialogButtonBox,
     QLabel,
     QPlainTextEdit,
+    QPushButton,
     QWidget,
 )
 
@@ -1106,6 +1107,10 @@ def test_review_dialog_exposes_bounded_audit_and_explicit_actions(
     assert "LRCLIB #42: overall Medium" in audit.toPlainText()
     assert not audit.isVisible()
     assert dialog.current_status.text() == "Lyrics are ready"
+    assert dialog.current_recording.text() == (
+        "Provider current artist — Provider current title"
+    )
+    assert dialog.automatic_checks.isHidden()
     assert dialog.current_status.accessibleDescription() == "Lyrics are ready"
     assert "LRCLIB · Provider lyrics · Line synchronized · High confidence" in (
         dialog.current_summary.text()
@@ -1119,13 +1124,15 @@ def test_review_dialog_exposes_bounded_audit_and_explicit_actions(
     )
     assert dialog.lyrics_group.isVisible()
     assert dialog.alternatives.count() == 1
-    assert dialog.alternatives.currentIndex() == -1
-    assert not dialog.choose_button.isEnabled()
-    assert "Nothing changes until you choose one" in dialog.alternative_details.text()
-    assert dialog.alternatives.itemText(0).startswith("Possible match —")
-    assert "Provider <title>" in dialog.alternatives.itemText(0)
-    dialog.alternatives.setCurrentIndex(0)
+    assert dialog.alternatives.currentRow() == -1
+    assert not dialog.alternative_details.isVisible()
+    assert "Provider <title>" in dialog.alternatives.item(0).text()
+    card = dialog.lyrics_group.cards[0]
+    assert card.use_button.text() == "Use this"
+    assert card.why_button.text() == "Why this result?"
+    QTest.mouseClick(card.why_button, Qt.MouseButton.LeftButton)
     assert "Some recording details differ" in dialog.alternative_details.text()
+    assert dialog.alternative_details.isVisible()
     assert "Record:" not in dialog.alternative_details.text()
     assert "Text confidence:" not in dialog.alternative_details.text()
     assert dialog.reset_delay_button.isEnabled()
@@ -1135,7 +1142,7 @@ def test_review_dialog_exposes_bounded_audit_and_explicit_actions(
     assert dialog.details_group.isVisible()
     assert audit.isVisible()
 
-    QTest.mouseClick(dialog.choose_button, Qt.MouseButton.LeftButton)
+    QTest.mouseClick(card.use_button, Qt.MouseButton.LeftButton)
     action = dialog.action()
     assert action is not None
     assert action.kind is CorrectionActionKind.CHOOSE_ALTERNATIVE
@@ -1143,7 +1150,7 @@ def test_review_dialog_exposes_bounded_audit_and_explicit_actions(
     assert action.alternative.candidate.record_id == "42"
 
     reject_dialog = ReviewCorrectionDialog(_review_snapshot())
-    reject_dialog.alternatives.setCurrentIndex(0)
+    reject_dialog.alternatives.setCurrentRow(0)
     QTest.mouseClick(
         reject_dialog.reject_alternative_button,
         Qt.MouseButton.LeftButton,
@@ -1182,6 +1189,12 @@ def test_healthy_local_review_is_reassuring_without_running_or_showing_search(
     qt_app.processEvents()
     assert dialog.lyrics_group.isVisible()
     assert dialog.alternatives.count() == 0
+    assert dialog.lyrics_group.search_controls.isHidden()
+    QTest.mouseClick(
+        dialog.lyrics_group.search_controls_button,
+        Qt.MouseButton.LeftButton,
+    )
+    assert dialog.lyrics_group.search_controls.isVisible()
     dialog.close()
 
 
@@ -1210,16 +1223,17 @@ def test_low_alternatives_are_hidden_until_weak_results_are_requested(
     qt_app.processEvents()
 
     assert dialog.alternatives.count() == 1
-    assert "Unrelated weak result" not in dialog.alternatives.itemText(0)
+    assert "Unrelated weak result" not in dialog.alternatives.item(0).text()
     assert dialog.show_weak_results_button.isVisible()
     assert dialog.show_weak_results_button.text() == "Show weak results (1)"
 
     QTest.mouseClick(dialog.show_weak_results_button, Qt.MouseButton.LeftButton)
     assert dialog.alternatives.count() == 2
-    assert "Unrelated weak result" in dialog.alternatives.itemText(1)
-    dialog.alternatives.setCurrentIndex(1)
+    assert "Unrelated weak result" in dialog.alternatives.item(1).text()
+    weak_card = dialog.lyrics_group.cards[1]
+    QTest.mouseClick(weak_card.why_button, Qt.MouseButton.LeftButton)
     assert "shown only because you asked" in dialog.alternative_details.text()
-    QTest.mouseClick(dialog.choose_button, Qt.MouseButton.LeftButton)
+    QTest.mouseClick(weak_card.use_button, Qt.MouseButton.LeftButton)
     action = dialog.action()
     assert action is not None
     assert action.alternative is weak
@@ -1284,9 +1298,12 @@ def test_review_maps_recording_and_provider_title_artist_semantics_end_to_end(
     assert dialog.title_edit.text() == "Moonlit Circuit"
     assert dialog.artists_edit.text() == ("Aoi Test Artist; Second Test Artist")
     assert "Aoi Test Artist & Second Test Artist — Moonlit Circuit" in (
-        dialog.alternatives.itemText(0)
+        dialog.alternatives.item(0).text()
     )
-    dialog.alternatives.setCurrentIndex(0)
+    QTest.mouseClick(
+        dialog.lyrics_group.cards[0].why_button,
+        Qt.MouseButton.LeftButton,
+    )
     assert "Aoi Test Artist & Second Test Artist — Moonlit Circuit" in (
         dialog.alternative_details.text()
     )
@@ -1327,6 +1344,11 @@ def test_review_dialog_track_and_delay_requests_are_typed(
     search_dialog = ReviewCorrectionDialog(
         replace(_review_snapshot(), youtube_enrichment_available=True)
     )
+    assert search_dialog.lyrics_group.search_controls.isHidden()
+    QTest.mouseClick(
+        search_dialog.lyrics_group.search_controls_button,
+        Qt.MouseButton.LeftButton,
+    )
     search_dialog.search_title_edit.setText(" Manual title ")
     search_dialog.search_artists_edit.setText("Artist A; Artist B")
     QTest.mouseClick(search_dialog.search_button, Qt.MouseButton.LeftButton)
@@ -1336,14 +1358,28 @@ def test_review_dialog_track_and_delay_requests_are_typed(
     assert search_action.title == "Manual title"
     assert search_action.artists == ("Artist A", "Artist B")
 
-    enrich_dialog = ReviewCorrectionDialog(
+    automatic_dialog = ReviewCorrectionDialog(
         replace(_review_snapshot(), youtube_enrichment_available=True)
     )
-    assert enrich_dialog.enrich_button.isEnabled()
-    QTest.mouseClick(enrich_dialog.enrich_button, Qt.MouseButton.LeftButton)
-    enrich_action = enrich_dialog.action()
-    assert enrich_action is not None
-    assert enrich_action.kind is CorrectionActionKind.ENRICH_YOUTUBE
+    assert not hasattr(automatic_dialog, "enrich_button")
+    assert all(
+        button.text() != "Use YouTube metadata"
+        for button in automatic_dialog.findChildren(QPushButton)
+    )
+
+    missing_dialog = ReviewCorrectionDialog(
+        replace(_review_snapshot(), current_document_id=None)
+    )
+    assert missing_dialog.current_status.text() == (
+        "We couldn't confidently identify this recording."
+    )
+    assert not missing_dialog.automatic_checks.isHidden()
+    assert missing_dialog.find_different_button.text() == (
+        "Help identify this recording…"
+    )
+    assert missing_dialog.change_metadata_button.text() == (
+        "Correct recording identity…"
+    )
 
 
 def test_review_dialog_exposes_routing_layers_and_aligned_translation_actions(
@@ -1502,7 +1538,23 @@ def test_review_dialog_keeps_actions_reachable_in_narrow_geometry(
     buttons = dialog.findChild(QDialogButtonBox)
     assert buttons is not None
     assert buttons.isVisible()
-    assert dialog.scroll_area.verticalScrollBar().maximum() == 0
+    use_button = dialog.lyrics_group.cards[0].use_button
+    dialog.scroll_area.ensureWidgetVisible(use_button)
+    qt_app.processEvents()
+    assert use_button.isVisible()
+    assert (
+        dialog.scroll_area.viewport()
+        .rect()
+        .intersects(
+            QRect(
+                use_button.mapTo(
+                    dialog.scroll_area.viewport(),
+                    use_button.rect().topLeft(),
+                ),
+                use_button.size(),
+            )
+        )
+    )
     QTest.mouseClick(dialog.adjust_timing_button, Qt.MouseButton.LeftButton)
     qt_app.processEvents()
     assert dialog.delay_group.isVisible()

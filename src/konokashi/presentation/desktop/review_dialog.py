@@ -130,8 +130,9 @@ def _current_review_copy(snapshot: ReviewCorrectionSnapshot) -> tuple[str, str]:
                 "different result or reset the saved choice.",
             )
         return (
-            "No lyrics are active",
-            "KonoKashi has not found a usable lyric document for this recording.",
+            "We couldn't confidently identify this recording.",
+            "Automatic resolution did not find one trustworthy lyric match. You can "
+            "help identify the recording below.",
         )
     if snapshot.current_match_decision is LyricsMatchDecision.APPROVED:
         return (
@@ -210,6 +211,19 @@ class ReviewCorrectionDialog(QDialog):
         self.current_status.setAccessibleName("Current lyrics status")
         self.current_status.setAccessibleDescription(current_heading)
         current_layout.addWidget(self.current_status)
+        recording_artist = snapshot.current_provider_artist or _artists(
+            snapshot.track.effective_artists
+        )
+        recording_title = (
+            snapshot.current_provider_title or snapshot.track.effective_title
+        )
+        self.current_recording = _plain_label(
+            "Recording unavailable"
+            if not recording_title
+            else f"{recording_artist} — {recording_title}"
+        )
+        self.current_recording.setAccessibleName("Current recording identity")
+        current_layout.addWidget(self.current_recording)
         summary_parts = [
             snapshot.current_lyrics_source or "No lyric source",
             _provenance_text(snapshot.current_lyrics_provenance),
@@ -237,18 +251,28 @@ class ReviewCorrectionDialog(QDialog):
         self.current_reason.setAccessibleName("Why these lyrics are active")
         self.current_reason.setAccessibleDescription(current_reason)
         current_layout.addWidget(self.current_reason)
+        self.automatic_checks = _plain_label(
+            "Automatic checks: playback metadata · saved knowledge · enabled lyric "
+            "sources · alternate interpretations"
+        )
+        self.automatic_checks.setVisible(snapshot.current_document_id is None)
+        current_layout.addWidget(self.automatic_checks)
 
         primary_actions = QHBoxLayout()
         self.edit_lyrics_button = QPushButton("Edit lyrics…")
         self.adjust_timing_button = QPushButton("Adjust timing…")
-        self.find_different_button = QPushButton("Find different lyrics…")
+        self.find_different_button = QPushButton(
+            "Find different lyrics…"
+            if snapshot.current_document_id is not None
+            else "Help identify this recording…"
+        )
         primary_actions.addWidget(self.edit_lyrics_button)
         primary_actions.addWidget(self.adjust_timing_button)
         primary_actions.addWidget(self.find_different_button)
         primary_actions.addStretch(1)
         current_layout.addLayout(primary_actions)
         secondary_actions = QHBoxLayout()
-        self.change_metadata_button = QPushButton("Change recording metadata…")
+        self.change_metadata_button = QPushButton("Correct recording identity…")
         self.other_corrections_button = QPushButton("Language and translation…")
         self.why_match_button = QPushButton("Details / Why this match?")
         for button in (
@@ -309,12 +333,10 @@ class ReviewCorrectionDialog(QDialog):
         self.search_artists_edit = lyrics_group.search_artists_edit
         self.search_button = lyrics_group.search_button
         self.refresh_button = lyrics_group.refresh_button
-        self.enrich_button = lyrics_group.enrich_button
         self.results_status = lyrics_group.results_status
         self.alternatives = lyrics_group.alternatives
         self.show_weak_results_button = lyrics_group.show_weak_results_button
         self.alternative_details = lyrics_group.alternative_details
-        self.choose_button = lyrics_group.choose_button
         self.reject_alternative_button = lyrics_group.reject_alternative_button
         lyrics_group.search_requested.connect(
             lambda title, artists: self._finish(
@@ -329,9 +351,6 @@ class ReviewCorrectionDialog(QDialog):
                 title=title,
                 artists=artists,
             )
-        )
-        lyrics_group.enrichment_requested.connect(
-            lambda: self._finish(CorrectionActionKind.ENRICH_YOUTUBE)
         )
         lyrics_group.choose_requested.connect(
             lambda alternative: self._finish(
