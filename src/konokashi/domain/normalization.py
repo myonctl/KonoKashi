@@ -62,6 +62,18 @@ _PRESENTATION_BARE = re.compile(
 )
 _TOPIC_SUFFIX = re.compile(r"\s+-\s+.+?\s+-\s+topic\s*$", re.IGNORECASE)
 _TOPIC_CHANNEL_LABEL = re.compile(r"^(.+?)\s+-\s+topic$", re.IGNORECASE)
+_LOCALIZED_ARTIST_QUOTED_VIDEO = re.compile(
+    r"^(?P<artist>.+?)\s+\((?P<localized>[^()]+)\)\s+"
+    r"(?P<quote>['\"])(?P<title>[^'\"]+)\3\s+"
+    r"(?P<label>(?:official\s+)?(?:music\s+video|mv|video))$",
+    re.IGNORECASE,
+)
+_DECORATIVE_EDGE_STARS = re.compile(r"^[★☆✩]{1,6}\s*(?P<body>.*?)\s*[★☆✩]{1,6}$")
+_PARENTHETICAL_LYRIC_LABEL = re.compile(
+    r"^(?P<artist>[^()]+?)\s+\(\s*(?P<title>.+?)\s+"
+    r"(?P<label>lyrics?|letra|testo)\s*\)$",
+    re.IGNORECASE,
+)
 _VERSION_GROUP = re.compile(r"^(?P<base>.+?)\s*[\[(](?P<qualifier>[^\[\]()]+)[\])]\s*$")
 _VERSION_QUALIFIER = re.compile(
     r"^(?:radio\s+(?:edit|version)|edit|extended\s+mix|original(?:\s+mix)?|"
@@ -215,8 +227,42 @@ def parse_youtube_title_candidates(
     reported_keys = {
         comparison_key(artist) for artist in reported_artists or () if artist.strip()
     }
+    localized_quoted_video = _LOCALIZED_ARTIST_QUOTED_VIDEO.fullmatch(title_text)
+    decorative = _DECORATIVE_EDGE_STARS.fullmatch(title_text)
+    parenthetical_lyrics = (
+        None
+        if decorative is None
+        else _PARENTHETICAL_LYRIC_LABEL.fullmatch(decorative.group("body"))
+    )
     quotation = re.fullmatch(r"(.+?)\s*[「『](.+?)[」』](.*)", title_text)
-    if quotation is not None:
+    if localized_quoted_video is not None:
+        parts = [
+            localized_quoted_video.group("artist").strip(),
+            localized_quoted_video.group("title").strip(),
+        ]
+        separator = "localized-artist quoted-video"
+        transformations.extend(
+            (
+                "parsed explicit artist, localized alias, and quoted video title",
+                "retained primary artist and removed parenthesized localized alias",
+                "removed presentation suffix "
+                f"{localized_quoted_video.group('label')!r}",
+            )
+        )
+    elif parenthetical_lyrics is not None:
+        parts = [
+            parenthetical_lyrics.group("artist").strip(),
+            parenthetical_lyrics.group("title").strip(),
+        ]
+        separator = "decorated parenthetical-lyrics"
+        transformations.extend(
+            (
+                "removed bounded decorative edge stars",
+                "parsed parenthesized title with explicit lyric label",
+                f"removed presentation suffix {parenthetical_lyrics.group('label')!r}",
+            )
+        )
+    elif quotation is not None:
         suffix = quotation.group(3).strip()
         if suffix and not _FEATURING.match(suffix):
             return ()

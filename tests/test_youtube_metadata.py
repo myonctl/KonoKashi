@@ -11,6 +11,7 @@ from threading import Event, Thread
 import pytest
 
 from konokashi.domain.lyrics import ProviderCacheEntry
+from konokashi.domain.tracks import ArtistCredit
 from konokashi.infrastructure.metadata.youtube import (
     _PRINT_TEMPLATE,
     YtDlpYouTubeMetadataEnricher,
@@ -308,6 +309,103 @@ def test_explicit_music_fields_survive_cache_without_treating_uploader_as_artist
     assert second.candidates == first.candidates
     assert second.cache_hit and not second.network_used
     assert b"Example Records" in cache.puts[0].payload
+
+
+def test_topic_channel_corroborates_bounded_structured_lead_artist_hypothesis() -> None:
+    cache = _Cache()
+
+    def command(
+        _argv: tuple[str, ...],
+        _timeout: float,
+        _limit: int,
+        _cancelled: Event,
+    ) -> bytes:
+        return json.dumps(
+            {
+                "id": VIDEO_ID,
+                "title": "Collaborative Song",
+                "uploader": "Lead Artist - Topic",
+                "track": "Collaborative Song",
+                "artists": ["Lead Artist", "Guest Artist", "Writer Name"],
+                "album": "Shared Album",
+                "duration": 201.0,
+            }
+        ).encode()
+
+    enricher = YtDlpYouTubeMetadataEnricher(cache, now=lambda: NOW, command=command)
+    first = enricher.enrich(_android_track())
+    second = enricher.enrich(_android_track())
+
+    assert len(first.candidates) == 2
+    complete, lead = first.candidates
+    assert complete.artist_credit == ArtistCredit(
+        ("Lead Artist", "Guest Artist", "Writer Name"), ()
+    )
+    assert lead.artists == ("Lead Artist",)
+    assert lead.artist_credit == ArtistCredit(
+        ("Lead Artist",), ("Guest Artist", "Writer Name")
+    )
+    assert lead.strategy == "youtube-enrichment:structured-lead-artist"
+    assert second.candidates == first.candidates
+    assert second.cache_hit and not second.network_used
+
+
+def test_non_topic_uploader_cannot_create_structured_lead_artist_hypothesis() -> None:
+    cache = _Cache()
+
+    def command(
+        _argv: tuple[str, ...],
+        _timeout: float,
+        _limit: int,
+        _cancelled: Event,
+    ) -> bytes:
+        return json.dumps(
+            {
+                "id": VIDEO_ID,
+                "uploader": "Example Records",
+                "track": "Collaborative Song",
+                "artists": ["Lead Artist", "Guest Artist"],
+                "duration": 201.0,
+            }
+        ).encode()
+
+    result = YtDlpYouTubeMetadataEnricher(
+        cache, now=lambda: NOW, command=command
+    ).enrich(_android_track())
+
+    assert len(result.candidates) == 1
+    assert result.candidates[0].artist_credit == ArtistCredit(
+        ("Lead Artist", "Guest Artist"), ()
+    )
+
+
+def test_conflicting_topic_uploader_cannot_create_lead_artist_hypothesis() -> None:
+    cache = _Cache()
+
+    def command(
+        _argv: tuple[str, ...],
+        _timeout: float,
+        _limit: int,
+        _cancelled: Event,
+    ) -> bytes:
+        return json.dumps(
+            {
+                "id": VIDEO_ID,
+                "uploader": "Different Artist - Topic",
+                "track": "Collaborative Song",
+                "artists": ["Lead Artist", "Guest Artist"],
+                "duration": 201.0,
+            }
+        ).encode()
+
+    result = YtDlpYouTubeMetadataEnricher(
+        cache, now=lambda: NOW, command=command
+    ).enrich(_android_track())
+
+    assert len(result.candidates) == 1
+    assert result.candidates[0].artist_credit == ArtistCredit(
+        ("Lead Artist", "Guest Artist"), ()
+    )
 
 
 def test_missing_tool_identity_mismatch_and_offline_fail_safely() -> None:

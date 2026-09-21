@@ -18,7 +18,9 @@ from konokashi.application.ports import ProviderCacheRepositoryPort
 from konokashi.domain.identity import YouTubeIdentity
 from konokashi.domain.lyrics import ProviderCacheEntry
 from konokashi.domain.normalization import (
+    comparison_key,
     parse_artist_credits,
+    parse_topic_channel_label,
     parse_youtube_title_candidates,
 )
 from konokashi.domain.tracks import ArtistCredit, ResolvedTrack, TrackCandidate
@@ -322,9 +324,7 @@ def _extract_payload(
         if item.strip()
     )
     candidates: list[TrackCandidate] = []
-    structured = _structured_music_candidate(value, duration_us, uploader)
-    if structured is not None:
-        candidates.append(structured)
+    candidates.extend(_structured_music_candidates(value, duration_us, uploader))
     if title is not None:
         candidates.extend(
             _with_enrichment_context(
@@ -365,9 +365,9 @@ def _decode_metadata_fields(payload: bytes) -> dict[str, Any]:
     }
 
 
-def _structured_music_candidate(
+def _structured_music_candidates(
     value: dict[str, Any], duration_us: int | None, uploader: str | None
-) -> TrackCandidate | None:
+) -> tuple[TrackCandidate, ...]:
     """Use explicit music fields, never a channel/uploader as an artist fallback."""
 
     title = _bounded_string(value.get("track"), _MAX_FIELD_CHARS)
@@ -386,7 +386,7 @@ def _structured_music_candidate(
         artists = () if artist is None else (artist,)
     credit = parse_artist_credits(artists)
     if title is None or not credit.main_artists:
-        return None
+        return ()
     album = _bounded_string(value.get("album"), _MAX_FIELD_CHARS)
     provenance = [("title", "youtube_track"), ("artists", "youtube_artists")]
     if album:
@@ -395,7 +395,7 @@ def _structured_music_candidate(
         provenance.append(("uploader", "youtube_uploader"))
     if duration_us:
         provenance.append(("duration", "youtube_metadata"))
-    return TrackCandidate(
+    complete = TrackCandidate(
         title,
         (" & ".join(credit.main_artists),),
         album,
@@ -412,6 +412,31 @@ def _structured_music_candidate(
         artist_credit=credit,
         field_provenance=tuple(provenance),
     )
+    topic_artist = None if uploader is None else parse_topic_channel_label(uploader)
+    if (
+        len(credit.main_artists) < 2
+        or topic_artist is None
+        or comparison_key(topic_artist) != comparison_key(credit.main_artists[0])
+    ):
+        return (complete,)
+    lead = credit.main_artists[0]
+    contributors = tuple((*credit.main_artists[1:], *credit.contributors))
+    lead_hypothesis = TrackCandidate(
+        title,
+        (lead,),
+        album,
+        duration_us,
+        (
+            "YouTube exposed explicit music track and artist fields",
+            "Topic channel corroborates the first structured artist as lead",
+            "preserved remaining structured artists as contributors",
+            f"preserved YouTube uploader evidence: {uploader}",
+        ),
+        strategy="youtube-enrichment:structured-lead-artist",
+        artist_credit=ArtistCredit((lead,), contributors),
+        field_provenance=tuple(provenance),
+    )
+    return complete, lead_hypothesis
 
 
 def _description_candidates(

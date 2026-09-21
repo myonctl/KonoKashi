@@ -102,6 +102,46 @@ def test_firefox_youtube_decoration_is_not_misparsed_as_song_separator() -> None
     )
 
 
+def test_localized_artist_and_quoted_mv_title_are_parsed_structurally() -> None:
+    candidate = parse_youtube_title("X1 (엑스원) 'FLASH' MV", ("Uploader",))
+
+    assert candidate is not None
+    assert candidate.artists == ("X1",)
+    assert candidate.title == "FLASH"
+    assert candidate.strategy == "youtube-title:localized-artist quoted-video"
+    assert "parsed explicit artist, localized alias, and quoted video title" in (
+        candidate.transformations
+    )
+
+
+def test_decorated_parenthetical_lyric_title_is_parsed_structurally() -> None:
+    candidate = parse_youtube_title(
+        "★☆★Laura Pausini (La soledad letra)★☆★",
+        ("Uploader",),
+    )
+
+    assert candidate is not None
+    assert candidate.artists == ("Laura Pausini",)
+    assert candidate.title == "La soledad"
+    assert candidate.strategy == "youtube-title:decorated parenthetical-lyrics"
+    assert "removed bounded decorative edge stars" in candidate.transformations
+
+
+@pytest.mark.parametrize(
+    "raw_title",
+    (
+        "Artist (Song without a presentation label)",
+        "★Artist (Song lyrics)",
+        "Artist (Song lyrics)★",
+        "★☆★Artist (Song chapter)★☆★",
+    ),
+)
+def test_parenthetical_title_patterns_require_complete_explicit_structure(
+    raw_title: str,
+) -> None:
+    assert parse_youtube_title(raw_title, ("Uploader",)) is None
+
+
 @pytest.mark.parametrize(
     "version_title",
     (
