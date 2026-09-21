@@ -773,6 +773,7 @@ def test_album_free_get_cannot_break_conflicting_search_results(
     second = _candidate(
         "second",
         album="Provider Album Two",
+        plain="Different\nWords",
         synced="[00:01.00]Different\n[00:02.00]Words",
     )
     provider = _FakeProvider(
@@ -829,7 +830,13 @@ def test_multiple_high_candidates_remain_ambiguous_even_with_closest_duration(
             LyricsProviderStatus.RESULTS,
             (
                 _candidate("a", album=None, duration_ms=183_700),
-                _candidate("b", album=None, duration_ms=183_700),
+                _candidate(
+                    "b",
+                    album=None,
+                    duration_ms=183_700,
+                    plain="Different first\nDifferent second",
+                    synced="[00:01.00]Different first\n[00:02.00]Different second",
+                ),
             ),
             raw_payload=b"tied",
         )
@@ -843,7 +850,13 @@ def test_multiple_high_candidates_remain_ambiguous_even_with_closest_duration(
             LyricsProviderStatus.RESULTS,
             (
                 _candidate("a", album=None, duration_ms=183_700),
-                _candidate("b", album=None, duration_ms=184_500),
+                _candidate(
+                    "b",
+                    album=None,
+                    duration_ms=184_500,
+                    plain="Different first\nDifferent second",
+                    synced="[00:01.00]Different first\n[00:02.00]Different second",
+                ),
             ),
             raw_payload=b"closest",
         )
@@ -854,6 +867,158 @@ def test_multiple_high_candidates_remain_ambiguous_even_with_closest_duration(
     assert "2 candidates met the explicit acceptance policy" in " ".join(
         still_ambiguous.diagnostics
     )
+
+
+def test_same_provider_duplicate_records_with_identical_content_remain_ambiguous(
+    tmp_path: Path,
+) -> None:
+    track = _track(album=None)
+    provider = _FakeProvider(
+        search=LyricsProviderResult(
+            LyricsProviderStatus.RESULTS,
+            (
+                _candidate("duplicate-a", album="Compilation A"),
+                _candidate("duplicate-b", album="Compilation B"),
+            ),
+            raw_payload=b"duplicate provider records",
+        )
+    )
+
+    result = _resolver(tmp_path / "same-content.sqlite3", provider).resolve(track)
+
+    assert result.status is LyricsResolutionStatus.AMBIGUOUS
+    assert result.document is None
+    assert {item.record_id for item in result.alternatives} == {
+        "duplicate-a",
+        "duplicate-b",
+    }
+
+
+def test_plain_text_consensus_discards_conflicting_synchronized_variants(
+    tmp_path: Path,
+) -> None:
+    track = _track(album=None)
+    lrclib_candidate = _candidate(
+        "timing-a",
+        album="Compilation A",
+        synced="[00:01.00]First\n[00:02.00]Second",
+    )
+    unison_candidate = _candidate(
+        "timing-b",
+        provider="Unison",
+        album="Compilation B",
+        synced="[00:04.00]First\n[00:05.00]Second",
+    )
+    lrclib = _FakeProvider(
+        search=LyricsProviderResult(
+            LyricsProviderStatus.RESULTS,
+            (
+                lrclib_candidate,
+                _candidate(
+                    "timing-a-copy",
+                    album="Compilation Copy",
+                    synced="[00:01.00]First\n[00:02.00]Second",
+                ),
+            ),
+            raw_payload=b"lrclib plain consensus",
+        )
+    )
+    unison = _FakeProvider(
+        name="Unison",
+        search=LyricsProviderResult(
+            LyricsProviderStatus.RESULTS,
+            (unison_candidate,),
+            raw_payload=b"unison plain consensus",
+        ),
+    )
+
+    result = _resolver(tmp_path / "plain-consensus.sqlite3", (lrclib, unison)).resolve(
+        track
+    )
+
+    assert result.status is LyricsResolutionStatus.FOUND_UNTIMED
+    assert result.document is not None
+    assert result.document.kind is LyricDocumentKind.PLAIN
+    assert result.document.original_text == "First\nSecond"
+    assert any(
+        "3 eligible records from 2 distinct providers agree on exact plain lyric text"
+        in item
+        for item in result.evidence
+    )
+    assert any("without timestamps" in item for item in result.evidence)
+
+
+def test_rejecting_plain_consensus_suppresses_content_equivalent_records(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "rejected-plain-consensus.sqlite3"
+    track = _track(album=None)
+    lrclib_candidate = _candidate(
+        "timing-a",
+        album="Compilation A",
+        synced="[00:01.00]First\n[00:02.00]Second",
+    )
+    unison_candidate = _candidate(
+        "timing-b",
+        provider="Unison",
+        album="Compilation B",
+        synced="[00:04.00]First\n[00:05.00]Second",
+    )
+    first = _resolver(
+        path,
+        (
+            _FakeProvider(
+                search=LyricsProviderResult(
+                    LyricsProviderStatus.RESULTS,
+                    (lrclib_candidate,),
+                    raw_payload=b"lrclib plain consensus",
+                )
+            ),
+            _FakeProvider(
+                name="Unison",
+                search=LyricsProviderResult(
+                    LyricsProviderStatus.RESULTS,
+                    (unison_candidate,),
+                    raw_payload=b"unison plain consensus",
+                ),
+            ),
+        ),
+    ).resolve(track)
+    assert first.document is not None
+    storage = open_storage(path)
+    rejected = LyricsMatch(
+        first.document.document_id,
+        LyricsMatchDecision.REJECTED,
+        ContentProvenance.USER,
+        NOW,
+        LyricsMatchConfidence.HIGH,
+        ("explicitly rejected by the user",),
+    )
+    storage.lyrics_matches.reject(track.source_identity, rejected)
+
+    repeated = _resolver(
+        path,
+        (
+            _FakeProvider(
+                search=LyricsProviderResult(
+                    LyricsProviderStatus.RESULTS,
+                    (lrclib_candidate,),
+                    raw_payload=b"lrclib plain consensus repeated",
+                )
+            ),
+            _FakeProvider(
+                name="Unison",
+                search=LyricsProviderResult(
+                    LyricsProviderStatus.RESULTS,
+                    (unison_candidate,),
+                    raw_payload=b"unison plain consensus repeated",
+                ),
+            ),
+        ),
+    ).resolve(track)
+
+    assert repeated.status is LyricsResolutionStatus.NO_RESULT
+    assert repeated.document is None
 
 
 def test_exact_raw_case_cannot_break_conflicting_high_lyric_content(

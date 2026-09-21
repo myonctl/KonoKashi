@@ -24,6 +24,11 @@ All notable user-visible changes are recorded here.
 
 ### Changed
 
+- Distinct providers can now establish a safe plain-text consensus when their
+  recording evidence and lyric text agree but their timestamps conflict. The
+  conflicting timing is discarded, same-provider duplicate records remain
+  ambiguous, and rejecting the consensus suppresses content-equivalent copies.
+
 - Dynamic lyric and Review status text now exposes its actual content to screen
   readers, and the Flatpak grants only the KDE tray-watcher destination needed
   for the floating-mode click-through recovery item.

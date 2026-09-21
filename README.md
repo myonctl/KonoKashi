@@ -262,6 +262,11 @@ Automatic acceptance evaluates retrieval strength, recording-identity evidence,
 lyric-text agreement, and timestamp trust separately. A broad query can still
 find a correct recording, but broad retrieval alone never proves the match;
 diagnostics explain accepted, rejected, and unresolved competing candidates.
+When distinct providers independently return the same normalized plain lyric
+text for the same title and artist but disagree on timestamps, KonoKashi may
+display the shared text without synchronization. Duplicate records from only
+one provider are not independent evidence and remain ambiguous; provider order
+or the first result never resolves that conflict.
 
 Open **Review lyrics** from the active lyric view to understand the current
 source or repair its match, identity, offset, translation, lyric text, or line

@@ -37,6 +37,7 @@ from konokashi.domain.lyrics import (
     LyricsQuery,
     LyricsResolutionResult,
     LyricsResolutionStatus,
+    LyricsTextParseStatus,
     ProviderCacheEntry,
     RetrievalConfidence,
 )
@@ -238,14 +239,19 @@ class LyricsResolver:
         diagnostics: list[str] = []
         invalid_local_seen = False
         current_match = self._matches.get(source)
-        rejected_document_ids = {
-            match.document_id for match in self._matches.rejections(source)
-        }
+        rejected_matches = list(self._matches.rejections(source))
         if (
             current_match is not None
             and current_match.decision is LyricsMatchDecision.REJECTED
         ):
-            rejected_document_ids.add(current_match.document_id)
+            rejected_matches.append(current_match)
+        rejected_document_ids = {match.document_id for match in rejected_matches}
+        rejected_content_signatures = {
+            signature
+            for match in rejected_matches
+            if (document := self._lyrics.get(match.document_id)) is not None
+            if (signature := _document_content_signature(document)) is not None
+        }
         current_document = (
             None
             if current_match is None
@@ -274,10 +280,14 @@ class LyricsResolver:
             diagnostics.extend(local.diagnostics)
             invalid_local_seen |= local.status is LocalLyricsStatus.INVALID
             if local.status is LocalLyricsStatus.FOUND and local.document is not None:
-                if local.document.document_id in rejected_document_ids:
+                if local.document.document_id in rejected_document_ids or (
+                    (signature := _document_content_signature(local.document))
+                    is not None
+                    and signature in rejected_content_signatures
+                ):
                     diagnostics.append(
-                        f"skipped explicitly rejected local lyric result from "
-                        f"{local.source_label}"
+                        "skipped rejected local lyric result or content-equivalent "
+                        f"copy from {local.source_label}"
                     )
                     continue
                 evidence = (
@@ -357,11 +367,13 @@ class LyricsResolver:
                     self._results_are_sufficient,
                     queries,
                     rejected_document_ids=rejected_document_ids,
+                    rejected_content_signatures=rejected_content_signatures,
                 ),
                 evidence_usable=partial(
                     self._results_are_usable,
                     queries,
                     rejected_document_ids=rejected_document_ids,
+                    rejected_content_signatures=rejected_content_signatures,
                 ),
                 observations=diagnostics,
             ):
@@ -375,8 +387,12 @@ class LyricsResolver:
                             queries, candidate, retrieved_by="exact primary lookup"
                         )
                         for candidate in exact.candidates
-                        if self._provider_documents.document_id(candidate)
-                        not in rejected_document_ids
+                        if not _candidate_is_rejected(
+                            candidate,
+                            self._provider_documents.document_id(candidate),
+                            rejected_document_ids,
+                            rejected_content_signatures,
+                        )
                     )
             if not self._is_current(cancellation_token):
                 return self._cancelled_resolution(track, diagnostics, network_used)
@@ -419,11 +435,13 @@ class LyricsResolver:
                     self._results_are_sufficient,
                     queries,
                     rejected_document_ids=rejected_document_ids,
+                    rejected_content_signatures=rejected_content_signatures,
                 ),
                 evidence_usable=partial(
                     self._results_are_usable,
                     queries,
                     rejected_document_ids=rejected_document_ids,
+                    rejected_content_signatures=rejected_content_signatures,
                 ),
                 observations=diagnostics,
             ):
@@ -440,8 +458,12 @@ class LyricsResolver:
                             retrieved_by=f"{strategy} ({assessment_query.strategy})",
                         )
                         for candidate in search.candidates
-                        if self._provider_documents.document_id(candidate)
-                        not in rejected_document_ids
+                        if not _candidate_is_rejected(
+                            candidate,
+                            self._provider_documents.document_id(candidate),
+                            rejected_document_ids,
+                            rejected_content_signatures,
+                        )
                     )
             if not self._is_current(cancellation_token):
                 return self._cancelled_resolution(track, diagnostics, network_used)
@@ -473,11 +495,13 @@ class LyricsResolver:
                     self._results_are_sufficient,
                     queries,
                     rejected_document_ids=rejected_document_ids,
+                    rejected_content_signatures=rejected_content_signatures,
                 ),
                 evidence_usable=partial(
                     self._results_are_usable,
                     queries,
                     rejected_document_ids=rejected_document_ids,
+                    rejected_content_signatures=rejected_content_signatures,
                 ),
                 observations=diagnostics,
             ):
@@ -493,8 +517,12 @@ class LyricsResolver:
                             retrieved_by="album-free duration lookup",
                         )
                         for candidate in exact.candidates
-                        if self._provider_documents.document_id(candidate)
-                        not in rejected_document_ids
+                        if not _candidate_is_rejected(
+                            candidate,
+                            self._provider_documents.document_id(candidate),
+                            rejected_document_ids,
+                            rejected_content_signatures,
+                        )
                     )
             if not self._is_current(cancellation_token):
                 return self._cancelled_resolution(track, diagnostics, network_used)
@@ -617,11 +645,23 @@ class LyricsResolver:
             match.document_id
             for match in self._matches.rejections(track.source_identity)
         }
+        rejected_content_signatures = {
+            signature
+            for match in self._matches.rejections(track.source_identity)
+            if (document := self._lyrics.get(match.document_id)) is not None
+            if (signature := _document_content_signature(document)) is not None
+        }
         if (
             current_match is not None
             and current_match.decision is LyricsMatchDecision.REJECTED
         ):
             rejected_document_ids.add(current_match.document_id)
+            if (
+                document := self._lyrics.get(current_match.document_id)
+            ) is not None and (
+                signature := _document_content_signature(document)
+            ) is not None:
+                rejected_content_signatures.add(signature)
         alternatives = tuple(
             LyricsAlternative(
                 self._provider_documents.document_id(assessment.candidate),
@@ -635,6 +675,10 @@ class LyricsResolver:
                 rejected=(
                     self._provider_documents.document_id(assessment.candidate)
                     in rejected_document_ids
+                    or bool(
+                        _candidate_content_signatures(assessment.candidate)
+                        & rejected_content_signatures
+                    )
                 ),
                 text_confidence=assessment.text_confidence,
                 timing_confidence=assessment.timing_confidence,
@@ -987,14 +1031,19 @@ class LyricsResolver:
         queries: Sequence[LyricsQuery],
         outcomes: Sequence[tuple[LyricsProviderResult, bool, bool]],
         rejected_document_ids: set[str],
+        rejected_content_signatures: set[tuple[LyricDocumentKind, str]],
     ) -> bool:
         assessments = [
             self._assess_across(queries, candidate, retrieved_by="provider evidence")
             for result, _cached, _network in outcomes
             if result.status is LyricsProviderStatus.RESULTS
             for candidate in result.candidates
-            if self._provider_documents.document_id(candidate)
-            not in rejected_document_ids
+            if not _candidate_is_rejected(
+                candidate,
+                self._provider_documents.document_id(candidate),
+                rejected_document_ids,
+                rejected_content_signatures,
+            )
         ]
         return self._unique_high(_deduplicate_assessments(assessments)) is not None
 
@@ -1003,6 +1052,7 @@ class LyricsResolver:
         queries: Sequence[LyricsQuery],
         outcomes: Sequence[tuple[LyricsProviderResult, bool, bool]],
         rejected_document_ids: set[str],
+        rejected_content_signatures: set[tuple[LyricDocumentKind, str]],
     ) -> bool:
         return any(
             self._assess_across(
@@ -1012,8 +1062,12 @@ class LyricsResolver:
             for result, _cached, _network in outcomes
             if result.status is LyricsProviderStatus.RESULTS
             for candidate in result.candidates
-            if self._provider_documents.document_id(candidate)
-            not in rejected_document_ids
+            if not _candidate_is_rejected(
+                candidate,
+                self._provider_documents.document_id(candidate),
+                rejected_document_ids,
+                rejected_content_signatures,
+            )
         )
 
     def _provider_result(
@@ -1289,6 +1343,7 @@ class LyricsResolver:
         if len(high) == 1:
             return high[0]
         if len(high) > 1:
+            provider_count = len({item.candidate.provider for item in high})
             first_relation = _title_relation_strength(high[0])
             if all(
                 first_relation < _title_relation_strength(other) for other in high[1:]
@@ -1304,8 +1359,36 @@ class LyricsResolver:
                 _same_recording_fields(high[0], other)
                 and _same_lyric_content(high[0], other)
                 for other in high[1:]
-            ) and len({item.candidate.provider for item in high}) == len(high):
-                return high[0]
+            ) and provider_count == len(high):
+                return replace(
+                    high[0],
+                    evidence=(
+                        *high[0].evidence,
+                        f"{len(high)} independent providers agree on identical "
+                        "recording fields, lyric text, and timing",
+                    ),
+                )
+            if provider_count >= 2 and all(
+                _same_recording_identity_for_consensus(high[0], other)
+                and _same_plain_lyric_content(high[0], other)
+                for other in high[1:]
+            ):
+                return replace(
+                    high[0],
+                    candidate=replace(
+                        high[0].candidate,
+                        synced_lyrics=None,
+                        parsed_lyrics=None,
+                    ),
+                    timing_confidence=LyricsMatchConfidence.LOW,
+                    evidence=(
+                        *high[0].evidence,
+                        f"{len(high)} eligible records from {provider_count} distinct "
+                        "providers agree on exact plain lyric text",
+                        "synchronized variants conflict; accepted the shared text "
+                        "without timestamps",
+                    ),
+                )
         return None
 
     def _ordered(
@@ -1696,18 +1779,94 @@ def _same_lyric_content(
     first: CandidateMatchAssessment,
     second: CandidateMatchAssessment,
 ) -> bool:
-    def normalized(value: str | None) -> str | None:
-        if value is None:
-            return None
-        lines = value.replace("\r\n", "\n").split("\n")
-        return "\n".join(line.rstrip() for line in lines)
+    return (
+        _normalized_lyric_content(first.candidate.synced_lyrics)
+        == _normalized_lyric_content(second.candidate.synced_lyrics)
+        and _normalized_lyric_content(first.candidate.plain_lyrics)
+        == _normalized_lyric_content(second.candidate.plain_lyrics)
+        and first.candidate.instrumental == second.candidate.instrumental
+    )
+
+
+def _same_plain_lyric_content(
+    first: CandidateMatchAssessment,
+    second: CandidateMatchAssessment,
+) -> bool:
+    first_plain = _normalized_lyric_content(first.candidate.plain_lyrics)
+    return (
+        bool(first_plain)
+        and first_plain == _normalized_lyric_content(second.candidate.plain_lyrics)
+        and not first.candidate.instrumental
+        and not second.candidate.instrumental
+    )
+
+
+def _same_recording_identity_for_consensus(
+    first: CandidateMatchAssessment,
+    second: CandidateMatchAssessment,
+) -> bool:
+    """Allow album/duration variants, but never merge disputed title/artist credits."""
 
     return (
-        normalized(first.candidate.synced_lyrics)
-        == normalized(second.candidate.synced_lyrics)
-        and normalized(first.candidate.plain_lyrics)
-        == normalized(second.candidate.plain_lyrics)
+        comparison_key(first.candidate.track_name)
+        == comparison_key(second.candidate.track_name)
+        and comparison_key(first.candidate.artist_name)
+        == comparison_key(second.candidate.artist_name)
         and first.candidate.instrumental == second.candidate.instrumental
+    )
+
+
+def _normalized_lyric_content(value: str | None) -> str | None:
+    if value is None:
+        return None
+    lines = value.replace("\r\n", "\n").replace("\r", "\n").split("\n")
+    return "\n".join(line.rstrip() for line in lines)
+
+
+def _candidate_content_signatures(
+    candidate: LyricsProviderCandidate,
+) -> set[tuple[LyricDocumentKind, str]]:
+    signatures: set[tuple[LyricDocumentKind, str]] = set()
+    if candidate.instrumental:
+        return signatures
+    if (
+        candidate.parsed_lyrics is not None
+        and candidate.parsed_lyrics.status is not LyricsTextParseStatus.INVALID
+    ):
+        parsed_text = _normalized_lyric_content(candidate.parsed_lyrics.normalized_text)
+        if parsed_text:
+            kind = (
+                LyricDocumentKind.SYNCED
+                if candidate.parsed_lyrics.status is LyricsTextParseStatus.SYNCED
+                else LyricDocumentKind.PLAIN
+            )
+            signatures.add((kind, parsed_text))
+    synced = _normalized_lyric_content(candidate.synced_lyrics)
+    if synced:
+        signatures.add((LyricDocumentKind.SYNCED, synced))
+    plain = _normalized_lyric_content(candidate.plain_lyrics)
+    if plain:
+        signatures.add((LyricDocumentKind.PLAIN, plain))
+    return signatures
+
+
+def _document_content_signature(
+    document: LyricDocument,
+) -> tuple[LyricDocumentKind, str] | None:
+    if document.kind is LyricDocumentKind.INSTRUMENTAL:
+        return None
+    content = _normalized_lyric_content(document.original_text)
+    return None if not content else (document.kind, content)
+
+
+def _candidate_is_rejected(
+    candidate: LyricsProviderCandidate,
+    document_id: str,
+    rejected_document_ids: set[str],
+    rejected_content_signatures: set[tuple[LyricDocumentKind, str]],
+) -> bool:
+    return document_id in rejected_document_ids or bool(
+        _candidate_content_signatures(candidate) & rejected_content_signatures
     )
 
 
