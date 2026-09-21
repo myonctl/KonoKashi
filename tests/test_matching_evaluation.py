@@ -174,6 +174,54 @@ def test_known_supported_denominator_requires_an_explicit_oracle_label(
     assert report.metrics.known_supported_cases == 1
     assert report.metrics.unclassified_support_cases == 0
     assert report.metrics.correct_automatic_supported == 1
+    assert report.metrics.timing_unverified_supported_cases == 1
+    assert report.metrics.correct_automatic_supported_timing_unverified == 1
+
+
+def test_known_supported_record_oracle_is_separate_from_replay_expectation(
+    tmp_path: Path,
+) -> None:
+    payload = cast(
+        dict[str, Any], json.loads(YOUTUBE_FIXTURE.read_text(encoding="utf-8"))
+    )
+    payload["cases"] = [payload["cases"][0]]
+    expected = payload["cases"][0]["expected"]
+    expected["known_supported"] = True
+    expected["record_id"] = "another-record"
+    expected["supported_record_ids"] = ["invented-italian-provider-record"]
+    corpus = tmp_path / "separate-record-oracle.json"
+    corpus.write_text(json.dumps(payload), encoding="utf-8")
+
+    report = evaluate((corpus,))
+
+    assert report.metrics.passed_cases == 0
+    assert report.metrics.correct_automatic_accepts == 0
+    assert report.metrics.correct_automatic_supported == 1
+    assert report.metrics.wrong_automatic_accepts == 0
+
+
+def test_unverified_timing_does_not_claim_wrong_timing_trust(
+    tmp_path: Path,
+) -> None:
+    payload = cast(
+        dict[str, Any], json.loads(YOUTUBE_FIXTURE.read_text(encoding="utf-8"))
+    )
+    payload["cases"] = [payload["cases"][0]]
+    expected = payload["cases"][0]["expected"]
+    expected["known_supported"] = True
+    expected["supported_record_ids"] = ["invented-italian-provider-record"]
+    expected["timing_verified"] = False
+    expected["timing"] = "plain"
+    expected["status"] = "Untimed"
+    corpus = tmp_path / "text-supported-timing-unknown.json"
+    corpus.write_text(json.dumps(payload), encoding="utf-8")
+
+    report = evaluate((corpus,))
+
+    assert report.metrics.passed_cases == 0
+    assert report.metrics.correct_automatic_supported == 1
+    assert report.metrics.correct_automatic_supported_timing_unverified == 1
+    assert report.metrics.wrong_timing_trust == 0
 
 
 def test_oracle_labels_wrong_recording_version_separately(tmp_path: Path) -> None:

@@ -116,6 +116,8 @@ class ExpectedOutcome:
     enrichment_used: bool | None = None
     enrichment_network_used: bool | None = None
     known_supported: bool | None = None
+    supported_record_ids: tuple[str, ...] = ()
+    timing_verified: bool = False
     wrong_version_record_ids: tuple[str, ...] = ()
 
 
@@ -205,6 +207,8 @@ class EvaluationMetrics:
     known_supported_cases: int
     unclassified_support_cases: int
     correct_automatic_supported: int
+    timing_unverified_supported_cases: int
+    correct_automatic_supported_timing_unverified: int
     ambiguous_supported: int
     missed_supported: int
     wrong_version_automatic_accepts: int
@@ -434,6 +438,18 @@ def _expected(value: object, context: str) -> ExpectedOutcome:
     if origin not in {"provider-auto", "local", "approved", "none"}:
         raise EvaluationInputError(f"{context}.origin is unsupported")
     record_id = _string(raw.get("record_id"), f"{context}.record_id", optional=True)
+    known_supported = (
+        None
+        if raw.get("known_supported") is None
+        else _boolean(raw["known_supported"], f"{context}.known_supported")
+    )
+    supported_record_ids = _strings(
+        raw.get("supported_record_ids", []), f"{context}.supported_record_ids"
+    )
+    if known_supported and not (supported_record_ids or record_id):
+        raise EvaluationInputError(
+            f"{context}.known_supported requires a supported record ID"
+        )
     return ExpectedOutcome(
         category,
         status,
@@ -454,10 +470,10 @@ def _expected(value: object, context: str) -> ExpectedOutcome:
                 f"{context}.enrichment_network_used",
             )
         ),
-        (
-            None
-            if raw.get("known_supported") is None
-            else _boolean(raw["known_supported"], f"{context}.known_supported")
+        known_supported,
+        supported_record_ids,
+        _boolean(
+            raw.get("timing_verified"), f"{context}.timing_verified", default=False
         ),
         _strings(
             raw.get("wrong_version_record_ids", []),
@@ -1129,6 +1145,8 @@ def _metrics(cases: Sequence[CaseReport]) -> EvaluationMetrics:
     known_supported_cases = 0
     unclassified_support_cases = 0
     correct_automatic_supported = 0
+    timing_unverified_supported_cases = 0
+    correct_automatic_supported_timing_unverified = 0
     ambiguous_supported = 0
     missed_supported = 0
     wrong_version_automatic_accepts = 0
@@ -1145,9 +1163,18 @@ def _metrics(cases: Sequence[CaseReport]) -> EvaluationMetrics:
                 and case.actual.timing == case.expected.timing
             ):
                 correct_auto += 1
-        if actual_auto and (
-            not expects_auto or case.actual.record_id != case.expected.record_id
-        ):
+        supported_ids = case.expected.supported_record_ids or (
+            (case.expected.record_id,) if case.expected.record_id else ()
+        )
+        if case.expected.known_supported is True:
+            wrong_record = case.actual.record_id not in supported_ids
+        elif case.expected.known_supported is False:
+            wrong_record = True
+        else:
+            wrong_record = (
+                not expects_auto or case.actual.record_id != case.expected.record_id
+            )
+        if actual_auto and wrong_record:
             wrong_auto += 1
         if actual_auto and case.actual.record_id in (
             case.expected.wrong_version_record_ids
@@ -1157,12 +1184,19 @@ def _metrics(cases: Sequence[CaseReport]) -> EvaluationMetrics:
             unclassified_support_cases += 1
         elif case.expected.known_supported:
             known_supported_cases += 1
+            if not case.expected.timing_verified:
+                timing_unverified_supported_cases += 1
             if (
                 actual_auto
-                and case.actual.record_id == case.expected.record_id
-                and case.actual.timing == case.expected.timing
+                and case.actual.record_id in supported_ids
+                and (
+                    not case.expected.timing_verified
+                    or case.actual.timing == case.expected.timing
+                )
             ):
                 correct_automatic_supported += 1
+                if not case.expected.timing_verified:
+                    correct_automatic_supported_timing_unverified += 1
             elif case.actual.status == "Ambiguous":
                 ambiguous_supported += 1
             elif not actual_accept:
@@ -1171,7 +1205,14 @@ def _metrics(cases: Sequence[CaseReport]) -> EvaluationMetrics:
             unnecessary_ambiguities += 1
         elif expected_accept and not actual_accept:
             missed_matches += 1
-        if case.actual.timing == "synced" and case.expected.timing != "synced":
+        if (
+            case.actual.timing == "synced"
+            and case.expected.timing != "synced"
+            and (
+                case.expected.known_supported is not True
+                or case.expected.timing_verified
+            )
+        ):
             wrong_timing += 1
         if case.expected.category in _FALLBACK_CATEGORIES:
             fallback_cases += 1
@@ -1206,6 +1247,10 @@ def _metrics(cases: Sequence[CaseReport]) -> EvaluationMetrics:
         known_supported_cases=known_supported_cases,
         unclassified_support_cases=unclassified_support_cases,
         correct_automatic_supported=correct_automatic_supported,
+        timing_unverified_supported_cases=timing_unverified_supported_cases,
+        correct_automatic_supported_timing_unverified=(
+            correct_automatic_supported_timing_unverified
+        ),
         ambiguous_supported=ambiguous_supported,
         missed_supported=missed_supported,
         wrong_version_automatic_accepts=wrong_version_automatic_accepts,
@@ -1247,6 +1292,12 @@ def _human(report: EvaluationReport) -> str:
             f"{metrics.correct_automatic_supported} correct, "
             f"{metrics.ambiguous_supported} ambiguous, "
             f"{metrics.missed_supported} missed"
+        ),
+        (
+            "known-supported timing not independently verified: "
+            f"{metrics.timing_unverified_supported_cases} cases, "
+            f"{metrics.correct_automatic_supported_timing_unverified} "
+            "correct text/record accepts"
         ),
         f"wrong-version automatic accepts: {metrics.wrong_version_automatic_accepts}",
         f"unnecessary ambiguities: {metrics.unnecessary_ambiguities}",

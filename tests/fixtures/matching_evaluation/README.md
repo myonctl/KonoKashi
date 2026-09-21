@@ -55,6 +55,14 @@ retain schema-1 provider behavior for backward compatibility.
 Real-world cases must explicitly set `expected.known_supported` only when an
 independent source/recording oracle justifies it; unlabeled cases are reported
 as unclassified, never silently folded into the known-supported denominator.
+For a supported case, `expected.supported_record_ids` lists independently
+corroborated provider records. This oracle is separate from the replay's
+`expected.record_id`, so an expected ambiguity can still be counted as a miss
+of known-available lyrics. `expected.timing_verified` defaults to `false`:
+artist-published text can corroborate a lyric document without proving that
+its synchronized timestamps fit the playing edit. Correct text/record accepts
+with unverified timing are counted separately and cannot establish a timing
+accuracy claim. Set it to `true` only with independent timing evidence.
 The committed invented cases intentionally remain unclassified.
 `expected.wrong_version_record_ids` can classify known incorrect versions
 without weakening the general wrong-automatic-accept counter.
