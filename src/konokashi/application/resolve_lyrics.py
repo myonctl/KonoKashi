@@ -66,6 +66,7 @@ _RESULTS_CACHE_TTL = timedelta(days=7)
 _NO_RESULT_CACHE_TTL = timedelta(hours=12)
 _MAX_PARALLEL_PROVIDERS = 4
 _MAX_PROVIDER_SEARCH_STEPS = 16
+_MAX_PROVIDER_EXACT_INTERPRETATIONS = 4
 # A 2026-09-12 privacy-safe sample of the two default public providers produced
 # healthy request durations of 113-395 ms and a largest cross-provider gap of
 # 259 ms (one additional request returned HTTP 503). Four hundred milliseconds
@@ -357,56 +358,72 @@ class LyricsResolver:
         cache_hit = False
 
         album_available = bool(query.album and query.album.strip())
-        exact_possible = album_available and query.duration_ms is not None
-        if exact_possible:
-            for exact, exact_cached, exact_network in self._provider_results(
-                query,
-                search=False,
-                offline=offline,
-                refresh=refresh,
-                evidence_sufficient=partial(
-                    self._results_are_sufficient,
-                    queries,
-                    rejected_document_ids=rejected_document_ids,
-                    rejected_content_signatures=rejected_content_signatures,
-                ),
-                evidence_usable=partial(
-                    self._results_are_usable,
-                    queries,
-                    rejected_document_ids=rejected_document_ids,
-                    rejected_content_signatures=rejected_content_signatures,
-                ),
-                observations=diagnostics,
-            ):
-                provider_outcomes.append(exact)
-                cache_hit |= exact_cached
-                network_used |= exact_network
-                diagnostics.extend(exact.diagnostics)
-                if exact.status is LyricsProviderStatus.RESULTS:
-                    all_assessments.extend(
-                        self._assess_across(
-                            queries, candidate, retrieved_by="exact primary lookup"
-                        )
-                        for candidate in exact.candidates
-                        if not _candidate_is_rejected(
-                            candidate,
-                            self._provider_documents.document_id(candidate),
-                            rejected_document_ids,
-                            rejected_content_signatures,
-                        )
-                    )
-            if not self._is_current(cancellation_token):
-                return self._cancelled_resolution(track, diagnostics, network_used)
-            accepted = self._unique_high(_deduplicate_assessments(all_assessments))
-            if accepted is not None:
-                return self._accept_provider(
-                    track,
-                    accepted,
-                    diagnostics,
-                    cache_hit=cache_hit,
-                    network_used=network_used,
-                    cancellation_token=cancellation_token,
+        exact_plan = _candidate_exact_plan(queries)
+        if exact_plan:
+            exact_candidates = 0
+            for exact_query in exact_plan:
+                diagnostics.append(
+                    "provider strategy: exact recording lookup "
+                    f"[interpretation: {exact_query.strategy}]"
                 )
+                if not offline and network_used:
+                    self._sleeper(0.2)
+                for exact, exact_cached, exact_network in self._provider_results(
+                    exact_query,
+                    search=False,
+                    offline=offline,
+                    refresh=refresh,
+                    evidence_sufficient=partial(
+                        self._results_are_sufficient,
+                        queries,
+                        rejected_document_ids=rejected_document_ids,
+                        rejected_content_signatures=rejected_content_signatures,
+                    ),
+                    evidence_usable=partial(
+                        self._results_are_usable,
+                        queries,
+                        rejected_document_ids=rejected_document_ids,
+                        rejected_content_signatures=rejected_content_signatures,
+                    ),
+                    observations=diagnostics,
+                ):
+                    provider_outcomes.append(exact)
+                    cache_hit |= exact_cached
+                    network_used |= exact_network
+                    diagnostics.extend(exact.diagnostics)
+                    exact_candidates += len(exact.candidates)
+                    if exact.status is LyricsProviderStatus.RESULTS:
+                        all_assessments.extend(
+                            self._assess_across(
+                                queries,
+                                candidate,
+                                retrieved_by=(
+                                    f"exact recording lookup ({exact_query.strategy})"
+                                ),
+                            )
+                            for candidate in exact.candidates
+                            if not _candidate_is_rejected(
+                                candidate,
+                                self._provider_documents.document_id(candidate),
+                                rejected_document_ids,
+                                rejected_content_signatures,
+                            )
+                        )
+                if not self._is_current(cancellation_token):
+                    return self._cancelled_resolution(track, diagnostics, network_used)
+                accepted = self._unique_high(_deduplicate_assessments(all_assessments))
+                if accepted is not None:
+                    return self._accept_provider(
+                        track,
+                        accepted,
+                        diagnostics,
+                        cache_hit=cache_hit,
+                        network_used=network_used,
+                        cancellation_token=cancellation_token,
+                    )
+            diagnostics.append(
+                f"exact interpretation ladder returned {exact_candidates} candidates"
+            )
         else:
             missing = []
             if not album_available:
@@ -414,7 +431,8 @@ class LyricsResolver:
             if query.duration_ms is None:
                 missing.append("duration")
             diagnostics.append(
-                "exact provider lookup skipped; missing " + ", ".join(missing)
+                "exact provider lookup skipped; no bounded interpretation had "
+                + " and ".join(missing or ("complete metadata",))
             )
 
         for strategy, search_query, assessment_query in _candidate_search_plan(
@@ -482,51 +500,68 @@ class LyricsResolver:
                     network_used=network_used,
                     cancellation_token=cancellation_token,
                 )
-        if not album_available and query.duration_ms is not None:
+        album_free_exact_plan = _album_free_exact_queries(queries)
+        if album_free_exact_plan:
             diagnostics.append(
                 "provider strategy: album-free duration lookup after search "
                 "did not find a unique match"
             )
-            for exact, exact_cached, exact_network in self._provider_results(
-                query,
-                search=False,
-                offline=offline,
-                refresh=refresh,
-                evidence_sufficient=partial(
-                    self._results_are_sufficient,
-                    queries,
-                    rejected_document_ids=rejected_document_ids,
-                    rejected_content_signatures=rejected_content_signatures,
-                ),
-                evidence_usable=partial(
-                    self._results_are_usable,
-                    queries,
-                    rejected_document_ids=rejected_document_ids,
-                    rejected_content_signatures=rejected_content_signatures,
-                ),
-                observations=diagnostics,
-            ):
-                provider_outcomes.append(exact)
-                cache_hit |= exact_cached
-                network_used |= exact_network
-                diagnostics.extend(exact.diagnostics)
-                if exact.status is LyricsProviderStatus.RESULTS:
-                    all_assessments.extend(
-                        self._assess_across(
-                            queries,
-                            candidate,
-                            retrieved_by="album-free duration lookup",
+            for album_free_query in album_free_exact_plan:
+                if not offline and network_used:
+                    self._sleeper(0.2)
+                for exact, exact_cached, exact_network in self._provider_results(
+                    album_free_query,
+                    search=False,
+                    offline=offline,
+                    refresh=refresh,
+                    evidence_sufficient=partial(
+                        self._results_are_sufficient,
+                        queries,
+                        rejected_document_ids=rejected_document_ids,
+                        rejected_content_signatures=rejected_content_signatures,
+                    ),
+                    evidence_usable=partial(
+                        self._results_are_usable,
+                        queries,
+                        rejected_document_ids=rejected_document_ids,
+                        rejected_content_signatures=rejected_content_signatures,
+                    ),
+                    observations=diagnostics,
+                ):
+                    provider_outcomes.append(exact)
+                    cache_hit |= exact_cached
+                    network_used |= exact_network
+                    diagnostics.extend(exact.diagnostics)
+                    if exact.status is LyricsProviderStatus.RESULTS:
+                        all_assessments.extend(
+                            self._assess_across(
+                                queries,
+                                candidate,
+                                retrieved_by=(
+                                    "album-free duration lookup "
+                                    f"({album_free_query.strategy})"
+                                ),
+                            )
+                            for candidate in exact.candidates
+                            if not _candidate_is_rejected(
+                                candidate,
+                                self._provider_documents.document_id(candidate),
+                                rejected_document_ids,
+                                rejected_content_signatures,
+                            )
                         )
-                        for candidate in exact.candidates
-                        if not _candidate_is_rejected(
-                            candidate,
-                            self._provider_documents.document_id(candidate),
-                            rejected_document_ids,
-                            rejected_content_signatures,
-                        )
+                if not self._is_current(cancellation_token):
+                    return self._cancelled_resolution(track, diagnostics, network_used)
+                accepted = self._unique_high(_deduplicate_assessments(all_assessments))
+                if accepted is not None:
+                    return self._accept_provider(
+                        track,
+                        accepted,
+                        diagnostics,
+                        cache_hit=cache_hit,
+                        network_used=network_used,
+                        cancellation_token=cancellation_token,
                     )
-            if not self._is_current(cancellation_token):
-                return self._cancelled_resolution(track, diagnostics, network_used)
         assessments = _deduplicate_assessments(all_assessments)
         accepted = self._unique_high(assessments)
         if accepted is not None:
@@ -1350,6 +1385,43 @@ class LyricsResolver:
                 first_relation < _title_relation_strength(other) for other in high[1:]
             ):
                 return high[0]
+            best_album = min(high, key=_album_evidence_strength)
+            best_album_strength = _album_evidence_strength(best_album)
+            if all(
+                best_album_strength < _album_evidence_strength(other)
+                for other in high
+                if other is not best_album
+            ):
+                return replace(
+                    best_album,
+                    evidence=(
+                        *best_album.evidence,
+                        "preferred exact album evidence over otherwise eligible "
+                        "recording candidates",
+                    ),
+                )
+            content_dominator = next(
+                (
+                    candidate
+                    for candidate in high
+                    if all(
+                        _same_lyric_content(candidate, other)
+                        and _evidence_dominates(candidate, other)
+                        for other in high
+                        if other is not candidate
+                    )
+                ),
+                None,
+            )
+            if content_dominator is not None:
+                return replace(
+                    content_dominator,
+                    evidence=(
+                        *content_dominator.evidence,
+                        "preferred strictly stronger identity evidence over "
+                        "content-identical provider duplicates",
+                    ),
+                )
             if high[0].candidate.synced_lyrics and all(
                 _same_recording_fields(high[0], other)
                 and not other.candidate.synced_lyrics
@@ -1660,6 +1732,92 @@ def _search_queries(
     return tuple(strategies)
 
 
+def _candidate_exact_plan(
+    queries: Sequence[LyricsQuery],
+) -> tuple[LyricsQuery, ...]:
+    """Return a bounded exact ladder for complete, non-weak interpretations."""
+
+    result: list[LyricsQuery] = []
+    seen: set[tuple[object, ...]] = set()
+    for query in queries:
+        if len(result) >= _MAX_PROVIDER_EXACT_INTERPRETATIONS:
+            break
+        if (
+            query.source_confidence == "Low"
+            or not query.title.strip()
+            or not query.artists
+            or not query.album
+            or not query.album.strip()
+            or query.duration_ms is None
+        ):
+            continue
+        key = (
+            comparison_key(query.title),
+            tuple(comparison_key(artist) for artist in query.artists),
+            comparison_key(query.album),
+            query.duration_ms,
+        )
+        if key not in seen:
+            seen.add(key)
+            result.append(query)
+    return tuple(result)
+
+
+def _album_free_exact_queries(
+    queries: Sequence[LyricsQuery],
+) -> tuple[LyricsQuery, ...]:
+    """Try bounded duration lookups, including one punctuation-only title alias."""
+
+    result: list[LyricsQuery] = []
+    seen: set[tuple[object, ...]] = set()
+
+    def append(query: LyricsQuery) -> None:
+        if len(result) >= _MAX_PROVIDER_EXACT_INTERPRETATIONS:
+            return
+        key = (
+            comparison_key(query.title),
+            tuple(comparison_key(artist) for artist in query.artists),
+            query.duration_ms,
+        )
+        raw_key = (
+            normalize_text(query.title).value.casefold(),
+            tuple(normalize_text(artist).value.casefold() for artist in query.artists),
+            query.duration_ms,
+        )
+        # Keep raw punctuation variants distinct while deduplicating equivalent
+        # interpretations that differ only by Unicode presentation characters.
+        combined = (key, raw_key)
+        if combined not in seen:
+            seen.add(combined)
+            result.append(replace(query, album=None))
+
+    for query in queries:
+        if len(result) >= _MAX_PROVIDER_EXACT_INTERPRETATIONS:
+            break
+        if (
+            query.source_confidence == "Low"
+            or not query.title.strip()
+            or not query.artists
+            or query.duration_ms is None
+        ):
+            continue
+        append(query)
+        punctuation_title = comparison_key(query.title)
+        if (
+            punctuation_title
+            and punctuation_title != normalize_text(query.title).value.casefold()
+        ):
+            append(
+                replace(
+                    query,
+                    title=punctuation_title,
+                    album=None,
+                    strategy=f"{query.strategy}:punctuation-normalized",
+                )
+            )
+    return tuple(result)
+
+
 def _candidate_search_plan(
     queries: Sequence[LyricsQuery],
     *,
@@ -1806,6 +1964,64 @@ def _same_lyric_content(
         and _normalized_lyric_content(first.candidate.plain_lyrics)
         == _normalized_lyric_content(second.candidate.plain_lyrics)
         and first.candidate.instrumental == second.candidate.instrumental
+    )
+
+
+def _artist_credit_strength(assessment: CandidateMatchAssessment) -> int:
+    """Rank only explicit credit completeness, never title or duration guesses."""
+
+    if "ordered main-artist credits match" not in assessment.evidence:
+        return 2
+    if any(
+        evidence.startswith("provider omits reported contributor credit")
+        for evidence in assessment.evidence
+    ):
+        return 1
+    return 0
+
+
+def _album_evidence_strength(assessment: CandidateMatchAssessment) -> int:
+    if "normalized album matches" in assessment.evidence:
+        return 0
+    if "normalized album differs" in assessment.evidence:
+        return 2
+    return 1
+
+
+def _evidence_dominates(
+    first: CandidateMatchAssessment,
+    second: CandidateMatchAssessment,
+) -> bool:
+    """Require Pareto improvement; never trade one identity weakness for another."""
+
+    first_duration = (
+        first.duration_difference_ms
+        if first.duration_difference_ms is not None
+        else 2**63
+    )
+    second_duration = (
+        second.duration_difference_ms
+        if second.duration_difference_ms is not None
+        else 2**63
+    )
+    first_dimensions = (
+        _title_relation_strength(first),
+        _artist_credit_strength(first),
+        _album_evidence_strength(first),
+        first_duration,
+    )
+    second_dimensions = (
+        _title_relation_strength(second),
+        _artist_credit_strength(second),
+        _album_evidence_strength(second),
+        second_duration,
+    )
+    return all(
+        left <= right
+        for left, right in zip(first_dimensions, second_dimensions, strict=True)
+    ) and any(
+        left < right
+        for left, right in zip(first_dimensions, second_dimensions, strict=True)
     )
 
 

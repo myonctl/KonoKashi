@@ -435,13 +435,15 @@ def test_same_title_different_artist_and_same_artist_different_title_are_low() -
     )
 
 
-def test_album_conflict_prevents_high_without_overriding_track_identity() -> None:
+def test_album_conflict_keeps_text_high_but_downgrades_timing_trust() -> None:
     query = LyricsQuery(
         "Elevate (Radio Edit)", ("Little Sis Nora & S3RL",), "Elevate", 183_771
     )
     assessment = assess_candidate(query, _candidate(album="Other Album"))
 
-    assert assessment.confidence is LyricsMatchConfidence.MEDIUM
+    assert assessment.confidence is LyricsMatchConfidence.HIGH
+    assert assessment.text_confidence is LyricsMatchConfidence.HIGH
+    assert assessment.timing_confidence is LyricsMatchConfidence.LOW
     assert any("album differs" in item for item in assessment.evidence)
 
 

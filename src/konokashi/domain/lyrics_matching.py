@@ -277,8 +277,10 @@ def assess_candidate(
     else:
         text_confidence = LyricsMatchConfidence.LOW
 
-    if text_confidence is LyricsMatchConfidence.HIGH and (
-        duration_compatible or (phonetic_match and duration_near)
+    if (
+        text_confidence is LyricsMatchConfidence.HIGH
+        and album_compatible
+        and (duration_compatible or (phonetic_match and duration_near))
     ):
         timing_confidence = LyricsMatchConfidence.HIGH
     elif (
@@ -296,7 +298,6 @@ def assess_candidate(
         and artist_high_eligible
         and version_compatible
         and duration_compatible
-        and album_compatible
         and instrumental_compatible
     ):
         confidence = LyricsMatchConfidence.HIGH

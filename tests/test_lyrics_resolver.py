@@ -11,6 +11,8 @@ from time import monotonic, sleep
 from konokashi.application.resolve_lyrics import (
     LyricsResolver,
     LyricsSearchRequest,
+    _album_free_exact_queries,
+    _candidate_exact_plan,
     _candidate_search_plan,
     provider_cache_key,
 )
@@ -692,6 +694,60 @@ def test_query_ladder_uses_one_primary_artist_retrieval_variant() -> None:
     assert len(plan) == 3
 
 
+def test_exact_ladder_uses_bounded_complete_interpretations() -> None:
+    queries = tuple(
+        LyricsQuery(
+            f"Song {index}",
+            (f"Artist {index}",),
+            f"Album {index}",
+            180_000 + index,
+            source_confidence=("Low" if index == 1 else "Medium"),
+            strategy=f"interpretation-{index}",
+        )
+        for index in range(7)
+    )
+
+    plan = _candidate_exact_plan(queries)
+
+    assert [query.strategy for query in plan] == [
+        "interpretation-0",
+        "interpretation-2",
+        "interpretation-3",
+        "interpretation-4",
+    ]
+
+
+def test_exact_ladder_deduplicates_normalized_interpretations() -> None:
+    first = LyricsQuery(
+        "Song—Name",
+        ("Lead Artist",),
+        "Shared Album",
+        180_000,
+        source_confidence="Medium",
+    )
+    equivalent = replace(first, title="song - name", strategy="equivalent")
+    incomplete = replace(first, album=None, strategy="missing-album")
+
+    assert _candidate_exact_plan((first, equivalent, incomplete)) == (first,)
+
+
+def test_album_free_exact_ladder_adds_one_punctuation_retrieval_alias() -> None:
+    query = LyricsQuery(
+        "Ring, Ring",
+        ("ABBA",),
+        None,
+        180_000,
+        source_confidence="High",
+        strategy="youtube-title:spaced-dash",
+    )
+
+    plan = _album_free_exact_queries((query,))
+
+    assert [item.title for item in plan] == ["Ring, Ring", "ring ring"]
+    assert all(item.album is None for item in plan)
+    assert plan[1].strategy.endswith(":punctuation-normalized")
+
+
 def test_user_approved_match_outranks_local_and_network(tmp_path: Path) -> None:
     path = tmp_path / "approved.sqlite3"
     storage = open_storage(path)
@@ -871,7 +927,11 @@ def test_album_free_get_cannot_break_conflicting_search_results(
 
     assert result.status is LyricsResolutionStatus.AMBIGUOUS
     assert {item.record_id for item in result.alternatives} == {"first", "second"}
-    assert len(provider.exact_queries) == 1
+    assert [query.title for query in provider.exact_queries] == [
+        "Elevate (Radio Edit)",
+        "elevate radio edit",
+    ]
+    assert all(query.album is None for query in provider.exact_queries)
 
 
 def test_low_or_medium_candidates_are_ambiguous_and_not_auto_attached(
@@ -973,6 +1033,86 @@ def test_same_provider_duplicate_records_with_identical_content_remain_ambiguous
         "duplicate-a",
         "duplicate-b",
     }
+
+
+def test_complete_credit_breaks_only_content_identical_provider_duplicate_tie(
+    tmp_path: Path,
+) -> None:
+    complete = TrackCandidate(
+        "Collaborative Song",
+        ("Lead Artist & Guest Artist",),
+        "Shared Album",
+        201_000_000,
+        strategy="youtube-enrichment:structured-music-fields",
+        artist_credit=ArtistCredit(("Lead Artist", "Guest Artist"), ()),
+        identity_confidence=Confidence.MEDIUM,
+    )
+    lead = TrackCandidate(
+        "Collaborative Song",
+        ("Lead Artist",),
+        "Shared Album",
+        201_000_000,
+        strategy="youtube-enrichment:structured-lead-artist",
+        artist_credit=ArtistCredit(("Lead Artist",), ("Guest Artist",)),
+        identity_confidence=Confidence.MEDIUM,
+    )
+    track = replace(
+        _track(
+            title=complete.title,
+            artists=complete.artists,
+            album=complete.album,
+            duration_us=complete.duration_us,
+        ),
+        candidate=complete,
+        interpretation_candidates=(complete, lead),
+    )
+    provider = _FakeProvider(
+        search=LyricsProviderResult(
+            LyricsProviderStatus.RESULTS,
+            (
+                _candidate(
+                    "lead-only",
+                    title="Collaborative Song",
+                    artist="Lead Artist",
+                    album="Shared Album",
+                    duration_ms=201_000,
+                ),
+                _candidate(
+                    "complete-credit",
+                    title="Collaborative Song",
+                    artist="Lead Artist & Guest Artist",
+                    album="Shared Album",
+                    duration_ms=201_000,
+                ),
+            ),
+        )
+    )
+
+    result = _resolver(tmp_path / "credit-duplicate.sqlite3", provider).resolve(track)
+
+    assert result.status is LyricsResolutionStatus.FOUND_TIMED
+    assert result.document is not None
+    assert result.document.provider_record_id == "complete-credit"
+    assert any("stronger identity evidence" in item for item in result.evidence)
+
+
+def test_album_conflict_attaches_plain_text_without_untrusted_timestamps(
+    tmp_path: Path,
+) -> None:
+    provider = _FakeProvider(
+        search=LyricsProviderResult(
+            LyricsProviderStatus.RESULTS,
+            (_candidate("other-album", album="Compilation"),),
+        )
+    )
+
+    result = _resolver(tmp_path / "album-text.sqlite3", provider).resolve(_track())
+
+    assert result.status is LyricsResolutionStatus.FOUND_UNTIMED
+    assert result.document is not None
+    assert result.document.kind is LyricDocumentKind.PLAIN
+    assert result.document.provider_record_id == "other-album"
+    assert any("discarded synchronized timing" in item for item in result.diagnostics)
 
 
 def test_plain_text_consensus_discards_conflicting_synchronized_variants(
@@ -1347,7 +1487,16 @@ def test_explicitly_expired_provider_cache_is_not_reused(tmp_path: Path) -> None
     assert result.status is LyricsResolutionStatus.NO_RESULT
     assert result.cache_hit is False
     assert result.network_used is True
-    assert len(provider.exact_queries) == 1
+    assert [query.title for query in provider.exact_queries] == [
+        "Elevate (Radio Edit)",
+        "Elevate (Radio Edit)",
+        "elevate radio edit",
+    ]
+    assert [query.album for query in provider.exact_queries] == [
+        "Elevate",
+        None,
+        None,
+    ]
     assert [query.broad for query in provider.search_queries] == [
         False,
         False,
