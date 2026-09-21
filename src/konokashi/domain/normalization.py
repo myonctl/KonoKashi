@@ -40,8 +40,13 @@ _RECORDING_DECORATION = re.compile(
 _LEADING_BROWSER_COUNT = re.compile(r"^\(\d+\)\s+")
 _BROWSER_YOUTUBE_SUFFIX = re.compile(r"\s+-\s+youtube\s*$", re.IGNORECASE)
 _PRESENTATION_GROUP = re.compile(
-    r"\s*[\[(](?:official\s+(?:music\s+)?video|official\s+audio|lyrics?|"
-    r"lyric\s+video|music\s+video|hd|4k|full\s+mtv)[\])]\s*$",
+    r"\s*[\[(](?:"
+    r"official\s+(?:(?:hd|4k)\s+)?(?:music\s+)?video"
+    r"(?:\s*(?:-\s*)?(?:upscaled|remaster(?:ed)?)(?:\s+\d{4})?)?|"
+    r"official\s+audio|lyrics?|lyric\s+video|music\s+video|video|"
+    r"clip\s+officiel|video\s+ufficiale|videoclip\s+oficial|"
+    r"oficiální\s+videoklip|(?:hd|4k)\s+remaster(?:ed)?|"
+    r"hd|4k|full\s+mtv)[\])]\s*$",
     re.IGNORECASE,
 )
 _PRESENTATION_DASH = re.compile(
@@ -353,6 +358,12 @@ def parse_youtube_title_candidates(
                 f"preserved featured performer credit: {final_title[credit.start() :]}"
             )
             final_title = f"{base} {version_group}".strip()
+    # A trailing featured credit can follow a presentation group, so the group
+    # is not at the end during the first cleanup pass. Re-run the same bounded
+    # source-specific cleanup after preserving the credit.
+    post_credit_cleaned = _remove_presentation_suffix(final_title)
+    transformations.extend(post_credit_cleaned.transformations)
+    final_title = post_credit_cleaned.value.strip().strip('"').strip()
     if not artist_value.value or not final_title:
         return ()
     artist_credit = ArtistCredit(

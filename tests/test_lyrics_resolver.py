@@ -297,6 +297,63 @@ def test_enriched_youtube_identity_finds_lrclib_without_uploader_as_artist(
     )
 
 
+def test_multi_artist_youtube_identity_can_retrieve_by_lead_artist(
+    tmp_path: Path,
+) -> None:
+    class LeadArtistProvider(_FakeProvider):
+        def search(self, query: LyricsQuery) -> LyricsProviderResult:
+            self.search_queries.append(query)
+            if query.artists != ("Lead Artist",) or query.broad:
+                return LyricsProviderResult(LyricsProviderStatus.NO_RESULT)
+            return LyricsProviderResult(
+                LyricsProviderStatus.RESULTS,
+                (
+                    _candidate(
+                        "collaboration",
+                        title="Collaborative Song",
+                        artist="Lead Artist & Guest Artist",
+                        album="Shared Album",
+                        duration_ms=201_000,
+                    ),
+                ),
+            )
+
+    candidate = TrackCandidate(
+        "Collaborative Song",
+        ("Lead Artist", "Guest Artist"),
+        "Shared Album",
+        201_000_000,
+        strategy="youtube-enrichment:structured-music-fields",
+        artist_credit=ArtistCredit(("Lead Artist", "Guest Artist"), ()),
+        field_provenance=(
+            ("title", "youtube_track"),
+            ("artists", "youtube_artists"),
+            ("album", "youtube_album"),
+            ("duration", "youtube_duration"),
+        ),
+        identity_confidence=Confidence.MEDIUM,
+    )
+    track = replace(
+        _track(
+            title=candidate.title,
+            artists=candidate.artists,
+            album=candidate.album,
+            duration_us=candidate.duration_us,
+        ),
+        candidate=candidate,
+    )
+    provider = LeadArtistProvider()
+
+    result = _resolver(tmp_path / "lead-artist.db", provider).resolve(track)
+
+    assert result.status is LyricsResolutionStatus.FOUND_TIMED
+    assert result.document is not None
+    assert result.document.provider_record_id == "collaboration"
+    assert any(query.artists == ("Lead Artist",) for query in provider.search_queries)
+    assert "retrieved by primary artist and title" in " ".join(result.evidence)
+    assert "ordered main-artist credits match" in result.evidence
+
+
 def test_automatic_retry_reuses_first_pass_provider_query_cache(tmp_path: Path) -> None:
     class SearchProvider(_FakeProvider):
         def search(self, query: LyricsQuery) -> LyricsProviderResult:
@@ -609,6 +666,30 @@ def test_query_ladder_deduplicates_provider_request_across_credit_hypotheses() -
 
     assert len(plan) == 2
     assert all(assessment is first for _strategy, _search, assessment in plan)
+
+
+def test_query_ladder_uses_one_primary_artist_retrieval_variant() -> None:
+    query = LyricsQuery(
+        "Collaborative Song",
+        ("Lead Artist", "Guest Artist", "Producer"),
+        "Shared Album",
+        201_000,
+        main_artists=("Lead Artist", "Guest Artist", "Producer"),
+        strategy="youtube-enrichment:structured-music-fields",
+    )
+
+    plan = _candidate_search_plan((query,))
+
+    primary = next(
+        (search, assessment)
+        for strategy, search, assessment in plan
+        if strategy == "primary artist and title"
+    )
+    search, assessment = primary
+    assert search.artists == ("Lead Artist",)
+    assert search.album is None
+    assert assessment is query
+    assert len(plan) == 3
 
 
 def test_user_approved_match_outranks_local_and_network(tmp_path: Path) -> None:
@@ -1267,7 +1348,13 @@ def test_explicitly_expired_provider_cache_is_not_reused(tmp_path: Path) -> None
     assert result.cache_hit is False
     assert result.network_used is True
     assert len(provider.exact_queries) == 1
-    assert [query.broad for query in provider.search_queries] == [False, False, True]
+    assert [query.broad for query in provider.search_queries] == [
+        False,
+        False,
+        False,
+        True,
+    ]
+    assert provider.search_queries[2].artists == ("Little Sis Nora",)
 
 
 def test_offline_can_reassess_raw_cache_without_a_saved_active_match(

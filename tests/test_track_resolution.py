@@ -63,6 +63,16 @@ def test_unicode_quotes_dashes_and_whitespace_normalize_conservatively() -> None
         ("Artist - Song Lyrics", "Song"),
         ("Artist - Song - OFFICIAL MUSIC VIDEO (Download Link)", "Song"),
         ("Artist - Song HD 4K", "Song"),
+        ("Artist - Song (Video)", "Song"),
+        ("Artist - Song (Official Video Remastered)", "Song"),
+        ("Artist - Song (Official Video - Upscaled)", "Song"),
+        ("Artist - Song (Official HD Music Video)", "Song"),
+        ("Artist - Song (Official 4K Video)", "Song"),
+        ("Artist - Song (Official Video) (4K Remaster)", "Song"),
+        ("Artist - Song (Clip Officiel)", "Song"),
+        ("Artist - Song (Video Ufficiale)", "Song"),
+        ("Artist - Song (Videoclip Oficial)", "Song"),
+        ("Artist - Song (Oficiální videoklip)", "Song"),
     ),
 )
 def test_presentation_suffixes_are_removed_only_from_candidate(
@@ -112,6 +122,27 @@ def test_musically_meaningful_version_markers_are_preserved(
 
     assert candidate is not None
     assert candidate.title == version_title
+
+
+def test_song_named_video_is_not_erased_as_a_presentation_suffix() -> None:
+    candidate = parse_youtube_title("Artist - Video (live)", None)
+
+    assert candidate is not None
+    assert candidate.title == "Video (live)"
+
+
+def test_presentation_group_before_feature_credit_is_removed_after_credit_parse() -> (
+    None
+):
+    candidate = parse_youtube_title(
+        "Artist - Song (Official HD Music Video) ft. Guest",
+        None,
+    )
+
+    assert candidate is not None
+    assert candidate.title == "Song"
+    assert candidate.artist_credit is not None
+    assert candidate.artist_credit.contributors == ("Guest",)
 
 
 @pytest.mark.parametrize(

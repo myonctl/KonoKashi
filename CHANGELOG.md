@@ -24,6 +24,13 @@ All notable user-visible changes are recorded here.
 
 ### Changed
 
+- YouTube title interpretation now removes additional localized and remastered
+  video-presentation labels without erasing musical version markers, including
+  when a featured-artist credit follows the label. Structured collaborations
+  also get one bounded lead-artist provider lookup while automatic acceptance
+  continues to use the complete original artist, title, version, album, and
+  duration evidence.
+
 - Distinct providers can now establish a safe plain-text consensus when their
   recording evidence and lyric text agree but their timestamps conflict. The
   conflicting timing is discarded, same-provider duplicate records remain

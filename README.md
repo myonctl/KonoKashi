@@ -238,6 +238,14 @@ themselves authorize an automatic lyric match.
 The provider search ladder starts with the strongest interpretation, then tries
 each distinct alternative before broader fallbacks, with a 16-step cap. Weak
 delimiter-only hypotheses never trigger broad catalogue expansion.
+For structured collaborations, one bounded lead-artist lookup also covers lyric
+catalogues that omit featured or secondary credits. Retrieval never weakens the
+decision: title, version, duration, album, and the complete original artist
+credit still determine whether KonoKashi can attach the result automatically.
+Common localized YouTube presentation labels such as official video, clip
+officiel, video ufficiale, and videoclip oficial are ignored when interpreting
+a title, while musical version markers such as live, remix, and radio edit are
+preserved.
 When a source has a usable duration but no album and bounded searches
 remain insufficient, LRCLIB also receives a title/artist/duration lookup with
 the album omitted. Its single response is assessed alongside search results;

@@ -49,6 +49,7 @@ from konokashi.domain.normalization import (
     parse_title_version,
 )
 from konokashi.domain.tracks import (
+    ArtistCredit,
     Confidence,
     ResolvedTrack,
     TrackCandidate,
@@ -1634,6 +1635,25 @@ def _search_queries(
                 replace(query, title=title.base_title, album=None),
             )
         )
+    credit = (
+        ArtistCredit(query.main_artists, query.contributors)
+        if query.main_artists
+        else parse_artist_credits(query.artists)
+    )
+    if len(credit.main_artists) > 1:
+        primary_artist = (credit.main_artists[0],)
+        if tuple(comparison_key(value) for value in primary_artist) != tuple(
+            comparison_key(value) for value in query.artists
+        ):
+            # Providers frequently index a collaborative recording under only
+            # its lead artist. This changes retrieval only: candidates are still
+            # assessed against the original full-credit query.
+            strategies.append(
+                (
+                    "primary artist and title",
+                    replace(query, artists=primary_artist, album=None),
+                )
+            )
     strategies.append(
         ("broader artist catalogue", replace(query, album=None, broad=True))
     )
@@ -1703,6 +1723,7 @@ def _retrieval_confidence(retrieved_by: str) -> RetrievalConfidence:
             "normalized title and artist",
             "phonetic title alias and artist",
             "base title and artist",
+            "primary artist and title",
             "album-free duration lookup",
         )
     ):
