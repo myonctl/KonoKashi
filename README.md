@@ -245,12 +245,16 @@ credit still determine whether KonoKashi can attach the result automatically.
 Common localized YouTube presentation labels such as official video, clip
 officiel, video ufficiale, and videoclip oficial are ignored when interpreting
 a title, while musical version markers such as live, remix, and radio edit are
-preserved.
-When a source has a usable duration but no album and bounded searches
-remain insufficient, LRCLIB also receives a title/artist/duration lookup with
-the album omitted. Its single response is assessed alongside search results;
-being the `/api/get` response does not by itself authorize acceptance over
-conflicting candidates. No album is guessed or sent to the provider.
+preserved. Explicit localized-artist/quoted-title video forms and bounded
+decorative `Artist (Title lyrics/letra/testo)` forms are also interpreted
+without turning arbitrary parentheses or decoration into recording identity.
+Before bounded search, providers can receive exact lookups for up to four
+complete, non-weak recording interpretations. When searches remain
+insufficient and the source has a usable duration, a bounded album-free exact
+ladder also tries the original title and at most one punctuation-normalized
+form per strong interpretation. Every response is assessed alongside the
+accumulated search evidence; being an exact endpoint response does not by
+itself authorize acceptance over conflicting candidates. No album is guessed.
 When a local transliterator supplies a phonetic title alias, at most two aliases
 are queried before the base-title fallback; the original title remains the
 recording identity used for scoring.
@@ -270,6 +274,9 @@ Automatic acceptance evaluates retrieval strength, recording-identity evidence,
 lyric-text agreement, and timestamp trust separately. A broad query can still
 find a correct recording, but broad retrieval alone never proves the match;
 diagnostics explain accepted, rejected, and unresolved competing candidates.
+An exact album conflict no longer hides otherwise strongly identified lyric
+text: KonoKashi may display the plain text while discarding synchronized
+timestamps whose fit to that album/version is not established.
 When distinct providers independently return the same normalized plain lyric
 text for the same title and artist but disagree on timestamps, KonoKashi may
 display the shared text without synchronization. Duplicate records from only

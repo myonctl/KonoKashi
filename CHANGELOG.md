@@ -24,12 +24,35 @@ All notable user-visible changes are recorded here.
 
 ### Changed
 
+- Automatic provider resolution now runs exact lookups for up to four strong
+  recording interpretations before bounded search, and can retry album-free
+  duration lookups with one punctuation-normalized title form. Provider order
+  and the first result still cannot break a genuine identity conflict.
+
+- Exact title/artist/version/duration evidence can now display trustworthy
+  plain lyrics when only the album conflicts, while synchronized timestamps are
+  discarded. Exact album evidence and strictly stronger complete artist-credit
+  evidence can separate otherwise eligible duplicates without lowering match
+  thresholds.
+
+- YouTube interpretation now recognizes explicit localized-artist/quoted-title
+  music-video labels and bounded decorative `Artist (Title lyrics/letra/testo)`
+  forms. Topic-channel corroboration can add a lead-artist retrieval hypothesis
+  while retaining every secondary structured artist as contributor evidence.
+
 - YouTube title interpretation now removes additional localized and remastered
   video-presentation labels without erasing musical version markers, including
   when a featured-artist credit follows the label. Structured collaborations
   also get one bounded lead-artist provider lookup while automatic acceptance
   continues to use the complete original artist, title, version, album, and
   duration evidence.
+
+- A private, lyric-free replay of 100 publicly reachable, known-supported
+  YouTube sources now measures 95 automatic supported-record/text retrievals,
+  1 safe ambiguity, 4 misses, zero known wrong automatic accepts, zero
+  wrong-version accepts, and zero unjustified timing trust. Network-free replay
+  decision latency on the development host is 33.0 ms median and 37.1 ms p95;
+  these figures describe only that corpus and not live network latency.
 
 - Distinct providers can now establish a safe plain-text consensus when their
   recording evidence and lyric text agree but their timestamps conflict. The
