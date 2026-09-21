@@ -785,6 +785,13 @@ class MainWindow(DesktopWindowSurface):
         self._project_window_controls()
         self._pending_typography_size = self.size()
         self._finish_resize_typography()
+        # Restoring the normal mode also reveals its action row. Qt otherwise
+        # keeps the compact-mode width for one event-loop turn and can squeeze
+        # the buttons even after the larger window geometry is restored.
+        central = self.centralWidget()
+        root_layout = None if central is None else central.layout()
+        if root_layout is not None:
+            root_layout.activate()
 
     def _overlay_lock_changed(self, _locked: bool) -> None:
         if _locked and self._probe_overlay_recovery:
@@ -1391,6 +1398,9 @@ class MainWindow(DesktopWindowSurface):
         self.artist_label.setVisible(show_artist)
         self.album_label.setVisible(show_album)
         self._actions_widget.setVisible(show_actions)
+        self._actions_widget.setMinimumWidth(
+            self._actions_widget.sizeHint().width() if show_actions else 0
+        )
         self._header_rule.setVisible(
             show_actions or show_title or show_artist or show_album or show_artwork
         )

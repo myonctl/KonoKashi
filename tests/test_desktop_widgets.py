@@ -86,6 +86,7 @@ from konokashi.presentation.desktop.review_dialog import (
     ReviewCorrectionDialog,
 )
 from konokashi.presentation.desktop.settings_window import SettingsWindow
+from konokashi.presentation.desktop.window_surface import DesktopWindowMode
 from tests.stage2_helpers import resolver as track_resolver
 from tests.stage2_helpers import snapshot as player_snapshot
 
@@ -686,6 +687,26 @@ def test_compact_header_preserves_track_metadata_above_actions(
     window.resize(760, 720)
     qt_app.processEvents()
     assert window._header_layout.direction() is QBoxLayout.Direction.LeftToRight
+    window.close()
+
+
+def test_returning_from_compact_restores_action_width_immediately(
+    qt_app: QApplication,
+) -> None:
+    window = MainWindow()
+    window.render_state(_state())
+    window.resize(760, 720)
+    window.show()
+    qt_app.processEvents()
+
+    window.set_window_mode(DesktopWindowMode.COMPACT)
+    qt_app.processEvents()
+    window.set_window_mode(DesktopWindowMode.NORMAL)
+    qt_app.processEvents()
+
+    assert window.width() == 760
+    assert window._actions_widget.width() >= window._actions_widget.sizeHint().width()
+    assert window.review_button.width() >= window.review_button.sizeHint().width()
     window.close()
 
 

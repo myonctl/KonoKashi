@@ -299,6 +299,11 @@ class PlaybackClockCore {
         const auto predicted = position_at(midpoint_ns);
         const auto residual = observation.position_us - predicted;
         if (std::abs(residual) >= policy_.discontinuity_us) {
+            if (discontinuity_pending_ && observation.reason == Periodic) {
+                return reject(
+                    RejectedDuplicate,
+                    "periodic Position still contradicts the discontinuity re-anchor");
+            }
             reset(observation, true);
             last_correction_class_ = Discontinuity;
             return {Reset,
@@ -749,11 +754,11 @@ class PlaybackClockCore {
         if (age_us >= policy_.stale_after_us) {
             return Stale;
         }
-        if (discontinuity_pending_) {
-            return HealthDiscontinuity;
-        }
         if (age_us >= policy_.degraded_after_us || degraded_by_rejection_) {
             return HealthDegraded;
+        }
+        if (discontinuity_pending_) {
+            return HealthDiscontinuity;
         }
         if (fit_.has_value() && fit_->trusted) {
             converging_ = false;

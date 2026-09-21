@@ -266,6 +266,14 @@ class PythonPlaybackClock:
         predicted = self._position_at(midpoint_ns)
         residual = observation.position_us - predicted
         if abs(residual) >= self._policy.discontinuity_us:
+            if (
+                self._discontinuity_pending
+                and observation.reason is ObservationReason.PERIODIC
+            ):
+                return self._reject(
+                    ClockUpdateKind.REJECTED_DUPLICATE,
+                    "periodic Position still contradicts the discontinuity re-anchor",
+                )
             self._reset(observation, discontinuity=True)
             self._last_correction_class = ClockCorrectionClass.DISCONTINUITY
             return ClockUpdate(
@@ -746,10 +754,10 @@ class PythonPlaybackClock:
             return ClockHealth.UNAVAILABLE
         if age_us >= self._policy.stale_after_us:
             return ClockHealth.STALE
-        if self._discontinuity_pending:
-            return ClockHealth.DISCONTINUITY
         if age_us >= self._policy.degraded_after_us or self._degraded_by_rejection:
             return ClockHealth.DEGRADED
+        if self._discontinuity_pending:
+            return ClockHealth.DISCONTINUITY
         if self._fit is not None and self._fit.trusted and not self._converging:
             return ClockHealth.LOCKED
         if self._fit is not None and self._fit.trusted:

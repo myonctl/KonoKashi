@@ -137,6 +137,34 @@ def test_small_phase_error_is_bounded_and_large_jump_is_a_seek_reset() -> None:
     assert "discontinuity" in reset.reason
 
 
+def test_frozen_playing_position_degrades_after_one_resynchronization() -> None:
+    monotonic = FakeMonotonic()
+    clock = PlaybackClock(monotonic)
+    clock.observe(observation(1_000_000, 0))
+
+    monotonic.now_ns = 250_000_000
+    reset = clock.observe(observation(1_000_000, 250_000_000))
+    resynchronizing = clock.estimate()
+    assert reset.kind is ClockUpdateKind.RESET
+    assert resynchronizing is not None
+    assert resynchronizing.diagnostics.health is ClockHealth.DISCONTINUITY
+
+    monotonic.now_ns = 500_000_000
+    rejected = clock.observe(observation(1_000_000, 500_000_000))
+    degraded = clock.estimate()
+    assert rejected.kind is ClockUpdateKind.REJECTED_DUPLICATE
+    assert degraded is not None
+    assert degraded.position_us == 1_250_000
+    assert degraded.diagnostics.health is ClockHealth.DEGRADED
+
+    monotonic.now_ns = 750_000_000
+    recovered = clock.observe(observation(1_500_000, 750_000_000))
+    stable = clock.estimate()
+    assert recovered.kind is ClockUpdateKind.CORRECTED
+    assert stable is not None
+    assert stable.diagnostics.health is ClockHealth.CONVERGING
+
+
 def test_negative_phase_correction_slews_without_rewinding_playback() -> None:
     clock = PlaybackClock(lambda: 0)
     clock.observe(observation(0, 0))
