@@ -441,6 +441,7 @@ class MainWindow(DesktopWindowSurface):
             button.setAutoExclusive(True)
             button.setAccessibleName(f"Use {label} mode")
             button.setToolTip(description)
+            button.setMinimumWidth(button.sizeHint().width())
             button.clicked.connect(
                 lambda _checked, mode=mode: self.set_window_mode(mode)
             )
@@ -453,6 +454,9 @@ class MainWindow(DesktopWindowSurface):
             QToolButton.ToolButtonPopupMode.InstantPopup
         )
         self.mode_popup_button.setVisible(False)
+        self.mode_popup_button.setMinimumWidth(
+            self.mode_popup_button.sizeHint().width()
+        )
         mode_controls_layout.addWidget(self.mode_popup_button)
 
         self.overlay_controls = QWidget()
@@ -570,6 +574,7 @@ class MainWindow(DesktopWindowSurface):
         self.library_results_button.setVisible(False)
         self.library_results_button.clicked.connect(self._open_library_results)
         self.review_button.setFlat(True)
+        self.review_button.setMinimumWidth(self.review_button.sizeHint().width())
         actions.addWidget(self.review_button)
         actions.addWidget(self.library_results_button)
         header.addWidget(actions_widget)
@@ -693,6 +698,7 @@ class MainWindow(DesktopWindowSurface):
         self.more_menu.addSeparator()
         self.more_menu.addAction(self.scan_action)
         self.more_button.setMenu(self.more_menu)
+        self.more_button.setMinimumWidth(self.more_button.sizeHint().width())
         self._actions_layout.addWidget(self.more_button)
         QWidget.setTabOrder(self.review_button, self.more_button)
         self.application_menu = ApplicationMenu(
@@ -783,6 +789,7 @@ class MainWindow(DesktopWindowSurface):
         )
         self._apply_visibility()
         self._project_window_controls()
+        self._set_header_direction(self.width())
         self._pending_typography_size = self.size()
         self._finish_resize_typography()
         # Restoring the normal mode also reveals its action row. Qt otherwise
@@ -791,6 +798,7 @@ class MainWindow(DesktopWindowSurface):
         central = self.centralWidget()
         root_layout = None if central is None else central.layout()
         if root_layout is not None:
+            root_layout.invalidate()
             root_layout.activate()
 
     def _overlay_lock_changed(self, _locked: bool) -> None:
@@ -1538,14 +1546,14 @@ def _normal_status_parts(state: DesktopViewState) -> tuple[str, ...]:
     if health is not None and health not in {
         ClockHealth.PAUSED,
         ClockHealth.LOCKED,
+        ClockHealth.CONVERGING,
+        ClockHealth.DISCONTINUITY,
     }:
         parts.append(
             {
-                ClockHealth.CONVERGING: "Syncing",
                 ClockHealth.DEGRADED: "Sync needs attention",
                 ClockHealth.STALE: "Sync is stale",
                 ClockHealth.UNAVAILABLE: "Sync unavailable",
-                ClockHealth.DISCONTINUITY: "Resynchronizing",
             }[health]
         )
     return tuple(parts)

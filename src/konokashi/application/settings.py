@@ -248,8 +248,9 @@ SETTINGS_SCHEMA: tuple[SettingDefinition, ...] = (
         "Automatically improve metadata for web media",
         SettingCategory.LYRICS,
         "When a public YouTube video's first lyric lookup is insufficient, fetch "
-        "bounded metadata. A URL-less browser Topic title may first search up to "
-        "five public videos. No media, cookies, or browser profiles are read.",
+        "bounded metadata. A URL-less browser title with one channel label and "
+        "duration may first search up to five public videos. No media, cookies, "
+        "or browser profiles are read.",
     ),
     SettingDefinition(
         "desktop.lyrics.selectable",

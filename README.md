@@ -211,13 +211,15 @@ session-only sources, a clear artist-first browser title can still drive lyric
 search, but the reported browser artist is treated as possible uploader
 evidence, not artist truth. Without a video ID, KonoKashi cannot request
 video-specific YouTube metadata directly. If an inadequate first pass also has
-one `Artist - Topic` channel label and a usable duration, the enabled automatic
-metadata setting permits one fields-only YouTube search of at most five public
-videos using the reported title and channel label. KonoKashi requires one unique
-exact title/channel match within two seconds of the browser duration before
-requesting that video's bounded metadata. It sends the title and channel label
-to YouTube for this search, but no browser URL, cookies, profile, authentication,
-audio, video, lyrics, or history. The candidate video ID is only a metadata hint:
+exactly one bounded channel/uploader label and a usable duration, the enabled
+automatic metadata setting permits one fields-only YouTube search of at most
+five public videos using the reported title and channel label. This covers both
+`Artist - Topic` labels and plain official-artist channel names. KonoKashi
+requires one unique exact title/channel-or-uploader match within two seconds of
+the browser duration before requesting that video's bounded metadata. It sends
+the title and channel label to YouTube for this search, but no browser URL,
+cookies, profile, authentication, audio, video, lyrics, or history. The
+candidate video ID is only a metadata hint:
 the playing source stays session-only, and provider evidence must still decide
 whether any lyric is safe to show. A conflicting Topic label also lowers a
 dash-split title guess to Low confidence. Other URL-less titles remain

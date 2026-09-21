@@ -707,6 +707,26 @@ def test_returning_from_compact_restores_action_width_immediately(
     assert window.width() == 760
     assert window._actions_widget.width() >= window._actions_widget.sizeHint().width()
     assert window.review_button.width() >= window.review_button.sizeHint().width()
+    for button in window.mode_buttons.values():
+        assert button.width() >= button.sizeHint().width()
+    window.close()
+
+
+@pytest.mark.parametrize(
+    "health",
+    (ClockHealth.CONVERGING, ClockHealth.DISCONTINUITY),
+)
+def test_normal_view_hides_transient_clock_internal_states(
+    qt_app: QApplication,
+    health: ClockHealth,
+) -> None:
+    window = MainWindow()
+    window.render_state(replace(_state(), sync_health=health))
+    window.show()
+    qt_app.processEvents()
+
+    assert window.source_label.text() == ""
+    assert not window.source_label.isVisible()
     window.close()
 
 

@@ -236,7 +236,7 @@ def test_title_only_video_metadata_cannot_corroborate_credits() -> None:
     assert result.network_used is True
 
 
-def test_non_topic_or_offline_browser_does_not_search() -> None:
+def test_plain_official_channel_can_supply_the_same_exact_bounded_hint() -> None:
     calls = 0
 
     def command(*_args):  # type: ignore[no-untyped-def]
@@ -248,7 +248,28 @@ def test_non_topic_or_offline_browser_does_not_search() -> None:
         _Enricher(),
         command=command,  # type: ignore[arg-type]
     )
-    assert discoverer.discover(_track(artist="Example Maker")).candidates == ()
+
+    result = discoverer.discover(_track(artist="Example Maker"))
+
+    assert calls == 1
+    assert len(result.candidates) == 1
+    assert result.network_used is True
+    assert "title, channel, and duration" in result.candidates[0].evidence[-1]
+
+
+def test_invalid_channel_hint_or_offline_browser_does_not_search() -> None:
+    calls = 0
+
+    def command(*_args):  # type: ignore[no-untyped-def]
+        nonlocal calls
+        calls += 1
+        return _entry()
+
+    discoverer = YtDlpYouTubeMediaDiscoverer(
+        _Enricher(),
+        command=command,  # type: ignore[arg-type]
+    )
+    assert discoverer.discover(_track(artist=" ")).candidates == ()
     assert discoverer.discover(_track(), offline=True).candidates == ()
     assert calls == 0
 

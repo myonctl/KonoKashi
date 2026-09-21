@@ -1,4 +1,4 @@
-"""Bounded public-video discovery for URL-less Topic-channel browser playback."""
+"""Bounded public-video discovery for URL-less browser playback."""
 
 from __future__ import annotations
 
@@ -34,7 +34,13 @@ _CacheKey = tuple[GenericMprisIdentity, str, str, int]
 
 
 def _hint(track: ResolvedTrack) -> tuple[str, str, int] | None:
-    """Require browser provenance, a Topic label, and usable duration."""
+    """Require browser provenance, one bounded channel label, and duration.
+
+    A browser can report either a ``- Topic`` label or the plain name of an
+    official artist channel.  The label is only a search hint: discovery still
+    requires one unique public video whose full title, channel/uploader, and
+    duration all exactly corroborate the MPRIS observation.
+    """
 
     snapshot = track.raw_snapshot
     if not isinstance(
@@ -46,10 +52,10 @@ def _hint(track: ResolvedTrack) -> tuple[str, str, int] | None:
     duration_us = semantic_duration_us(snapshot.metadata.duration_us)
     if len(artists) != 1 or not 3 <= len(title) <= 160 or duration_us is None:
         return None
-    channel = parse_topic_channel_label(artists[0])
+    raw_channel = artists[0].strip()
+    channel = parse_topic_channel_label(raw_channel) or raw_channel
     if (
-        channel is None
-        or not 2 <= len(channel) <= 120
+        not 2 <= len(channel) <= 120
         or not comparison_key(title)
         or not comparison_key(channel)
     ):
@@ -157,7 +163,10 @@ class YtDlpYouTubeMediaDiscoverer:
         hint = _hint(track)
         if hint is None:
             return YouTubeMetadataDiscoveryResult(
-                diagnostics=("URL-less browser metadata lacks a bounded Topic hint",)
+                diagnostics=(
+                    "URL-less browser metadata lacks one bounded channel and "
+                    "duration hint",
+                )
             )
         key = _cache_key(track, hint)
         with self._state_lock:
@@ -240,11 +249,11 @@ class YtDlpYouTubeMediaDiscoverer:
                 evidence=(
                     *item.evidence,
                     "unique metadata-only public-video search corroborated "
-                    "browser title, Topic channel, and duration; URL unconfirmed",
+                    "browser title, channel, and duration; URL unconfirmed",
                 ),
                 field_provenance=(
                     *item.field_provenance,
-                    ("video-search", "mpris-title+topic-channel+duration"),
+                    ("video-search", "mpris-title+channel+duration"),
                 ),
             )
             for item in enrichment.candidates
