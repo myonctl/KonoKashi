@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 from dataclasses import replace
+from pathlib import Path
 
 from konokashi.application.frontend_session import (
     FrontendLyricsBundle,
     FrontendSessionService,
 )
 from konokashi.application.lyric_corrections import LyricCorrectionService
+from konokashi.application.review_corrections import ReviewCorrectionService
 from konokashi.application.settings import DesktopInteractionSettings
 from konokashi.domain.identity import GenericMprisIdentity, YouTubeIdentity
 from konokashi.domain.lyric_corrections import LyricLineCorrection, LyricLineEdit
@@ -41,6 +43,10 @@ from konokashi.domain.youtube_metadata import (
     YouTubeMetadataDiscoveryResult,
     YouTubeMetadataEnrichmentResult,
 )
+from konokashi.infrastructure.lyrics.provider_documents import (
+    ProviderLyricDocumentBuilder,
+)
+from konokashi.infrastructure.storage.bootstrap import open_storage
 from tests.stage2_helpers import fixture_snapshot, resolver, snapshot
 from tests.test_lyrics_sync import document
 
@@ -163,6 +169,15 @@ class _Settings:
 class _Timing:
     def get_document_timing(self, document_id):  # type: ignore[no-untyped-def]
         return LyricDocumentTiming(document_id, 25_000)
+
+
+class _Corrections:
+    def __init__(self) -> None:
+        self.override_lookups: list[ResolvedTrack] = []
+
+    def apply_saved_track_override(self, track: ResolvedTrack) -> ResolvedTrack:
+        self.override_lookups.append(track)
+        return track
 
 
 class _LineCorrections:
@@ -520,11 +535,15 @@ def test_url_less_browser_discovery_retries_without_upgrading_source_identity() 
             assert resolved is track
             assert kwargs == {"offline": False, "refresh": False}
             return YouTubeMetadataDiscoveryResult(
-                (candidate,), ("unique public-video metadata match",), network_used=True
+                (candidate,),
+                ("unique public-video metadata match",),
+                network_used=True,
+                correction_identity_hint=YouTubeIdentity("AbCdEfGh123"),
             )
 
     lyrics = Lyrics()
     discovery = Discovery()
+    corrections = _Corrections()
     settings = _Settings()
     service = FrontendSessionService(
         _Selection(track),  # type: ignore[arg-type]
@@ -532,7 +551,7 @@ def test_url_less_browser_discovery_retries_without_upgrading_source_identity() 
         _Representations(),  # type: ignore[arg-type]
         settings,  # type: ignore[arg-type]
         _Timing(),  # type: ignore[arg-type]
-        object(),  # type: ignore[arg-type]
+        corrections,  # type: ignore[arg-type]
         youtube_discovery=discovery,  # type: ignore[arg-type]
     )
 
@@ -543,6 +562,8 @@ def test_url_less_browser_discovery_retries_without_upgrading_source_identity() 
     assert bundle.resolution.status is LyricsResolutionStatus.FOUND_TIMED
     assert bundle.resolution.network_used is True
     assert bundle.track.source_identity == track.source_identity
+    assert bundle.track.correction_identity_hint == YouTubeIdentity("AbCdEfGh123")
+    assert corrections.override_lookups == [bundle.track]
     assert bundle.track.raw_snapshot == track.raw_snapshot
     assert any(
         item.startswith("automatic URL-less browser retry:")
@@ -552,6 +573,88 @@ def test_url_less_browser_discovery_retries_without_upgrading_source_identity() 
     disabled = service.load_track(track)
     assert disabled.resolution.status is LyricsResolutionStatus.AMBIGUOUS
     assert discovery.calls == 1
+
+
+def test_url_less_discovery_applies_saved_track_override_by_hint(
+    tmp_path: Path,
+) -> None:
+    track_resolver, _repository = resolver()
+    track = track_resolver.resolve(
+        snapshot(
+            "chromium.instance-test",
+            title="FABLE - Glass Horizon",
+            artists=("Example Maker - Topic",),
+            duration_us=133_641_000,
+        )
+    )
+    hint = YouTubeIdentity("AbCdEfGh123")
+    candidate = TrackCandidate(
+        "FABLE - Glass Horizon",
+        ("Example Maker",),
+        "Fictional Album",
+        134_000_000,
+        strategy="youtube-enrichment:structured-music-fields",
+    )
+    storage = open_storage(tmp_path / "discovered-override.sqlite3")
+    builder = ProviderLyricDocumentBuilder()
+    corrections = ReviewCorrectionService(
+        track_overrides=storage.track_overrides,
+        lyrics=storage.lyrics,
+        matches=storage.lyrics_matches,
+        provider_documents=builder,
+        timing=storage.timing_calibrations,
+    )
+    corrections.put_track_override(
+        replace(track, correction_identity_hint=hint),
+        title="Corrected Song",
+        artists=("Corrected Artist",),
+        album="Corrected Album",
+    )
+
+    class Lyrics:
+        has_online_providers = True
+        cancellation_generation = 0
+
+        def __init__(self) -> None:
+            self.calls: list[ResolvedTrack] = []
+
+        def resolve(self, resolved, **_kwargs):  # type: ignore[no-untyped-def]
+            self.calls.append(resolved)
+            return LyricsResolutionResult(
+                resolved.source_identity,
+                (
+                    LyricsResolutionStatus.FOUND_TIMED
+                    if resolved.user_approved
+                    else LyricsResolutionStatus.NO_RESULT
+                ),
+                document=(document() if resolved.user_approved else None),
+            )
+
+    class Discovery:
+        def discover(self, _resolved, **_kwargs):  # type: ignore[no-untyped-def]
+            return YouTubeMetadataDiscoveryResult(
+                (candidate,), correction_identity_hint=hint
+            )
+
+    lyrics = Lyrics()
+    service = FrontendSessionService(
+        _Selection(track),  # type: ignore[arg-type]
+        lyrics,  # type: ignore[arg-type]
+        _Representations(),  # type: ignore[arg-type]
+        _Settings(),  # type: ignore[arg-type]
+        _Timing(),  # type: ignore[arg-type]
+        corrections,
+        youtube_discovery=Discovery(),  # type: ignore[arg-type]
+    )
+
+    bundle = service.load_track(track)
+
+    assert len(lyrics.calls) == 2
+    assert bundle.track.source_identity == track.source_identity
+    assert bundle.track.correction_identity_hint == hint
+    assert bundle.track.user_approved
+    assert bundle.track.candidate.title == "Corrected Song"
+    assert bundle.resolution.status is LyricsResolutionStatus.FOUND_TIMED
 
 
 def test_superseded_url_less_discovery_cannot_retry_provider() -> None:
@@ -590,7 +693,7 @@ def test_superseded_url_less_discovery_cannot_retry_provider() -> None:
         _Representations(),  # type: ignore[arg-type]
         _Settings(),  # type: ignore[arg-type]
         _Timing(),  # type: ignore[arg-type]
-        object(),  # type: ignore[arg-type]
+        _Corrections(),  # type: ignore[arg-type]
         youtube_discovery=Discovery(),  # type: ignore[arg-type]
     )
 

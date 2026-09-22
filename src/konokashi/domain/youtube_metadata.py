@@ -27,3 +27,4 @@ class YouTubeMetadataDiscoveryResult:
     diagnostics: tuple[str, ...] = field(default_factory=tuple)
     cache_hit: bool = False
     network_used: bool = False
+    correction_identity_hint: YouTubeIdentity | None = None

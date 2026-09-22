@@ -22,6 +22,7 @@ from konokashi.domain.normalization import (
     parse_youtube_title_hypotheses,
 )
 from konokashi.domain.tracks import (
+    ApprovedTrackIdentity,
     Confidence,
     ResolvedTrack,
     TrackCandidate,
@@ -90,39 +91,8 @@ class TrackResolver:
             snapshot, automatic_candidate, source.identity
         )
         approved = self._overrides.get(source.identity)
-        if approved is not None:
-            candidate = TrackCandidate(
-                title=approved.title,
-                artists=approved.artists,
-                album=(
-                    approved.album
-                    if approved.album is not None
-                    else snapshot.metadata.album
-                ),
-                duration_us=semantic_duration_us(snapshot.metadata.duration_us),
-                evidence=("user-approved correction for stable source identity",),
-                strategy="user-correction",
-                artist_credit=parse_artist_credits(approved.artists),
-                field_provenance=(
-                    ("title", "user-correction"),
-                    ("artists", "user-correction"),
-                ),
-            )
-            return ResolvedTrack(
-                snapshot,
-                source.identity,
-                candidate,
-                Confidence.APPROVED,
-                source.evidence + automatic_candidate.evidence + candidate.evidence,
-                source.warnings + automatic_warnings,
-                user_approved=True,
-                automatic_candidate=automatic_candidate,
-                automatic_confidence=automatic_confidence,
-                interpretation_candidates=(candidate, *interpretations),
-            )
-
         evidence = source.evidence + automatic_candidate.evidence
-        return ResolvedTrack(
+        track = ResolvedTrack(
             snapshot,
             source.identity,
             automatic_candidate,
@@ -130,6 +100,9 @@ class TrackResolver:
             evidence,
             source.warnings + automatic_warnings,
             interpretation_candidates=interpretations,
+        )
+        return (
+            track if approved is None else with_approved_track_identity(track, approved)
         )
 
     def _reported_candidate(
@@ -401,7 +374,10 @@ def with_youtube_metadata_candidates(
 
 
 def with_discovered_web_metadata_candidates(
-    track: ResolvedTrack, candidates: tuple[TrackCandidate, ...]
+    track: ResolvedTrack,
+    candidates: tuple[TrackCandidate, ...],
+    *,
+    correction_identity_hint: YouTubeIdentity | None = None,
 ) -> ResolvedTrack:
     """Add search-discovered hypotheses without upgrading session-only identity."""
 
@@ -409,7 +385,63 @@ def with_discovered_web_metadata_candidates(
         track.source_identity, GenericMprisIdentity
     ) or not is_url_less_browser(track.raw_snapshot):
         raise ValueError("web discovery requires a URL-less browser source")
-    return _with_metadata_candidates(track, candidates)
+    enriched = _with_metadata_candidates(track, candidates)
+    if correction_identity_hint is None or not candidates:
+        return enriched
+    return replace(
+        enriched,
+        correction_identity_hint=correction_identity_hint,
+        evidence=tuple(
+            dict.fromkeys(
+                (
+                    *enriched.evidence,
+                    "unique searched public-video ID may scope explicit user "
+                    "corrections; playback source remains session-only",
+                )
+            )
+        ),
+    )
+
+
+def with_approved_track_identity(
+    track: ResolvedTrack, approved: ApprovedTrackIdentity
+) -> ResolvedTrack:
+    """Apply one explicit correction without replacing raw playback evidence."""
+
+    automatic_candidate = track.automatic_candidate or track.candidate
+    automatic_confidence = track.automatic_confidence or track.confidence
+    candidate = TrackCandidate(
+        title=approved.title,
+        artists=approved.artists,
+        album=(
+            approved.album
+            if approved.album is not None
+            else track.raw_snapshot.metadata.album
+        ),
+        duration_us=semantic_duration_us(track.raw_snapshot.metadata.duration_us),
+        evidence=("user-approved correction for durable correction identity",),
+        strategy="user-correction",
+        artist_credit=parse_artist_credits(approved.artists),
+        field_provenance=(
+            ("title", "user-correction"),
+            ("artists", "user-correction"),
+        ),
+    )
+    interpretations = tuple(
+        item
+        for item in (track.interpretation_candidates or (automatic_candidate,))
+        if item != candidate
+    )
+    return replace(
+        track,
+        candidate=candidate,
+        confidence=Confidence.APPROVED,
+        evidence=tuple(dict.fromkeys((*track.evidence, *candidate.evidence))),
+        user_approved=True,
+        automatic_candidate=automatic_candidate,
+        automatic_confidence=automatic_confidence,
+        interpretation_candidates=(candidate, *interpretations),
+    )
 
 
 def _with_metadata_candidates(

@@ -17,7 +17,11 @@ from konokashi.application.resolve_lyrics import (
     provider_cache_key,
 )
 from konokashi.application.resolve_track import with_youtube_metadata_candidates
-from konokashi.domain.identity import LocalFileIdentity, YouTubeIdentity
+from konokashi.domain.identity import (
+    GenericMprisIdentity,
+    LocalFileIdentity,
+    YouTubeIdentity,
+)
 from konokashi.domain.lyrics import (
     ApprovalState,
     ContentProvenance,
@@ -785,6 +789,69 @@ def test_user_approved_match_outranks_local_and_network(tmp_path: Path) -> None:
     assert result.cache_hit is True
     assert local.calls == 0
     assert provider.exact_queries == []
+
+
+def test_user_approval_reuses_discovered_video_hint_without_promoting_source(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "discovered-approved.sqlite3"
+    storage = open_storage(path)
+    hint = YouTubeIdentity("AbCdEfGh123")
+    track = replace(
+        _track(source=GenericMprisIdentity("browser", "/track/2", None)),
+        correction_identity_hint=hint,
+    )
+    approved = _document("discovered-approved")
+    storage.lyrics.put(approved)
+    storage.lyrics_matches.approve(
+        hint,
+        LyricsMatch(
+            approved.document_id,
+            LyricsMatchDecision.APPROVED,
+            ContentProvenance.USER,
+            NOW,
+            LyricsMatchConfidence.APPROVED,
+            ("explicitly selected by the user",),
+        ),
+    )
+    provider = _FakeProvider()
+
+    result = _resolver(path, provider).resolve(track)
+
+    assert isinstance(result.source_identity, GenericMprisIdentity)
+    assert result.document == approved
+    assert result.confidence is LyricsMatchConfidence.APPROVED
+    assert provider.exact_queries == []
+
+
+def test_automatic_match_under_discovered_hint_is_not_playback_truth(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "discovered-automatic.sqlite3"
+    storage = open_storage(path)
+    hint = YouTubeIdentity("AbCdEfGh123")
+    track = replace(
+        _track(source=GenericMprisIdentity("browser", "/track/2", None)),
+        correction_identity_hint=hint,
+    )
+    automatic = _document("direct-video-automatic")
+    storage.lyrics.put(automatic)
+    storage.lyrics_matches.put(
+        hint,
+        LyricsMatch(
+            automatic.document_id,
+            LyricsMatchDecision.CANDIDATE,
+            ContentProvenance.PROVIDER,
+            NOW,
+            LyricsMatchConfidence.HIGH,
+            ("automatic direct-video result",),
+        ),
+    )
+
+    result = _resolver(path, _FakeProvider()).resolve(track, offline=True)
+
+    assert result.document is None
+    assert result.status is LyricsResolutionStatus.OFFLINE_MISS
 
 
 def test_exact_local_source_outranks_automatic_provider_cache(tmp_path: Path) -> None:

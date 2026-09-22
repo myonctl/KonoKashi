@@ -218,7 +218,7 @@ class YtDlpYouTubeMediaDiscoverer:
         self._pending: set[Event] = set()
         self._epoch = 0
         self._session_cache: OrderedDict[
-            _CacheKey, tuple[float, tuple[TrackCandidate, ...]]
+            _CacheKey, tuple[float, tuple[TrackCandidate, ...], YouTubeIdentity]
         ] = OrderedDict()
 
     def cancel_inflight(self) -> None:
@@ -262,6 +262,7 @@ class YtDlpYouTubeMediaDiscoverer:
                                 "source identity remains unconfirmed",
                             ),
                             cache_hit=True,
+                            correction_identity_hint=session_cached[2],
                         )
                     self._session_cache.pop(key, None)
         durable_key = _durable_cache_key(hint)
@@ -288,7 +289,11 @@ class YtDlpYouTubeMediaDiscoverer:
                                 network_used=enrichment.network_used,
                             )
                         if key is not None and candidates:
-                            self._session_cache[key] = (self._clock(), candidates)
+                            self._session_cache[key] = (
+                                self._clock(),
+                                candidates,
+                                YouTubeIdentity(video_id),
+                            )
                             self._session_cache.move_to_end(key)
                             if len(self._session_cache) > _SESSION_CACHE_LIMIT:
                                 self._session_cache.popitem(last=False)
@@ -309,6 +314,7 @@ class YtDlpYouTubeMediaDiscoverer:
                             ),
                             cache_hit=True,
                             network_used=enrichment.network_used,
+                            correction_identity_hint=YouTubeIdentity(video_id),
                         )
         if offline:
             return YouTubeMetadataDiscoveryResult(
@@ -377,7 +383,11 @@ class YtDlpYouTubeMediaDiscoverer:
                     network_used=True,
                 )
             if key is not None and candidates:
-                self._session_cache[key] = (self._clock(), candidates)
+                self._session_cache[key] = (
+                    self._clock(),
+                    candidates,
+                    YouTubeIdentity(matches[0]),
+                )
                 self._session_cache.move_to_end(key)
                 if len(self._session_cache) > _SESSION_CACHE_LIMIT:
                     self._session_cache.popitem(last=False)
@@ -402,4 +412,5 @@ class YtDlpYouTubeMediaDiscoverer:
             ),
             cache_hit=enrichment.cache_hit,
             network_used=True,
+            correction_identity_hint=YouTubeIdentity(matches[0]),
         )

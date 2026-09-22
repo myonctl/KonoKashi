@@ -29,6 +29,11 @@ All notable user-visible changes are recorded here.
   and failed searches are not cached, and reuse never promotes the browser
   observation to a confirmed source identity.
 
+- Explicit recording and lyric corrections for a uniquely discovered URL-less
+  browser video can now survive restart under the discovered video ID. The
+  browser source remains session-only, and provider-generated automatic matches
+  under that searched ID are never reused as user approval.
+
 - Automatic provider resolution now runs exact lookups for up to four strong
   recording interpretations before bounded search, and can retry album-free
   duration lookups with one punctuation-normalized title form. Provider order

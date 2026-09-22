@@ -223,8 +223,7 @@ candidate video ID is only a metadata hint:
 the playing source stays session-only, and provider evidence must still decide
 whether any lyric is safe to show. A conflicting Topic label also lowers a
 dash-split title guess to Low confidence. Other URL-less titles remain
-conservative recovery cases, and corrections cannot be remembered for a video
-whose ID the browser did not report.
+conservative recovery cases.
 For one unchanged browser track ID, successful discovery hypotheses are reused
 from memory for up to ten minutes. A uniquely corroborated discovery is also
 cached locally for three days so a later session with the same normalized
@@ -235,7 +234,12 @@ lyrics, URL, or browser track ID. Ambiguity and failed requests are never
 written, and a later successful search that finds multiple exact videos
 invalidates the prior mapping. An expired successful entry may be reused only
 in offline mode. Cache reuse still supplies recording hypotheses rather than
-changing the session-only source identity.
+changing the session-only source identity. When that same unique discovery is
+available, an explicit user correction may be stored under the discovered
+video ID and reused after restart. Only user-approved knowledge receives this
+treatment: an automatic match previously saved for direct playback of that ID
+cannot turn the searched ID into playback truth. If discovery is ambiguous or
+fails, the session-only source still cannot receive a durable correction.
 `konokashi lyrics current` uses the same automatic enrichment and retry policy
 as the desktop; its bounded preview remains the default for lyric text.
 The metadata command requests only the fields needed for interpretation; it

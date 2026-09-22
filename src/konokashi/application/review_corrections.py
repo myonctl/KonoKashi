@@ -13,8 +13,8 @@ from konokashi.application.ports import (
     TimingCalibrationRepositoryPort,
     TrackOverrideRepositoryPort,
 )
+from konokashi.application.resolve_track import with_approved_track_identity
 from konokashi.domain.identity import (
-    PersistenceScope,
     SourceIdentity,
     YouTubeIdentity,
 )
@@ -37,7 +37,11 @@ from konokashi.domain.representations import (
     RepresentationLayerStatus,
 )
 from konokashi.domain.synchronization import LyricDocumentTiming
-from konokashi.domain.tracks import ApprovedTrackIdentity, ResolvedTrack
+from konokashi.domain.tracks import (
+    ApprovedTrackIdentity,
+    ResolvedTrack,
+    durable_correction_identity,
+)
 
 
 class ReviewCorrectionError(ValueError):
@@ -148,7 +152,18 @@ class ReviewCorrectionService:
         automatic = track.automatic_candidate or track.candidate
         automatic_confidence = track.automatic_confidence or track.confidence
         raw = track.raw_snapshot.metadata
-        match = self._matches.get(track.source_identity)
+        correction_identity = durable_correction_identity(track)
+        match = (
+            None
+            if correction_identity is None
+            else self._matches.get(correction_identity)
+        )
+        if (
+            correction_identity != track.source_identity
+            and match is not None
+            and match.provenance is not ContentProvenance.USER
+        ):
+            match = None
         document_id = (
             None if resolution.document is None else resolution.document.document_id
         )
@@ -171,9 +186,7 @@ class ReviewCorrectionService:
         )
         return ReviewCorrectionSnapshot(
             source_identity=track.source_identity,
-            durable=(
-                track.source_identity.persistence_scope is PersistenceScope.PERMANENT
-            ),
+            durable=correction_identity is not None,
             track=TrackAuditEvidence(
                 raw_title=raw.title,
                 raw_artists=raw.artists,
@@ -192,8 +205,10 @@ class ReviewCorrectionService:
                 evidence=track.evidence,
                 warnings=track.warnings,
             ),
-            has_track_override=self._track_overrides.get(track.source_identity)
-            is not None,
+            has_track_override=(
+                correction_identity is not None
+                and self._track_overrides.get(correction_identity) is not None
+            ),
             current_document_id=document_id,
             current_lyrics_source=(
                 resolution.source_label
@@ -260,7 +275,7 @@ class ReviewCorrectionService:
     ) -> None:
         """Approve one corrected identity while retaining the raw snapshot."""
 
-        self._require_durable(track)
+        correction_identity = self._require_durable(track)
         cleaned_title = title.strip()
         cleaned_artists = tuple(artist.strip() for artist in artists if artist.strip())
         if not cleaned_title or not cleaned_artists:
@@ -268,7 +283,7 @@ class ReviewCorrectionService:
                 "a corrected track requires a non-blank title and artist"
             )
         self._track_overrides.put(
-            track.source_identity,
+            correction_identity,
             ApprovedTrackIdentity(
                 cleaned_title,
                 cleaned_artists,
@@ -279,21 +294,32 @@ class ReviewCorrectionService:
     def reset_track_override(self, track: ResolvedTrack) -> bool:
         """Reset only the source-identity correction."""
 
-        self._require_durable(track)
-        return self._track_overrides.delete(track.source_identity)
+        correction_identity = self._require_durable(track)
+        return self._track_overrides.delete(correction_identity)
+
+    def apply_saved_track_override(self, track: ResolvedTrack) -> ResolvedTrack:
+        """Apply an approval scoped to a stable or uniquely discovered identity."""
+
+        correction_identity = durable_correction_identity(track)
+        if correction_identity is None:
+            return track
+        approved = self._track_overrides.get(correction_identity)
+        if approved is None:
+            return track
+        return with_approved_track_identity(track, approved)
 
     def approve_current(
         self, track: ResolvedTrack, resolution: LyricsResolutionResult
     ) -> None:
         """Approve the current document without altering its provider content."""
 
-        self._require_durable(track)
+        correction_identity = self._require_durable(track)
         document = self._require_current_document(track, resolution)
         evidence = tuple(
             dict.fromkeys((*resolution.evidence, "explicitly approved by the user"))
         )
         self._matches.approve(
-            track.source_identity,
+            correction_identity,
             LyricsMatch(
                 document.document_id,
                 LyricsMatchDecision.APPROVED,
@@ -309,7 +335,7 @@ class ReviewCorrectionService:
     ) -> None:
         """Reject the current document so automatic resolution skips it."""
 
-        self._require_durable(track)
+        correction_identity = self._require_durable(track)
         document = self._require_current_document(track, resolution)
         evidence = tuple(
             dict.fromkeys((*resolution.evidence, "explicitly rejected by the user"))
@@ -322,14 +348,14 @@ class ReviewCorrectionService:
             resolution.confidence or LyricsMatchConfidence.LOW,
             evidence,
         )
-        self._matches.reject(track.source_identity, rejected)
+        self._matches.reject(correction_identity, rejected)
 
     def choose_alternative(
         self, track: ResolvedTrack, alternative: LyricsAlternative
     ) -> None:
         """Build and approve one explicitly selected provider alternative."""
 
-        self._require_durable(track)
+        correction_identity = self._require_durable(track)
         expected_id = self._provider_documents.document_id(alternative.candidate)
         if expected_id != alternative.document_id:
             raise ReviewCorrectionError("alternative document identity is inconsistent")
@@ -341,7 +367,7 @@ class ReviewCorrectionService:
             raise ReviewCorrectionError(f"selected alternative is invalid: {detail}")
         self._lyrics.put(document)
         self._matches.approve(
-            track.source_identity,
+            correction_identity,
             LyricsMatch(
                 document.document_id,
                 LyricsMatchDecision.APPROVED,
@@ -361,7 +387,7 @@ class ReviewCorrectionService:
     ) -> None:
         """Reject one review candidate without replacing a usable current match."""
 
-        self._require_durable(track)
+        correction_identity = self._require_durable(track)
         expected_id = self._provider_documents.document_id(alternative.candidate)
         if expected_id != alternative.document_id:
             raise ReviewCorrectionError("alternative document identity is inconsistent")
@@ -373,7 +399,7 @@ class ReviewCorrectionService:
             raise ReviewCorrectionError(f"selected alternative is invalid: {detail}")
         self._lyrics.put(document)
         self._matches.put_rejection(
-            track.source_identity,
+            correction_identity,
             LyricsMatch(
                 document.document_id,
                 LyricsMatchDecision.REJECTED,
@@ -391,8 +417,8 @@ class ReviewCorrectionService:
     def reset_match(self, track: ResolvedTrack) -> bool:
         """Reset current and rejected recording-to-document preferences."""
 
-        self._require_durable(track)
-        return self._matches.reset(track.source_identity)
+        correction_identity = self._require_durable(track)
+        return self._matches.reset(correction_identity)
 
     def set_display_delay(
         self,
@@ -423,11 +449,13 @@ class ReviewCorrectionService:
             raise ReviewCorrectionError("review result belongs to another source")
 
     @staticmethod
-    def _require_durable(track: ResolvedTrack) -> None:
-        if track.source_identity.persistence_scope is not PersistenceScope.PERMANENT:
+    def _require_durable(track: ResolvedTrack) -> SourceIdentity:
+        correction_identity = durable_correction_identity(track)
+        if correction_identity is None:
             raise ReviewCorrectionError(
                 "session-only sources cannot receive durable corrections"
             )
+        return correction_identity
 
     @classmethod
     def _require_current_document(

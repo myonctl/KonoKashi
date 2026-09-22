@@ -127,16 +127,28 @@ def test_unique_topic_search_supplies_hypotheses_but_not_a_source_identity() -> 
     assert enricher.calls[0][0].source_identity.video_id == VIDEO_ID
     assert discovered.cache_hit is True
     assert discovered.network_used is True
+    assert discovered.correction_identity_hint == YouTubeIdentity(VIDEO_ID)
     assert "URL unconfirmed" in discovered.candidates[0].evidence[-1]
     enriched_track = with_discovered_web_metadata_candidates(
-        track, discovered.candidates
+        track,
+        discovered.candidates,
+        correction_identity_hint=discovered.correction_identity_hint,
     )
     assert isinstance(enriched_track.source_identity, GenericMprisIdentity)
     assert enriched_track.source_identity == track.source_identity
+    assert enriched_track.correction_identity_hint == YouTubeIdentity(VIDEO_ID)
+    assert "explicit user corrections" in enriched_track.evidence[-1]
     assert enriched_track.raw_snapshot == track.raw_snapshot
     assert enriched_track.interpretation_candidates[-1].title == (
         "FABLE - Glass Horizon"
     )
+
+    without_candidates = with_discovered_web_metadata_candidates(
+        track,
+        (),
+        correction_identity_hint=YouTubeIdentity(VIDEO_ID),
+    )
+    assert without_candidates.correction_identity_hint is None
 
 
 def test_multiple_exact_videos_or_conflicting_metadata_do_not_enrich() -> None:
@@ -155,6 +167,7 @@ def test_multiple_exact_videos_or_conflicting_metadata_do_not_enrich() -> None:
         )
         result = discoverer.discover(track)
         assert result.candidates == ()
+        assert result.correction_identity_hint is None
         assert result.network_used is True
     assert enricher.calls == []
 
@@ -183,7 +196,9 @@ def test_exact_browser_track_reuses_only_short_lived_session_hypotheses() -> Non
     assert repeat.candidates == first.candidates == offline_repeat.candidates
     assert repeat.cache_hit is True
     assert repeat.network_used is False
+    assert repeat.correction_identity_hint == YouTubeIdentity(VIDEO_ID)
     assert offline_repeat.network_used is False
+    assert offline_repeat.correction_identity_hint == YouTubeIdentity(VIDEO_ID)
     assert command_calls == len(enricher.calls) == 1
 
     refreshed = discoverer.discover(track, refresh=True)
@@ -229,6 +244,7 @@ def test_exact_discovery_is_reused_across_fresh_sessions_without_search() -> Non
     assert repeat.candidates == first.candidates
     assert repeat.cache_hit is True
     assert repeat.network_used is False
+    assert repeat.correction_identity_hint == YouTubeIdentity(VIDEO_ID)
     assert command_calls == 1
     assert len(enricher.calls) == 2
     assert len(cache.puts) == 1
@@ -285,6 +301,7 @@ def test_later_exact_ambiguity_invalidates_prior_durable_discovery() -> None:
     ).discover(_track_with_id("/track/3"), offline=True)
 
     assert ambiguous.candidates == ()
+    assert ambiguous.correction_identity_hint is None
     assert cache.values == {}
     assert offline.candidates == ()
 

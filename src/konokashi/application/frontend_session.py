@@ -381,11 +381,14 @@ class FrontendSessionService:
             retry_ms = 0
             if discovery.candidates and generation == self._current_generation():
                 enriched_track = with_discovered_web_metadata_candidates(
-                    track, discovery.candidates
+                    track,
+                    discovery.candidates,
+                    correction_identity_hint=discovery.correction_identity_hint,
                 )
-                if enriched_track.interpretation_candidates != (
-                    track.interpretation_candidates or (track.candidate,)
-                ):
+                enriched_track = self._corrections.apply_saved_track_override(
+                    enriched_track
+                )
+                if enriched_track != track:
                     track = enriched_track
                     retry_started = self._monotonic()
                     result = self._lyrics.resolve(

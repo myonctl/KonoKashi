@@ -463,6 +463,85 @@ def test_session_only_and_stale_source_corrections_are_rejected(tmp_path: Path) 
         service.set_display_delay(stable, stale_resolution, 125_000)
 
 
+def test_discovered_video_hint_scopes_durable_user_knowledge_without_replacing_source(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "discovered-user-knowledge.sqlite3"
+    service, storage = _service(path)
+    hint = YouTubeIdentity("AbCdEfGh123")
+    track = replace(_track(generic=True), correction_identity_hint=hint)
+    builder = ProviderLyricDocumentBuilder()
+    document, _ = builder.build(_candidate("chosen"), NOW)
+    assert document is not None
+    storage.lyrics.put(document)  # type: ignore[attr-defined]
+    resolution = LyricsResolutionResult(
+        track.source_identity,
+        LyricsResolutionStatus.FOUND_TIMED,
+        document,
+        "LRCLIB",
+        LyricsMatchConfidence.HIGH,
+    )
+
+    service.put_track_override(
+        track,
+        title="Correct Title",
+        artists=("Correct Artist",),
+        album="Correct Album",
+    )
+    service.approve_current(track, resolution)
+    snapshot = service.snapshot(
+        track,
+        resolution,
+        LyricsAlternativeResult(track.source_identity),
+    )
+    corrected = service.apply_saved_track_override(track)
+
+    assert snapshot.durable
+    assert snapshot.has_track_override
+    assert snapshot.current_match_decision is LyricsMatchDecision.APPROVED
+    assert isinstance(corrected.source_identity, GenericMprisIdentity)
+    assert corrected.source_identity == track.source_identity
+    assert corrected.correction_identity_hint == hint
+    assert corrected.user_approved
+    assert corrected.candidate.title == "Correct Title"
+    restarted = open_storage(path)
+    assert restarted.track_overrides.get(hint) is not None
+    approved = restarted.lyrics_matches.get(hint)
+    assert approved is not None
+    assert approved.document_id == document.document_id
+
+
+def test_discovered_hint_does_not_present_provider_candidate_as_user_knowledge(
+    tmp_path: Path,
+) -> None:
+    service, storage = _service(tmp_path / "discovered-provider-candidate.sqlite3")
+    hint = YouTubeIdentity("AbCdEfGh123")
+    track = replace(_track(generic=True), correction_identity_hint=hint)
+    builder = ProviderLyricDocumentBuilder()
+    document, _ = builder.build(_candidate("automatic"), NOW)
+    assert document is not None
+    storage.lyrics.put(document)  # type: ignore[attr-defined]
+    storage.lyrics_matches.put(  # type: ignore[attr-defined]
+        hint,
+        LyricsMatch(
+            document.document_id,
+            LyricsMatchDecision.CANDIDATE,
+            ContentProvenance.PROVIDER,
+            NOW,
+            LyricsMatchConfidence.HIGH,
+        ),
+    )
+
+    snapshot = service.snapshot(
+        track,
+        LyricsResolutionResult(track.source_identity, LyricsResolutionStatus.NO_RESULT),
+        LyricsAlternativeResult(track.source_identity),
+    )
+
+    assert snapshot.durable
+    assert snapshot.current_match_decision is None
+
+
 def test_blank_track_correction_is_controlled(tmp_path: Path) -> None:
     service, _storage = _service(tmp_path / "blank.sqlite3")
     with pytest.raises(ReviewCorrectionError, match="non-blank"):

@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from enum import Enum
 
-from konokashi.domain.identity import SourceIdentity
+from konokashi.domain.identity import PersistenceScope, SourceIdentity, YouTubeIdentity
 from konokashi.domain.models import PlayerSnapshot
 
 MAX_SEMANTIC_TRACK_DURATION_US = 7 * 24 * 60 * 60 * 1_000_000
@@ -81,6 +81,20 @@ class ResolvedTrack:
     automatic_candidate: TrackCandidate | None = None
     automatic_confidence: Confidence | None = None
     interpretation_candidates: tuple[TrackCandidate, ...] = field(default_factory=tuple)
+    correction_identity_hint: YouTubeIdentity | None = None
+
+
+def durable_correction_identity(track: ResolvedTrack) -> SourceIdentity | None:
+    """Return the identity safe for explicit user knowledge, if one exists.
+
+    A URL-less browser observation remains session-only even after bounded public-
+    video discovery.  Its uniquely discovered video ID may nevertheless scope an
+    explicit user correction without promoting that searched ID to playback truth.
+    """
+
+    if track.source_identity.persistence_scope is PersistenceScope.PERMANENT:
+        return track.source_identity
+    return track.correction_identity_hint
 
 
 @dataclass(frozen=True, slots=True)

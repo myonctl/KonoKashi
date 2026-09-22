@@ -53,6 +53,7 @@ from konokashi.domain.tracks import (
     Confidence,
     ResolvedTrack,
     TrackCandidate,
+    durable_correction_identity,
     semantic_duration_us,
 )
 
@@ -237,11 +238,10 @@ class LyricsResolver:
         )
         if not self._is_current(cancellation_token):
             return self._cancelled_resolution(track, [], False)
-        source = track.source_identity
         diagnostics: list[str] = []
         invalid_local_seen = False
-        current_match = self._matches.get(source)
-        rejected_matches = list(self._matches.rejections(source))
+        current_match, known_rejections = self._knowledge_matches(track)
+        rejected_matches = list(known_rejections)
         if (
             current_match is not None
             and current_match.decision is LyricsMatchDecision.REJECTED
@@ -673,17 +673,14 @@ class LyricsResolver:
             )
         )
 
-        current_match = self._matches.get(track.source_identity)
+        current_match, known_rejections = self._knowledge_matches(track)
         current_document_id = (
             None if current_match is None else current_match.document_id
         )
-        rejected_document_ids = {
-            match.document_id
-            for match in self._matches.rejections(track.source_identity)
-        }
+        rejected_document_ids = {match.document_id for match in known_rejections}
         rejected_content_signatures = {
             signature
-            for match in self._matches.rejections(track.source_identity)
+            for match in known_rejections
             if (document := self._lyrics.get(match.document_id)) is not None
             if (signature := _document_content_signature(document)) is not None
         }
@@ -730,6 +727,27 @@ class LyricsResolver:
             network_used,
             query.title,
             query.artists,
+        )
+
+    def _knowledge_matches(
+        self, track: ResolvedTrack
+    ) -> tuple[LyricsMatch | None, tuple[LyricsMatch, ...]]:
+        """Load reusable state without granting automatic searched-ID persistence."""
+
+        identity = durable_correction_identity(track)
+        if identity is None:
+            return None, ()
+        current = self._matches.get(identity)
+        rejected = self._matches.rejections(identity)
+        if identity == track.source_identity:
+            return current, rejected
+        # A searched video ID is only a namespace for deliberate user knowledge.
+        # Provider-generated candidates saved from direct playback cannot silently
+        # turn an unconfirmed URL-less browser observation into playback truth.
+        if current is not None and current.provenance is not ContentProvenance.USER:
+            current = None
+        return current, tuple(
+            match for match in rejected if match.provenance is ContentProvenance.USER
         )
 
     def search(
