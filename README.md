@@ -232,9 +232,10 @@ title, channel label, and rounded duration can reuse the public video ID and
 its sanitized metadata without repeating the search. The durable entry stores
 a hashed observation key and the public video ID, not the title, channel,
 lyrics, URL, or browser track ID. Ambiguity and failed requests are never
-written. An expired successful entry may be reused only in offline mode. Cache
-reuse still supplies recording hypotheses rather than changing the
-session-only source identity.
+written, and a later successful search that finds multiple exact videos
+invalidates the prior mapping. An expired successful entry may be reused only
+in offline mode. Cache reuse still supplies recording hypotheses rather than
+changing the session-only source identity.
 `konokashi lyrics current` uses the same automatic enrichment and retry policy
 as the desktop; its bounded preview remains the default for lyric text.
 The metadata command requests only the fields needed for interpretation; it

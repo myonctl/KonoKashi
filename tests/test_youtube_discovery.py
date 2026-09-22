@@ -258,6 +258,37 @@ def test_ambiguous_or_failed_discovery_never_seeds_durable_cache() -> None:
     assert enricher.calls == []
 
 
+def test_later_exact_ambiguity_invalidates_prior_durable_discovery() -> None:
+    cache = _Cache()
+    enricher = _Enricher()
+    discoverer = YtDlpYouTubeMediaDiscoverer(
+        enricher,
+        cache=cache,
+        now=lambda: NOW,
+        command=lambda *_args: _entry(),  # type: ignore[arg-type]
+    )
+    track = _track_with_id("/track/1")
+    assert discoverer.discover(track).candidates
+    assert cache.values
+
+    ambiguous = YtDlpYouTubeMediaDiscoverer(
+        enricher,
+        cache=cache,
+        now=lambda: NOW,
+        command=lambda *_args: b"\n".join((_entry(), _entry("ZyXwVuTs987"))),  # type: ignore[arg-type]
+    ).discover(_track_with_id("/track/2"), refresh=True)
+    offline = YtDlpYouTubeMediaDiscoverer(
+        enricher,
+        cache=cache,
+        now=lambda: NOW,
+        command=lambda *_args: (_ for _ in ()).throw(AssertionError("searched")),
+    ).discover(_track_with_id("/track/3"), offline=True)
+
+    assert ambiguous.candidates == ()
+    assert cache.values == {}
+    assert offline.candidates == ()
+
+
 def test_malformed_durable_discovery_entry_fails_closed_and_is_replaced() -> None:
     cache = _Cache()
     enricher = _Enricher()

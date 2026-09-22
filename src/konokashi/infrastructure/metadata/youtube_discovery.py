@@ -353,6 +353,9 @@ class YtDlpYouTubeMediaDiscoverer:
                 self._pending.discard(cancellation)
         elapsed_ms = max(0, round((monotonic() - started) * 1000))
         if len(matches) != 1:
+            if len(matches) > 1 and self._cache is not None:
+                # A formerly unique observation is no longer safe to reuse.
+                self._cache.delete(_DISCOVERY_CACHE_PROVIDER, durable_key)
             return YouTubeMetadataDiscoveryResult(
                 diagnostics=(
                     "public-video search did not yield one unique exact "
