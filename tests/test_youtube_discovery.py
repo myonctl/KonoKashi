@@ -4,10 +4,12 @@ from __future__ import annotations
 
 import json
 from dataclasses import replace
+from datetime import UTC, datetime, timedelta
 from threading import Event
 
 from konokashi.application.resolve_track import with_discovered_web_metadata_candidates
 from konokashi.domain.identity import GenericMprisIdentity, YouTubeIdentity
+from konokashi.domain.lyrics import ProviderCacheEntry
 from konokashi.domain.tracks import TrackCandidate
 from konokashi.domain.youtube_metadata import YouTubeMetadataEnrichmentResult
 from konokashi.infrastructure.metadata.youtube_discovery import (
@@ -17,6 +19,23 @@ from konokashi.infrastructure.metadata.youtube_discovery import (
 from tests.stage2_helpers import resolver, snapshot
 
 VIDEO_ID = "AbCdEfGh123"
+NOW = datetime(2026, 9, 22, 12, tzinfo=UTC)
+
+
+class _Cache:
+    def __init__(self) -> None:
+        self.values: dict[tuple[str, str], ProviderCacheEntry] = {}
+        self.puts: list[ProviderCacheEntry] = []
+
+    def get(self, provider: str, cache_key: str) -> ProviderCacheEntry | None:
+        return self.values.get((provider, cache_key))
+
+    def put(self, entry: ProviderCacheEntry) -> None:
+        self.values[(entry.provider, entry.cache_key)] = entry
+        self.puts.append(entry)
+
+    def delete(self, provider: str, cache_key: str) -> bool:
+        return self.values.pop((provider, cache_key), None) is not None
 
 
 def _track(*, artist: str = "Example Maker - Topic"):
@@ -181,6 +200,135 @@ def test_exact_browser_track_reuses_only_short_lived_session_hypotheses() -> Non
     expired = discoverer.discover(track)
     assert expired.network_used is True
     assert command_calls == len(enricher.calls) == 4
+
+
+def test_exact_discovery_is_reused_across_fresh_sessions_without_search() -> None:
+    cache = _Cache()
+    command_calls = 0
+    enricher = _Enricher()
+
+    def command(*_args):  # type: ignore[no-untyped-def]
+        nonlocal command_calls
+        command_calls += 1
+        return _entry()
+
+    first = YtDlpYouTubeMediaDiscoverer(
+        enricher,
+        cache=cache,
+        now=lambda: NOW,
+        command=command,  # type: ignore[arg-type]
+    ).discover(_track_with_id("/org/mpris/MediaPlayer2/TrackList/Track1"))
+    repeat = YtDlpYouTubeMediaDiscoverer(
+        enricher,
+        cache=cache,
+        now=lambda: NOW,
+        command=lambda *_args: (_ for _ in ()).throw(AssertionError("searched")),
+    ).discover(_track_with_id("/org/mpris/MediaPlayer2/TrackList/Track99"))
+
+    assert first.network_used is True
+    assert repeat.candidates == first.candidates
+    assert repeat.cache_hit is True
+    assert repeat.network_used is False
+    assert command_calls == 1
+    assert len(enricher.calls) == 2
+    assert len(cache.puts) == 1
+    assert b"FABLE" not in cache.puts[0].payload
+    assert b"Example Maker" not in cache.puts[0].payload
+
+
+def test_ambiguous_or_failed_discovery_never_seeds_durable_cache() -> None:
+    cache = _Cache()
+    enricher = _Enricher()
+
+    ambiguous = YtDlpYouTubeMediaDiscoverer(
+        enricher,
+        cache=cache,
+        now=lambda: NOW,
+        command=lambda *_args: b"\n".join((_entry(), _entry("ZyXwVuTs987"))),  # type: ignore[arg-type]
+    ).discover(_track())
+    failed = YtDlpYouTubeMediaDiscoverer(
+        enricher,
+        cache=cache,
+        now=lambda: NOW,
+        command=lambda *_args: b"malformed",
+    ).discover(_track())
+
+    assert ambiguous.candidates == failed.candidates == ()
+    assert cache.puts == []
+    assert enricher.calls == []
+
+
+def test_malformed_durable_discovery_entry_fails_closed_and_is_replaced() -> None:
+    cache = _Cache()
+    enricher = _Enricher()
+    YtDlpYouTubeMediaDiscoverer(
+        enricher,
+        cache=cache,
+        now=lambda: NOW,
+        command=lambda *_args: _entry(),  # type: ignore[arg-type]
+    ).discover(_track_with_id("/track/1"))
+    original = cache.puts[0]
+    cache.values[(original.provider, original.cache_key)] = replace(
+        original, payload=b'{"version":1,"video_id":"too-short"}'
+    )
+    searches = 0
+
+    def command(*_args):  # type: ignore[no-untyped-def]
+        nonlocal searches
+        searches += 1
+        return _entry()
+
+    result = YtDlpYouTubeMediaDiscoverer(
+        enricher,
+        cache=cache,
+        now=lambda: NOW,
+        command=command,  # type: ignore[arg-type]
+    ).discover(_track_with_id("/track/2"))
+
+    assert result.candidates
+    assert result.network_used is True
+    assert searches == 1
+    assert len(cache.puts) == 2
+
+
+def test_expired_discovery_cache_is_online_miss_but_offline_fallback() -> None:
+    cache = _Cache()
+    enricher = _Enricher()
+    seed = YtDlpYouTubeMediaDiscoverer(
+        enricher,
+        cache=cache,
+        now=lambda: NOW,
+        command=lambda *_args: _entry(),  # type: ignore[arg-type]
+    )
+    seed.discover(_track_with_id("/track/1"))
+
+    online_calls = 0
+
+    def online_command(*_args):  # type: ignore[no-untyped-def]
+        nonlocal online_calls
+        online_calls += 1
+        return _entry()
+
+    later = NOW + timedelta(days=4)
+    online = YtDlpYouTubeMediaDiscoverer(
+        enricher,
+        cache=cache,
+        now=lambda: later,
+        command=online_command,  # type: ignore[arg-type]
+    ).discover(_track_with_id("/track/2"))
+    offline = YtDlpYouTubeMediaDiscoverer(
+        enricher,
+        cache=cache,
+        now=lambda: later + timedelta(days=4),
+        command=lambda *_args: (_ for _ in ()).throw(AssertionError("searched")),
+    ).discover(_track_with_id("/track/3"), offline=True, refresh=True)
+
+    assert online.network_used is True
+    assert online_calls == 1
+    assert offline.candidates
+    assert offline.cache_hit is True
+    assert offline.network_used is False
+    assert "stale exact" in offline.diagnostics[0]
 
 
 def test_browser_observation_without_track_id_is_not_cached() -> None:

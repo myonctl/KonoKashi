@@ -24,6 +24,11 @@ All notable user-visible changes are recorded here.
 
 ### Changed
 
+- A uniquely corroborated URL-less browser discovery can now be reused across
+  fresh sessions for three days from a privacy-minimized local cache. Ambiguous
+  and failed searches are not cached, and reuse never promotes the browser
+  observation to a confirmed source identity.
+
 - Automatic provider resolution now runs exact lookups for up to four strong
   recording interpretations before bounded search, and can retry album-free
   duration lookups with one punctuation-normalized title form. Provider order

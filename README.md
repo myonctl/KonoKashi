@@ -226,9 +226,15 @@ dash-split title guess to Low confidence. Other URL-less titles remain
 conservative recovery cases, and corrections cannot be remembered for a video
 whose ID the browser did not report.
 For one unchanged browser track ID, successful discovery hypotheses are reused
-from memory for up to ten minutes to avoid repeating that public-video search.
-This cache is not durable, does not contain lyrics, and cannot identify a new
-browser track after its MPRIS track ID changes.
+from memory for up to ten minutes. A uniquely corroborated discovery is also
+cached locally for three days so a later session with the same normalized
+title, channel label, and rounded duration can reuse the public video ID and
+its sanitized metadata without repeating the search. The durable entry stores
+a hashed observation key and the public video ID, not the title, channel,
+lyrics, URL, or browser track ID. Ambiguity and failed requests are never
+written. An expired successful entry may be reused only in offline mode. Cache
+reuse still supplies recording hypotheses rather than changing the
+session-only source identity.
 `konokashi lyrics current` uses the same automatic enrichment and retry policy
 as the desktop; its bounded preview remains the default for lyric text.
 The metadata command requests only the fields needed for interpretation; it

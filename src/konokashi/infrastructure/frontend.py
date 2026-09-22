@@ -99,5 +99,8 @@ def create_frontend_session(
             storage.lyric_corrections,
             parser=lambda text, duration: parse_lyrics_text(text, duration_ms=duration),
         ),
-        youtube_discovery=YtDlpYouTubeMediaDiscoverer(youtube_metadata),
+        youtube_discovery=YtDlpYouTubeMediaDiscoverer(
+            youtube_metadata,
+            cache=storage.provider_cache,
+        ),
     )
