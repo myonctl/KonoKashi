@@ -267,7 +267,14 @@ class SettingsApp(App[int]):
 
     def on_mutation_finished(self, message: MutationFinished) -> None:
         self._mutation_busy = False
-        self._set_editing_enabled(True)
+        if not self._ui_ready:
+            return
+        try:
+            self._set_editing_enabled(True)
+        except (NoMatches, ScreenStackError):
+            # A worker result may already be queued while Textual is detaching
+            # the widget tree but before on_unmount clears _ui_ready.
+            return
         if message.error is not None or message.result is None:
             self._set_status(
                 f"Could not update {message.key}: {message.error or 'unknown error'}",

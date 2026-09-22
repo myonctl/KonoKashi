@@ -26,6 +26,7 @@ from konokashi.application.settings_service import (
 )
 from konokashi.infrastructure.configuration.toml_file import TomlSettingsFile
 from konokashi.presentation.tui.settings_app import SettingsApp
+from konokashi.presentation.tui.settings_messages import MutationFinished
 from konokashi.presentation.tui.settings_runtime import config_signature
 
 Scenario = Callable[[SettingsApp, Pilot[int]], Awaitable[None]]
@@ -638,6 +639,20 @@ def test_late_snapshot_refresh_is_ignored_after_widgets_detach(tmp_path: Path) -
     app._ui_ready = True
 
     assert app._refresh_changed_values(("lyrics.display.translated",)) is False
+
+
+def test_late_mutation_completion_is_ignored_after_widgets_detach(
+    tmp_path: Path,
+) -> None:
+    app = SettingsApp(service=_service(tmp_path / "config.toml"), watch_interval=0)
+    app._ui_ready = True
+    app._mutation_busy = True
+
+    app.on_mutation_finished(
+        MutationFinished("lyrics.display.translated", None, "already detached")
+    )
+
+    assert app._mutation_busy is False
 
 
 def test_external_atomic_remove_and_recreate_refreshes_app(tmp_path: Path) -> None:
