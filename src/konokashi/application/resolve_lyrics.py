@@ -1461,6 +1461,34 @@ class LyricsResolver:
                 for other in eligible[1:]
             ):
                 return eligible[0]
+            if (
+                provider_count == 1
+                and any(
+                    _same_provider_plain_text_collapse_anchor(item) for item in eligible
+                )
+                and all(
+                    _same_provider_plain_text_collapse_member(item)
+                    and _same_recording_identity_for_consensus(eligible[0], item)
+                    and _same_plain_lyric_content(eligible[0], item)
+                    for item in eligible
+                )
+            ):
+                return replace(
+                    eligible[0],
+                    candidate=replace(
+                        eligible[0].candidate,
+                        synced_lyrics=None,
+                        parsed_lyrics=None,
+                    ),
+                    timing_confidence=LyricsMatchConfidence.LOW,
+                    evidence=(
+                        *eligible[0].evidence,
+                        f"{len(eligible)} exact-identity records from one provider "
+                        "agree on identical plain lyric text",
+                        "recording rows or synchronized variants conflict; accepted "
+                        "the shared text without timestamps",
+                    ),
+                )
             if all(
                 _same_recording_fields(eligible[0], other)
                 and _same_lyric_content(eligible[0], other)
@@ -2095,6 +2123,36 @@ def _same_plain_lyric_content(
         and first_plain == _normalized_lyric_content(second.candidate.plain_lyrics)
         and not first.candidate.instrumental
         and not second.candidate.instrumental
+    )
+
+
+def _same_provider_plain_text_collapse_member(
+    assessment: CandidateMatchAssessment,
+) -> bool:
+    """Require each collapsed row to identify the same exact lyric text."""
+
+    return (
+        _automatically_eligible(assessment)
+        and assessment.text_confidence is LyricsMatchConfidence.HIGH
+        and assessment.title_relation in {"exact-raw", "normalized"}
+        and assessment.candidate.plain_lyrics is not None
+        and assessment.candidate.provider_confidence is not LyricsMatchConfidence.LOW
+        and "ordered main-artist credits match" in assessment.evidence
+        and not any(
+            "recording version" in evidence and "conflict" in evidence
+            for evidence in assessment.evidence
+        )
+    )
+
+
+def _same_provider_plain_text_collapse_anchor(
+    assessment: CandidateMatchAssessment,
+) -> bool:
+    """Require one High-confidence source row; duplicates cannot create trust."""
+
+    return (
+        _same_provider_plain_text_collapse_member(assessment)
+        and assessment.recording_identity_confidence is Confidence.HIGH
     )
 
 
