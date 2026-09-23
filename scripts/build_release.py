@@ -16,7 +16,7 @@ import tempfile
 import zipfile
 from email.parser import Parser
 from io import BytesIO
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 APP_ID = "io.github.myonctl.KonoKashi"
@@ -63,10 +63,32 @@ REQUIRED_SDIST_SUFFIXES = (
     f"src/konokashi/resources/{APP_ID}.metainfo.xml",
     f"src/konokashi/resources/{APP_ID}.svg",
 )
+PRIVATE_RELEASE_COMPONENTS = frozenset(
+    {
+        ".maintainer-private",
+        ".matching-evaluation-private",
+        ".release-readiness-work",
+    }
+)
 
 
 class ReleaseBuildError(RuntimeError):
     """A controlled release artifact failure."""
+
+
+def _reject_private_release_paths(names: set[str], artifact: str) -> None:
+    """Fail closed if an ignored maintainer-data directory enters an archive."""
+
+    leaked = sorted(
+        name
+        for name in names
+        if PRIVATE_RELEASE_COMPONENTS
+        & set(PurePosixPath(name.replace("\\", "/")).parts)
+    )
+    if leaked:
+        raise ReleaseBuildError(
+            f"{artifact} must not contain private evaluation data: {leaked[0]}"
+        )
 
 
 def _source_date_epoch(environment: dict[str, str]) -> str:
@@ -196,6 +218,7 @@ def _verify_contents(
     source = next(path for name, path in artifacts.items() if name.endswith(".tar.gz"))
     with zipfile.ZipFile(wheel) as archive:
         wheel_names = set(archive.namelist())
+        _reject_private_release_paths(wheel_names, "wheel")
         metadata_names = sorted(
             name for name in wheel_names if name.endswith(".dist-info/METADATA")
         )
@@ -235,6 +258,7 @@ def _verify_contents(
         raise ReleaseBuildError("wheel must not contain C++ source files")
     with tarfile.open(source, "r:gz") as archive:
         source_names = set(archive.getnames())
+    _reject_private_release_paths(source_names, "source distribution")
     missing_source = [
         suffix
         for suffix in REQUIRED_SDIST_SUFFIXES
