@@ -2482,6 +2482,109 @@ def test_base_title_without_plain_fallback_rejects_untrusted_sync_timing(
     assert "timing was not trusted" in " ".join(result.diagnostics)
 
 
+def test_exact_text_identity_with_near_duration_discards_untrusted_timing(
+    tmp_path: Path,
+) -> None:
+    track = _track(
+        title="Signal Fire",
+        artists=("Example Artist",),
+        album=None,
+        duration_us=180_000_000,
+    )
+    provider = _FakeProvider(
+        search=LyricsProviderResult(
+            LyricsProviderStatus.RESULTS,
+            (
+                _candidate(
+                    "near-duration",
+                    title="Signal Fire",
+                    artist="Example Artist",
+                    album=None,
+                    duration_ms=183_000,
+                ),
+            ),
+            raw_payload=b"near duration text identity",
+        )
+    )
+
+    result = _resolver(tmp_path / "near-duration-text.sqlite3", provider).resolve(track)
+
+    assert result.status is LyricsResolutionStatus.FOUND_UNTIMED
+    assert result.confidence is LyricsMatchConfidence.MEDIUM
+    assert result.document is not None
+    assert result.document.kind is LyricDocumentKind.PLAIN
+    assert result.document.provider_record_id == "near-duration"
+    assert "exact title and artist identify the lyric text" in " ".join(result.evidence)
+    assert "discarded synchronized timing" in " ".join(result.diagnostics)
+
+
+def test_near_duration_text_fallback_requires_high_identity_plain_text_and_uniqueness(
+    tmp_path: Path,
+) -> None:
+    track = _track(
+        title="Signal Fire",
+        artists=("Example Artist",),
+        album=None,
+        duration_us=180_000_000,
+    )
+    medium_candidate = replace(track.candidate, identity_confidence=Confidence.MEDIUM)
+    medium_track = replace(track, candidate=medium_candidate)
+    no_plain = _candidate(
+        "synced-only",
+        title="Signal Fire",
+        artist="Example Artist",
+        album=None,
+        duration_ms=183_000,
+        plain=None,
+    )
+    competing = (
+        _candidate(
+            "near-a",
+            title="Signal Fire",
+            artist="Example Artist",
+            album=None,
+            duration_ms=183_000,
+        ),
+        _candidate(
+            "near-b",
+            title="Signal Fire",
+            artist="Example Artist",
+            album=None,
+            duration_ms=183_500,
+            plain="Different words",
+            synced="[00:01.00]Different words",
+        ),
+    )
+
+    medium = _resolver(
+        tmp_path / "near-duration-medium.sqlite3",
+        _FakeProvider(
+            search=LyricsProviderResult(
+                LyricsProviderStatus.RESULTS,
+                (replace(no_plain, plain_lyrics="Plain words"),),
+            )
+        ),
+    ).resolve(medium_track)
+    synced_only = _resolver(
+        tmp_path / "near-duration-synced-only.sqlite3",
+        _FakeProvider(
+            search=LyricsProviderResult(LyricsProviderStatus.RESULTS, (no_plain,))
+        ),
+    ).resolve(track)
+    ambiguous = _resolver(
+        tmp_path / "near-duration-ambiguous.sqlite3",
+        _FakeProvider(
+            search=LyricsProviderResult(LyricsProviderStatus.RESULTS, competing)
+        ),
+    ).resolve(track)
+
+    assert medium.status is LyricsResolutionStatus.AMBIGUOUS
+    assert synced_only.status is LyricsResolutionStatus.AMBIGUOUS
+    assert ambiguous.status is LyricsResolutionStatus.AMBIGUOUS
+    assert ambiguous.document is None
+    assert {item.record_id for item in ambiguous.alternatives} == {"near-a", "near-b"}
+
+
 def test_broad_artist_catalogue_can_resolve_cross_script_phonetic_title(
     tmp_path: Path,
 ) -> None:

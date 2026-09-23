@@ -411,7 +411,9 @@ class LyricsResolver:
                         )
                 if not self._is_current(cancellation_token):
                     return self._cancelled_resolution(track, diagnostics, network_used)
-                accepted = self._unique_high(_deduplicate_assessments(all_assessments))
+                accepted = self._unique_automatic(
+                    _deduplicate_assessments(all_assessments)
+                )
                 if accepted is not None:
                     return self._accept_provider(
                         track,
@@ -490,7 +492,7 @@ class LyricsResolver:
                 f"provider strategy {strategy!r} returned "
                 f"{strategy_candidates} candidates"
             )
-            accepted = self._unique_high(_deduplicate_assessments(all_assessments))
+            accepted = self._unique_automatic(_deduplicate_assessments(all_assessments))
             if accepted is not None:
                 return self._accept_provider(
                     track,
@@ -552,7 +554,9 @@ class LyricsResolver:
                         )
                 if not self._is_current(cancellation_token):
                     return self._cancelled_resolution(track, diagnostics, network_used)
-                accepted = self._unique_high(_deduplicate_assessments(all_assessments))
+                accepted = self._unique_automatic(
+                    _deduplicate_assessments(all_assessments)
+                )
                 if accepted is not None:
                     return self._accept_provider(
                         track,
@@ -563,7 +567,7 @@ class LyricsResolver:
                         cancellation_token=cancellation_token,
                     )
         assessments = _deduplicate_assessments(all_assessments)
-        accepted = self._unique_high(assessments)
+        accepted = self._unique_automatic(assessments)
         if accepted is not None:
             return self._accept_provider(
                 track,
@@ -1099,7 +1103,7 @@ class LyricsResolver:
                 rejected_content_signatures,
             )
         ]
-        return self._unique_high(_deduplicate_assessments(assessments)) is not None
+        return self._unique_automatic(_deduplicate_assessments(assessments)) is not None
 
     def _results_are_usable(
         self,
@@ -1383,31 +1387,42 @@ class LyricsResolver:
                 ),
             )
 
-    def _unique_high(
+    def _unique_automatic(
         self,
         assessments: Sequence[CandidateMatchAssessment],
     ) -> CandidateMatchAssessment | None:
-        high = self._ordered(
+        eligible = self._ordered(
             [
                 assessment
                 for assessment in _deduplicate_assessments(assessments)
                 if _automatically_eligible(assessment)
             ]
         )
-        if len(high) == 1:
-            return high[0]
-        if len(high) > 1:
-            provider_count = len({item.candidate.provider for item in high})
-            first_relation = _title_relation_strength(high[0])
+        if len(eligible) == 1:
+            selected = eligible[0]
+            if _plain_text_fallback_eligible(selected):
+                return replace(
+                    selected,
+                    evidence=(
+                        *selected.evidence,
+                        "exact title and artist identify the lyric text; near "
+                        "duration is insufficient to trust synchronized timing",
+                    ),
+                )
+            return selected
+        if len(eligible) > 1:
+            provider_count = len({item.candidate.provider for item in eligible})
+            first_relation = _title_relation_strength(eligible[0])
             if all(
-                first_relation < _title_relation_strength(other) for other in high[1:]
+                first_relation < _title_relation_strength(other)
+                for other in eligible[1:]
             ):
-                return high[0]
-            best_album = min(high, key=_album_evidence_strength)
+                return eligible[0]
+            best_album = min(eligible, key=_album_evidence_strength)
             best_album_strength = _album_evidence_strength(best_album)
             if all(
                 best_album_strength < _album_evidence_strength(other)
-                for other in high
+                for other in eligible
                 if other is not best_album
             ):
                 return replace(
@@ -1421,11 +1436,11 @@ class LyricsResolver:
             content_dominator = next(
                 (
                     candidate
-                    for candidate in high
+                    for candidate in eligible
                     if all(
                         _same_lyric_content(candidate, other)
                         and _evidence_dominates(candidate, other)
-                        for other in high
+                        for other in eligible
                         if other is not candidate
                     )
                 ),
@@ -1440,41 +1455,42 @@ class LyricsResolver:
                         "content-identical provider duplicates",
                     ),
                 )
-            if high[0].candidate.synced_lyrics and all(
-                _same_recording_fields(high[0], other)
+            if eligible[0].candidate.synced_lyrics and all(
+                _same_recording_fields(eligible[0], other)
                 and not other.candidate.synced_lyrics
-                for other in high[1:]
+                for other in eligible[1:]
             ):
-                return high[0]
+                return eligible[0]
             if all(
-                _same_recording_fields(high[0], other)
-                and _same_lyric_content(high[0], other)
-                for other in high[1:]
-            ) and provider_count == len(high):
+                _same_recording_fields(eligible[0], other)
+                and _same_lyric_content(eligible[0], other)
+                for other in eligible[1:]
+            ) and provider_count == len(eligible):
                 return replace(
-                    high[0],
+                    eligible[0],
                     evidence=(
-                        *high[0].evidence,
-                        f"{len(high)} independent providers agree on identical "
+                        *eligible[0].evidence,
+                        f"{len(eligible)} independent providers agree on identical "
                         "recording fields, lyric text, and timing",
                     ),
                 )
             if provider_count >= 2 and all(
-                _same_recording_identity_for_consensus(high[0], other)
-                and _same_plain_lyric_content(high[0], other)
-                for other in high[1:]
+                _same_recording_identity_for_consensus(eligible[0], other)
+                and _same_plain_lyric_content(eligible[0], other)
+                for other in eligible[1:]
             ):
                 return replace(
-                    high[0],
+                    eligible[0],
                     candidate=replace(
-                        high[0].candidate,
+                        eligible[0].candidate,
                         synced_lyrics=None,
                         parsed_lyrics=None,
                     ),
                     timing_confidence=LyricsMatchConfidence.LOW,
                     evidence=(
-                        *high[0].evidence,
-                        f"{len(high)} eligible records from {provider_count} distinct "
+                        *eligible[0].evidence,
+                        f"{len(eligible)} eligible records from {provider_count} "
+                        "distinct "
                         "providers agree on exact plain lyric text",
                         "synchronized variants conflict; accepted the shared text "
                         "without timestamps",
@@ -1920,9 +1936,35 @@ def _automatically_eligible(assessment: CandidateMatchAssessment) -> bool:
     return not _acceptance_failures(assessment)
 
 
+def _plain_text_fallback_eligible(assessment: CandidateMatchAssessment) -> bool:
+    """Accept only exact text identity when a near duration cannot prove timing."""
+
+    return (
+        assessment.confidence is LyricsMatchConfidence.MEDIUM
+        and assessment.text_confidence is LyricsMatchConfidence.HIGH
+        and assessment.timing_confidence is not LyricsMatchConfidence.HIGH
+        and assessment.recording_identity_confidence is Confidence.HIGH
+        and assessment.title_relation in {"exact-raw", "normalized"}
+        and assessment.duration_difference_ms is not None
+        and 2_000 < assessment.duration_difference_ms <= 5_000
+        and assessment.retrieval_confidence
+        in {RetrievalConfidence.HIGH, RetrievalConfidence.MEDIUM}
+        and assessment.candidate.plain_lyrics is not None
+        and assessment.candidate.provider_confidence is not LyricsMatchConfidence.LOW
+        and "ordered main-artist credits match" in assessment.evidence
+        and not any(
+            "recording version" in evidence and "conflict" in evidence
+            for evidence in assessment.evidence
+        )
+    )
+
+
 def _acceptance_failures(assessment: CandidateMatchAssessment) -> tuple[str, ...]:
     failures: list[str] = []
-    if assessment.confidence is not LyricsMatchConfidence.HIGH:
+    if (
+        assessment.confidence is not LyricsMatchConfidence.HIGH
+        and not _plain_text_fallback_eligible(assessment)
+    ):
         failures.append("overall recording evidence is not High")
     if assessment.text_confidence is not LyricsMatchConfidence.HIGH:
         failures.append("lyric-text identity is not High")
