@@ -1077,7 +1077,7 @@ def test_multiple_high_candidates_remain_ambiguous_even_with_closest_duration(
     )
 
 
-def test_same_provider_exact_identity_duplicates_share_plain_text_without_timing(
+def test_same_provider_exact_identity_duplicates_do_not_create_independent_trust(
     tmp_path: Path,
 ) -> None:
     track = _track(album=None)
@@ -1099,42 +1099,12 @@ def test_same_provider_exact_identity_duplicates_share_plain_text_without_timing
 
     result = _resolver(tmp_path / "same-content.sqlite3", provider).resolve(track)
 
-    assert result.status is LyricsResolutionStatus.FOUND_UNTIMED
-    assert result.document is not None
-    assert result.document.kind is LyricDocumentKind.PLAIN
-    assert result.document.original_text == "First\nSecond"
-    assert any(
-        "exact-identity records from one provider" in item for item in result.evidence
-    )
-    assert any("without timestamps" in item for item in result.evidence)
-
-
-def test_same_provider_plain_text_collapse_requires_high_source_identity(
-    tmp_path: Path,
-) -> None:
-    track = _track(album=None)
-    track = replace(
-        track,
-        candidate=replace(track.candidate, identity_confidence=Confidence.MEDIUM),
-        confidence=Confidence.MEDIUM,
-    )
-    provider = _FakeProvider(
-        search=LyricsProviderResult(
-            LyricsProviderStatus.RESULTS,
-            (
-                _candidate("duplicate-a", album="Compilation A"),
-                _candidate("duplicate-b", album="Compilation B"),
-            ),
-            raw_payload=b"duplicate provider records",
-        )
-    )
-
-    result = _resolver(tmp_path / "medium-source-duplicates.sqlite3", provider).resolve(
-        track
-    )
-
     assert result.status is LyricsResolutionStatus.AMBIGUOUS
     assert result.document is None
+    assert {item.record_id for item in result.alternatives} == {
+        "duplicate-a",
+        "duplicate-b",
+    }
 
 
 def test_complete_credit_breaks_only_content_identical_provider_duplicate_tie(
