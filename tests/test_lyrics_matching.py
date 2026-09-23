@@ -349,6 +349,96 @@ def test_specific_version_qualifiers_are_not_interchangeable(
     assert "recording version qualifiers conflict" in assessment.evidence
 
 
+def test_named_version_can_be_corroborated_by_title_shaped_provider_album() -> None:
+    query = LyricsQuery(
+        "Synthetic Song (Alpha Duo & Beta Artist Remix)",
+        ("Synthetic Artist",),
+        None,
+        180_000,
+    )
+    assessment = assess_candidate(
+        query,
+        _candidate(
+            title="Synthetic Song",
+            artist="Synthetic Artist",
+            album="Synthetic Song (Club Cut / Alpha Duo x Beta Artist Remix)",
+            duration_ms=179_800,
+        ),
+    )
+
+    assert assessment.confidence is LyricsMatchConfidence.HIGH
+    assert assessment.text_confidence is LyricsMatchConfidence.HIGH
+    assert assessment.timing_confidence is LyricsMatchConfidence.HIGH
+    assert assessment.title_relation == "base-title-version-corroborated"
+    assert "provider album corroborates source version qualifier" in (
+        assessment.evidence
+    )
+
+
+@pytest.mark.parametrize(
+    "album",
+    (
+        "Synthetic Song (Unrelated Producer Remix)",
+        "Different Song (Alpha Duo x Beta Artist Remix)",
+        "Synthetic Song (Remix)",
+    ),
+)
+def test_provider_album_needs_specific_matching_version_evidence(album: str) -> None:
+    assessment = assess_candidate(
+        LyricsQuery(
+            "Synthetic Song (Alpha Duo & Beta Artist Remix)",
+            ("Synthetic Artist",),
+            None,
+            180_000,
+        ),
+        _candidate(
+            title="Synthetic Song",
+            artist="Synthetic Artist",
+            album=album,
+            duration_ms=180_000,
+        ),
+    )
+
+    assert assessment.confidence is LyricsMatchConfidence.LOW
+    assert "provider album corroborates source version qualifier" not in (
+        assessment.evidence
+    )
+
+
+def test_retained_source_label_is_corroboration_without_becoming_artist() -> None:
+    query = LyricsQuery(
+        "Synthetic Song",
+        ("Synthetic Artist",),
+        None,
+        180_000,
+        source_labels=("Synthetic Label",),
+    )
+    matching_album = assess_candidate(
+        query,
+        _candidate(
+            title="Synthetic Song",
+            artist="Synthetic Artist",
+            album="Synthetic Label",
+            duration_ms=180_000,
+        ),
+    )
+    uploader_as_artist = assess_candidate(
+        query,
+        _candidate(
+            title="Synthetic Song",
+            artist="Synthetic Label",
+            album="Synthetic Label",
+            duration_ms=180_000,
+        ),
+    )
+
+    assert "provider album matches retained source label" in matching_album.evidence
+    assert uploader_as_artist.confidence is LyricsMatchConfidence.LOW
+    assert "provider album matches retained source label" not in (
+        uploader_as_artist.evidence
+    )
+
+
 def test_raw_exact_title_relation_outranks_normalized_equivalence() -> None:
     query = LyricsQuery("Song (Radio Edit)", ("Artist",), None, 180_000)
 

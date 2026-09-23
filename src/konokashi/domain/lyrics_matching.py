@@ -60,6 +60,7 @@ _VERSION_MARKERS = (
 _BASE_FALLBACK_QUALIFIERS = frozenset(
     {"radio edit", "radio version", "edit", "single version", "album version"}
 )
+_VERSION_TOKEN_CONNECTORS = frozenset({"and", "x"})
 
 
 @dataclass(frozen=True, slots=True)
@@ -156,7 +157,14 @@ def assess_candidate(
 
     query_versions = _version_markers(query.title)
     provider_versions = _version_markers(candidate.track_name)
-    markers_compatible = query_versions == provider_versions
+    album_version_corroborates = _album_version_corroborates(
+        query.title,
+        candidate.track_name,
+        candidate.album_name,
+    )
+    markers_compatible = (
+        query_versions == provider_versions or album_version_corroborates
+    )
     duration_difference: int | None = None
     duration_compatible = False
     if query.duration_ms is not None and candidate.duration_ms is not None:
@@ -192,12 +200,17 @@ def assess_candidate(
         and query_qualifier in _BASE_FALLBACK_QUALIFIERS
         and provider_qualifier is None
     )
+    versioned_base_match = base_equal and album_version_corroborates
     if safe_base_fallback:
         evidence.append(
             f"base title matches; local qualifier {query_version.qualifier!r} retained"
         )
     if version_compatible and query_versions:
-        evidence.append("recording version markers match")
+        evidence.append(
+            "provider album corroborates source version qualifier"
+            if album_version_corroborates
+            else "recording version markers match"
+        )
     elif safe_base_fallback:
         evidence.append(
             "provider title is unqualified; recording timing is evaluated separately"
@@ -243,6 +256,24 @@ def assess_candidate(
             else "normalized album differs"
         )
 
+    source_label_album_match = (
+        query.album is None
+        and bool(candidate.album_name)
+        and title_equal
+        and artist_high_eligible
+        and duration_compatible
+        and comparison_key(candidate.album_name or "")
+        in {
+            comparison_key(label)
+            for label in query.source_labels
+            if comparison_key(label)
+        }
+        and comparison_key(candidate.album_name or "")
+        not in {*query_main, *query_contributors}
+    )
+    if source_label_album_match:
+        evidence.append("provider album matches retained source label")
+
     instrumental_compatible = (
         not candidate.instrumental or query_qualifier == "instrumental" or title_equal
     )
@@ -255,6 +286,8 @@ def assess_candidate(
         title_relation = "normalized"
     elif safe_base_fallback:
         title_relation = "base-title"
+    elif versioned_base_match:
+        title_relation = "base-title-version-corroborated"
     elif phonetic_match:
         title_relation = "phonetic-transliteration"
     else:
@@ -264,14 +297,21 @@ def assess_candidate(
         artist_high_eligible
         and instrumental_compatible
         and (
-            (title_equal and version_compatible) or safe_base_fallback or phonetic_match
+            (title_equal and version_compatible)
+            or safe_base_fallback
+            or versioned_base_match
+            or phonetic_match
         )
     ):
         text_confidence = LyricsMatchConfidence.HIGH
     elif (
         artist_correlated
         and instrumental_compatible
-        and ((title_equal and version_compatible) or safe_base_fallback)
+        and (
+            (title_equal and version_compatible)
+            or safe_base_fallback
+            or versioned_base_match
+        )
     ):
         text_confidence = LyricsMatchConfidence.MEDIUM
     else:
@@ -294,7 +334,7 @@ def assess_candidate(
         timing_confidence = LyricsMatchConfidence.LOW
 
     if (
-        title_equal
+        (title_equal or versioned_base_match)
         and artist_high_eligible
         and version_compatible
         and duration_compatible
@@ -302,7 +342,7 @@ def assess_candidate(
     ):
         confidence = LyricsMatchConfidence.HIGH
     elif (
-        title_equal
+        (title_equal or versioned_base_match)
         and artist_high_eligible
         and version_compatible
         and (duration_difference is None or duration_difference <= 5_000)
@@ -312,7 +352,7 @@ def assess_candidate(
     elif (
         text_confidence is LyricsMatchConfidence.HIGH
         and album_compatible
-        and (safe_base_fallback or phonetic_match)
+        and (safe_base_fallback or versioned_base_match or phonetic_match)
     ):
         confidence = LyricsMatchConfidence.HIGH
     else:
@@ -361,4 +401,55 @@ def _version_markers(value: str) -> frozenset[str]:
         marker
         for marker in _VERSION_MARKERS
         if re.search(rf"\b{re.escape(marker)}\b", key)
+    )
+
+
+def _album_version_corroborates(
+    query_title: str,
+    provider_title: str,
+    provider_album: str | None,
+) -> bool:
+    """Use a title-shaped provider album only as explicit version evidence.
+
+    Some catalogues retain a recording qualifier in the release title while
+    exposing only the base track title. Require the exact base, the same marker
+    class, and substantial overlap between specific qualifier tokens. A generic
+    ``remix`` or ``live`` label alone is never enough.
+    """
+
+    if not provider_album:
+        return False
+    query = parse_title_version(query_title)
+    provider = parse_title_version(provider_title)
+    album = parse_title_version(provider_album)
+    if query.qualifier is None or provider.qualifier is not None:
+        return False
+    query_base = comparison_key(query.base_title)
+    if not query_base or query_base != comparison_key(provider.base_title):
+        return False
+    if query_base != comparison_key(album.base_title) or album.qualifier is None:
+        return False
+    query_markers = _version_markers(query.qualifier)
+    album_markers = _version_markers(album.qualifier)
+    if not query_markers or query_markers != album_markers:
+        return False
+    query_tokens = _specific_version_tokens(query.qualifier, query_markers)
+    album_tokens = _specific_version_tokens(album.qualifier, album_markers)
+    if len(query_tokens) < 2 or len(album_tokens) < 2:
+        return False
+    overlap = query_tokens & album_tokens
+    return (
+        len(overlap) >= 2
+        and len(overlap) / min(len(query_tokens), len(album_tokens)) >= 0.75
+    )
+
+
+def _specific_version_tokens(qualifier: str, markers: frozenset[str]) -> frozenset[str]:
+    key = comparison_key(qualifier)
+    for marker in sorted(markers, key=len, reverse=True):
+        key = re.sub(rf"\b{re.escape(marker)}\b", " ", key)
+    return frozenset(
+        token
+        for token in key.split()
+        if token not in _VERSION_TOKEN_CONNECTORS and len(token) > 1
     )

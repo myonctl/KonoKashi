@@ -559,6 +559,101 @@ def test_explicit_cover_by_credit_resolves_the_cover_performer_recording(
     assert result.document.provider_record_id == "cover-recording"
 
 
+def test_source_label_can_separate_otherwise_equal_provider_candidates(
+    tmp_path: Path,
+) -> None:
+    source_resolver, _overrides = track_resolver()
+    track = source_resolver.resolve(
+        snapshot(
+            "browser",
+            title="Synthetic Artist — Synthetic Song (Official Video)",
+            artists=("Synthetic Label",),
+            url="https://www.youtube.com/watch?v=AbCdEfGhI12",
+            duration_us=180_000_000,
+        )
+    )
+    provider = _FakeProvider(
+        search=LyricsProviderResult(
+            LyricsProviderStatus.RESULTS,
+            (
+                _candidate(
+                    "label-corroborated",
+                    title="Synthetic Song",
+                    artist="Synthetic Artist",
+                    album="Synthetic Label",
+                    duration_ms=180_000,
+                ),
+                _candidate(
+                    "compilation",
+                    title="Synthetic Song",
+                    artist="Synthetic Artist",
+                    album="Unrelated Compilation",
+                    duration_ms=180_000,
+                    plain="Different text",
+                    synced="[00:01.00]Different text",
+                ),
+            ),
+        )
+    )
+
+    result = _resolver(tmp_path / "source-label.db", provider).resolve(track)
+
+    assert provider.search_queries
+    assert all(not query.source_labels for query in provider.search_queries)
+    assert result.status is LyricsResolutionStatus.FOUND_TIMED
+    assert result.document is not None
+    assert result.document.provider_record_id == "label-corroborated"
+    assert "uploader as the recording artist" in " ".join(result.evidence)
+
+
+def test_named_remix_in_provider_album_separates_base_title_candidates(
+    tmp_path: Path,
+) -> None:
+    source_resolver, _overrides = track_resolver()
+    track = source_resolver.resolve(
+        snapshot(
+            "browser",
+            title=(
+                "Synthetic Artist - Synthetic Song "
+                "(Alpha Duo & Beta Artist Remix) | Official Audio"
+            ),
+            artists=("Alpha Duo",),
+            url="https://www.youtube.com/watch?v=AbCdEfGhI12",
+            duration_us=180_000_000,
+        )
+    )
+    provider = _FakeProvider(
+        search=LyricsProviderResult(
+            LyricsProviderStatus.RESULTS,
+            (
+                _candidate(
+                    "named-remix",
+                    title="Synthetic Song",
+                    artist="Synthetic Artist",
+                    album=("Synthetic Song (Club Cut / Alpha Duo x Beta Artist Remix)"),
+                    duration_ms=179_800,
+                ),
+                _candidate(
+                    "base-recording",
+                    title="Synthetic Song",
+                    artist="Synthetic Artist",
+                    album="Synthetic Song",
+                    duration_ms=180_000,
+                    plain="Different text",
+                    synced="[00:01.00]Different text",
+                ),
+            ),
+        )
+    )
+
+    result = _resolver(tmp_path / "named-remix.db", provider).resolve(track)
+
+    assert result.status is LyricsResolutionStatus.FOUND_TIMED
+    assert result.document is not None
+    assert result.document.provider_record_id == "named-remix"
+    assert "provider album corroborates source version qualifier" in result.evidence
+
+
 def test_provider_candidate_can_corroborate_an_alternate_recording_hypothesis(
     tmp_path: Path,
 ) -> None:

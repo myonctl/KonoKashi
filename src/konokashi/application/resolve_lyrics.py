@@ -1184,8 +1184,13 @@ class LyricsResolver:
                 False,
                 False,
             )
+        provider_query = replace(query, source_labels=())
         try:
-            result = provider.search(query) if search else provider.exact(query)
+            result = (
+                provider.search(provider_query)
+                if search
+                else provider.exact(provider_query)
+            )
         except Exception as error:
             result = LyricsProviderResult(
                 LyricsProviderStatus.UNAVAILABLE,
@@ -1433,6 +1438,21 @@ class LyricsResolver:
                         "recording candidates",
                     ),
                 )
+            source_label_matches = [
+                item
+                for item in eligible
+                if "provider album matches retained source label" in item.evidence
+            ]
+            if len(source_label_matches) == 1:
+                selected = source_label_matches[0]
+                return replace(
+                    selected,
+                    evidence=(
+                        *selected.evidence,
+                        "preferred unique source-label corroboration without "
+                        "treating the uploader as the recording artist",
+                    ),
+                )
             content_dominator = next(
                 (
                     candidate
@@ -1635,6 +1655,17 @@ def _candidate_query(
         return None
     duration = semantic_duration_us(candidate.duration_us)
     credit = candidate.artist_credit
+    source_labels = (
+        tuple(
+            dict.fromkeys(
+                label.strip()
+                for label in track.raw_snapshot.metadata.artists or ()
+                if label.strip()
+            )
+        )
+        if any(field == "uploader" for field, _source in candidate.field_provenance)
+        else ()
+    )
     return LyricsQuery(
         title,
         artists,
@@ -1645,6 +1676,7 @@ def _candidate_query(
         contributors=() if credit is None else credit.contributors,
         strategy=candidate.strategy,
         provenance=candidate.field_provenance,
+        source_labels=source_labels,
     )
 
 
@@ -2048,6 +2080,14 @@ def _album_evidence_strength(assessment: CandidateMatchAssessment) -> int:
     return 1
 
 
+def _source_label_evidence_strength(assessment: CandidateMatchAssessment) -> int:
+    return (
+        0
+        if "provider album matches retained source label" in assessment.evidence
+        else 1
+    )
+
+
 def _evidence_dominates(
     first: CandidateMatchAssessment,
     second: CandidateMatchAssessment,
@@ -2068,12 +2108,14 @@ def _evidence_dominates(
         _title_relation_strength(first),
         _artist_credit_strength(first),
         _album_evidence_strength(first),
+        _source_label_evidence_strength(first),
         first_duration,
     )
     second_dimensions = (
         _title_relation_strength(second),
         _artist_credit_strength(second),
         _album_evidence_strength(second),
+        _source_label_evidence_strength(second),
         second_duration,
     )
     return all(
@@ -2172,6 +2214,7 @@ def _title_relation_rank(assessment: CandidateMatchAssessment) -> int:
         "exact-raw": 0,
         "normalized": 1,
         "base-title": 2,
+        "base-title-version-corroborated": 2,
         "phonetic-transliteration": 3,
     }.get(assessment.title_relation, 4)
 
@@ -2183,6 +2226,7 @@ def _title_relation_strength(assessment: CandidateMatchAssessment) -> int:
         "exact-raw": 0,
         "normalized": 0,
         "base-title": 1,
+        "base-title-version-corroborated": 1,
         "phonetic-transliteration": 2,
     }.get(assessment.title_relation, 3)
 

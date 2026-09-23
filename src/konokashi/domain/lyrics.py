@@ -247,7 +247,7 @@ class ProviderCacheEntry:
 
 @dataclass(frozen=True, slots=True)
 class LyricsQuery:
-    """Minimum provider-safe metadata for one resolved recording."""
+    """Provider-safe recording metadata plus retained source-only evidence."""
 
     title: str
     artists: tuple[str, ...]
@@ -259,6 +259,7 @@ class LyricsQuery:
     contributors: tuple[str, ...] = field(default_factory=tuple)
     strategy: str = "resolved-track"
     provenance: tuple[tuple[str, str], ...] = field(default_factory=tuple)
+    source_labels: tuple[str, ...] = field(default_factory=tuple)
 
     def __post_init__(self) -> None:
         if self.duration_ms is not None and not (
