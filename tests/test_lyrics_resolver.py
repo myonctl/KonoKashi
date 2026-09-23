@@ -520,6 +520,45 @@ def test_uncorroborated_pipe_hypothesis_is_searchable_but_not_auto_accepted(
     )
 
 
+def test_explicit_cover_by_credit_resolves_the_cover_performer_recording(
+    tmp_path: Path,
+) -> None:
+    source_resolver, _overrides = track_resolver()
+    track = source_resolver.resolve(
+        snapshot(
+            "browser",
+            title=("Synthetic Song - Original Artist (Rock Cover by Cover Performer)"),
+            artists=("Cover Performer",),
+            url="https://www.youtube.com/watch?v=AbCdEfGhI12",
+            duration_us=208_000_000,
+        )
+    )
+    provider = _FakeProvider(
+        search=LyricsProviderResult(
+            LyricsProviderStatus.RESULTS,
+            (
+                _candidate(
+                    "cover-recording",
+                    title="Synthetic Song",
+                    artist="Cover Performer",
+                    album=None,
+                    duration_ms=208_000,
+                ),
+            ),
+        )
+    )
+
+    result = _resolver(tmp_path / "cover-by.db", provider).resolve(track)
+
+    assert any(
+        query.title == "Synthetic Song" and query.artists == ("Cover Performer",)
+        for query in provider.search_queries
+    )
+    assert result.status is LyricsResolutionStatus.FOUND_TIMED
+    assert result.document is not None
+    assert result.document.provider_record_id == "cover-recording"
+
+
 def test_provider_candidate_can_corroborate_an_alternate_recording_hypothesis(
     tmp_path: Path,
 ) -> None:

@@ -56,7 +56,7 @@ _PRESENTATION_DASH = re.compile(
     re.IGNORECASE,
 )
 _PRESENTATION_BARE = re.compile(
-    r"\s+(?:official\s+(?:music\s+)?video|official\s+audio|lyrics?|"
+    r"\s+(?:[|:·]\s*)?(?:official\s+(?:music\s+)?video|official\s+audio|lyrics?|"
     r"lyric\s+video|music\s+video|hd|4k|full\s+mtv)\s*$",
     re.IGNORECASE,
 )
@@ -72,6 +72,11 @@ _DECORATIVE_EDGE_STARS = re.compile(r"^[★☆✩]{1,6}\s*(?P<body>.*?)\s*[★�
 _PARENTHETICAL_LYRIC_LABEL = re.compile(
     r"^(?P<artist>[^()]+?)\s+\(\s*(?P<title>.+?)\s+"
     r"(?P<label>lyrics?|letra|testo)\s*\)$",
+    re.IGNORECASE,
+)
+_EXPLICIT_COVER_BY = re.compile(
+    r"^(?P<prefix>.+?)\s*[\[(](?:[^\[\]()]+?\s+)?\bcover\s+by\s+"
+    r"(?P<performer>[^\[\]()]+)[\])]\s*$",
     re.IGNORECASE,
 )
 _VERSION_GROUP = re.compile(r"^(?P<base>.+?)\s*[\[(](?P<qualifier>[^\[\]()]+)[\])]\s*$")
@@ -227,6 +232,19 @@ def parse_youtube_title_candidates(
     reported_keys = {
         comparison_key(artist) for artist in reported_artists or () if artist.strip()
     }
+    explicit_cover = _EXPLICIT_COVER_BY.fullmatch(title_text)
+    cover_parts = (
+        _SPACED_DASH_SEPARATOR.split(explicit_cover.group("prefix"), maxsplit=1)
+        if explicit_cover is not None
+        else []
+    )
+    cover_performer = (
+        explicit_cover.group("performer").strip() if explicit_cover is not None else ""
+    )
+    cover_alternate_title = ""
+    corroborated_cover = (
+        len(cover_parts) == 2 and comparison_key(cover_performer) in reported_keys
+    )
     localized_quoted_video = _LOCALIZED_ARTIST_QUOTED_VIDEO.fullmatch(title_text)
     decorative = _DECORATIVE_EDGE_STARS.fullmatch(title_text)
     parenthetical_lyrics = (
@@ -235,7 +253,19 @@ def parse_youtube_title_candidates(
         else _PARENTHETICAL_LYRIC_LABEL.fullmatch(decorative.group("body"))
     )
     quotation = re.fullmatch(r"(.+?)\s*[「『](.+?)[」』](.*)", title_text)
-    if localized_quoted_video is not None:
+    if corroborated_cover:
+        parts = [cover_performer, cover_parts[0].strip()]
+        cover_alternate_title = cover_parts[1].strip()
+        separator = "explicit cover-by credit:left-title"
+        transformations.extend(
+            (
+                "reported artist corroborates explicit cover-by performer",
+                "retained both dash sides as bounded title/original-artist "
+                "interpretations",
+                "removed explicit cover-by presentation clause from provider title",
+            )
+        )
+    elif localized_quoted_video is not None:
         parts = [
             localized_quoted_video.group("artist").strip(),
             localized_quoted_video.group("title").strip(),
@@ -432,6 +462,27 @@ def parse_youtube_title_candidates(
         ),
     )
     candidates = [primary]
+
+    if cover_alternate_title and comparison_key(
+        cover_alternate_title
+    ) != comparison_key(final_title):
+        alternate = parse_youtube_title_candidates(
+            f"{cover_performer} - {cover_alternate_title}",
+            (cover_performer,),
+        )[0]
+        candidates.append(
+            replace(
+                alternate,
+                evidence=(
+                    "explicit cover-by performer plus alternate dash-side title",
+                ),
+                transformations=(
+                    *alternate.transformations,
+                    "retained alternate dash side without changing source title",
+                ),
+                strategy="youtube-title:explicit cover-by credit:right-title",
+            )
+        )
 
     # A provider artist can itself contain a spaced dash. When its title is then
     # appended by a browser integration, the exact title appears twice at the

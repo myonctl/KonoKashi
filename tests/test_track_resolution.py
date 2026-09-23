@@ -60,6 +60,7 @@ def test_unicode_quotes_dashes_and_whitespace_normalize_conservatively() -> None
     (
         ("Artist - Song (Official Video)", "Song"),
         ("Artist - Song [Official Audio]", "Song"),
+        ("Artist - Song | Official Audio", "Song"),
         ("Artist - Song Lyrics", "Song"),
         ("Artist - Song - OFFICIAL MUSIC VIDEO (Download Link)", "Song"),
         ("Artist - Song HD 4K", "Song"),
@@ -183,6 +184,39 @@ def test_presentation_group_before_feature_credit_is_removed_after_credit_parse(
     assert candidate.title == "Song"
     assert candidate.artist_credit is not None
     assert candidate.artist_credit.contributors == ("Guest",)
+
+
+def test_explicit_cover_by_credit_identifies_the_recording_artist() -> None:
+    raw_title = "Example Song - Original Artist (Rock Cover by Cover Performer)"
+
+    candidates = parse_youtube_title_candidates(raw_title, ("Cover Performer",))
+    unrelated = parse_youtube_title_candidates(raw_title, ("Unrelated Uploader",))
+
+    assert [(item.title, item.artists) for item in candidates] == [
+        ("Example Song", ("Cover Performer",)),
+        ("Original Artist", ("Cover Performer",)),
+    ]
+    assert candidates[0].strategy.endswith("left-title")
+    assert candidates[1].strategy.endswith("right-title")
+    assert "reported artist corroborates explicit cover-by performer" in (
+        candidates[0].transformations
+    )
+    assert not any(
+        item.title == "Example Song" and item.artists == ("Cover Performer",)
+        for item in unrelated
+    )
+
+
+def test_explicit_cover_by_credit_keeps_conventional_artist_title_orientation() -> None:
+    candidates = parse_youtube_title_candidates(
+        "Original Artist - Example Song [Cover by Cover Performer]",
+        ("Cover Performer",),
+    )
+
+    assert any(
+        item.title == "Example Song" and item.artists == ("Cover Performer",)
+        for item in candidates
+    )
 
 
 @pytest.mark.parametrize(
