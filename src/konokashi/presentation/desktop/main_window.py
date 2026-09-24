@@ -903,13 +903,18 @@ class MainWindow(DesktopWindowSurface):
         self.mode_popup_button.setVisible(use_mode_popup)
         for button in self.mode_buttons.values():
             button.setVisible(not use_mode_popup)
-        # QMenuBar retains the corner widget's compact-popup geometry when the
-        # four-button chooser becomes visible again.  The children keep their
-        # own minimum widths, but Qt then paints them outside a stale, narrow
-        # parent and clips every label.  Project the active chooser's size hint
-        # onto the corner widget so the menu bar has to lay it out again.
-        self.mode_controls.setMinimumWidth(self.mode_controls.sizeHint().width())
-        self.mode_controls.updateGeometry()
+        # QMenuBar retains both the corner widget's old width and its old right
+        # anchor when the compact popup and full chooser are swapped. Merely
+        # growing the widget fixes its children but makes it extend beyond the
+        # window. Re-register the same corner widget when its active width
+        # changes so Qt recomputes both size and position in one layout pass.
+        mode_controls_width = self.mode_controls.sizeHint().width()
+        if self.mode_controls.minimumWidth() != mode_controls_width:
+            self.mode_controls.setMinimumWidth(mode_controls_width)
+            self.mode_controls.updateGeometry()
+            self.application_menu.setCornerWidget(
+                self.mode_controls, Qt.Corner.TopRightCorner
+            )
         direction = (
             QBoxLayout.Direction.TopToBottom
             if width < 600

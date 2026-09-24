@@ -702,6 +702,11 @@ def test_returning_from_compact_restores_action_width_immediately(
 
     window.set_window_mode(DesktopWindowMode.COMPACT)
     qt_app.processEvents()
+    compact_geometry = window.mode_controls.geometry()
+    compact_menu_rect = window.application_menu.contentsRect()
+    assert compact_geometry.x() >= compact_menu_rect.x()
+    assert compact_geometry.right() <= compact_menu_rect.right()
+
     window.set_window_mode(DesktopWindowMode.NORMAL)
     qt_app.processEvents()
 
@@ -709,8 +714,13 @@ def test_returning_from_compact_restores_action_width_immediately(
     assert window._actions_widget.width() >= window._actions_widget.sizeHint().width()
     assert window.review_button.width() >= window.review_button.sizeHint().width()
     assert window.mode_controls.width() >= window.mode_controls.sizeHint().width()
+    mode_geometry = window.mode_controls.geometry()
+    menu_rect = window.application_menu.contentsRect()
+    assert mode_geometry.x() >= menu_rect.x()
+    assert mode_geometry.right() <= menu_rect.right()
     for button in window.mode_buttons.values():
         assert button.width() >= button.sizeHint().width()
+        assert window.mode_controls.rect().contains(button.geometry())
     window.close()
 
 
