@@ -708,6 +708,7 @@ def test_returning_from_compact_restores_action_width_immediately(
     assert window.width() == 760
     assert window._actions_widget.width() >= window._actions_widget.sizeHint().width()
     assert window.review_button.width() >= window.review_button.sizeHint().width()
+    assert window.mode_controls.width() >= window.mode_controls.sizeHint().width()
     for button in window.mode_buttons.values():
         assert button.width() >= button.sizeHint().width()
     window.close()

@@ -58,7 +58,7 @@ from konokashi.domain.representations import (
     RepresentationLayerStatus,
 )
 from konokashi.domain.synchronization import LyricDocumentTiming
-from konokashi.domain.tracks import PlayerSelectionResult, ResolvedTrack
+from konokashi.domain.tracks import Confidence, PlayerSelectionResult, ResolvedTrack
 
 
 @dataclass(frozen=True, slots=True)
@@ -299,10 +299,26 @@ class FrontendSessionService:
         operation_started = self._monotonic()
         generation = self._current_generation()
         resolver_generation = self._lyrics.cancellation_generation
+        defer_low_confidence_browser_network = (
+            not offline
+            and not refresh
+            and not track.user_approved
+            and track.confidence is Confidence.LOW
+            and isinstance(track.source_identity, GenericMprisIdentity)
+            and is_url_less_browser(track.raw_snapshot)
+            and self._youtube_discovery is not None
+            and self._lyrics.has_online_providers
+            and self._settings.get_automatic_web_metadata()
+        )
         result = self._lyrics.resolve(
             track,
-            offline=offline,
-            refresh=refresh,
+            # A weak URL-less browser interpretation can generate several
+            # doomed provider requests before public-video discovery supplies
+            # the missing recording evidence.  Preserve the cheap local and
+            # persistent lookup first, but defer provider network work until
+            # after discovery so the eventual query is evidence-led.
+            offline=offline or defer_low_confidence_browser_network,
+            refresh=refresh and not defer_low_confidence_browser_network,
             expected_generation=resolver_generation,
         )
         first_pass_ms = max(0, round((self._monotonic() - operation_started) * 1000))
@@ -399,7 +415,27 @@ class FrontendSessionService:
                     )
                     retry_ms = max(0, round((self._monotonic() - retry_started) * 1000))
                     retried = True
+            if (
+                not retried
+                and defer_low_confidence_browser_network
+                and generation == self._current_generation()
+            ):
+                # Discovery can legitimately find nothing.  It must not remove
+                # the existing bounded provider ladder; run that normal path
+                # once after the metadata attempt instead of before it.
+                retry_started = self._monotonic()
+                result = self._lyrics.resolve(
+                    track,
+                    offline=False,
+                    refresh=False,
+                    expected_generation=resolver_generation,
+                )
+                retry_ms = max(0, round((self._monotonic() - retry_started) * 1000))
+                retried = True
             total_ms = max(0, round((self._monotonic() - operation_started) * 1000))
+            first_pass_mode = (
+                "local-cache" if defer_low_confidence_browser_network else "normal"
+            )
             result = replace(
                 result,
                 diagnostics=(
@@ -407,6 +443,7 @@ class FrontendSessionService:
                     *discovery.diagnostics,
                     *result.diagnostics,
                     "automatic URL-less browser retry: "
+                    f"first_pass_mode={first_pass_mode}; "
                     f"first_pass={first_pass_ms} ms; "
                     f"discovery={discovery_ms} ms; retry={retry_ms} ms; "
                     f"total={total_ms} ms; retried={retried}",

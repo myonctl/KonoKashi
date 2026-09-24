@@ -504,10 +504,10 @@ def test_url_less_browser_discovery_retries_without_upgrading_source_identity() 
         cancellation_generation = 0
 
         def __init__(self) -> None:
-            self.calls: list[ResolvedTrack] = []
+            self.calls: list[tuple[ResolvedTrack, bool]] = []
 
-        def resolve(self, resolved, **_kwargs):  # type: ignore[no-untyped-def]
-            self.calls.append(resolved)
+        def resolve(self, resolved, **kwargs):  # type: ignore[no-untyped-def]
+            self.calls.append((resolved, kwargs["offline"]))
             if not any(
                 item.strategy == candidate.strategy
                 and item.title == candidate.title
@@ -558,6 +558,7 @@ def test_url_less_browser_discovery_retries_without_upgrading_source_identity() 
     bundle = service.load_track(track)
 
     assert len(lyrics.calls) == 2
+    assert [offline for _resolved, offline in lyrics.calls] == [True, False]
     assert discovery.calls == 1
     assert bundle.resolution.status is LyricsResolutionStatus.FOUND_TIMED
     assert bundle.resolution.network_used is True
@@ -573,6 +574,57 @@ def test_url_less_browser_discovery_retries_without_upgrading_source_identity() 
     disabled = service.load_track(track)
     assert disabled.resolution.status is LyricsResolutionStatus.AMBIGUOUS
     assert discovery.calls == 1
+
+
+def test_empty_early_browser_discovery_retains_normal_provider_fallback() -> None:
+    track_resolver, _repository = resolver()
+    track = track_resolver.resolve(
+        snapshot(
+            "chromium.instance-test",
+            title="FABLE - Glass Horizon",
+            artists=("Example Maker - Topic",),
+            duration_us=133_641_000,
+        )
+    )
+
+    class Lyrics:
+        has_online_providers = True
+        cancellation_generation = 0
+
+        def __init__(self) -> None:
+            self.offline_calls: list[bool] = []
+
+        def resolve(self, resolved, **kwargs):  # type: ignore[no-untyped-def]
+            self.offline_calls.append(kwargs["offline"])
+            return LyricsResolutionResult(
+                resolved.source_identity,
+                LyricsResolutionStatus.NO_RESULT,
+                network_used=not kwargs["offline"],
+            )
+
+    class Discovery:
+        def discover(self, _resolved, **_kwargs):  # type: ignore[no-untyped-def]
+            return YouTubeMetadataDiscoveryResult(
+                diagnostics=("no unique public-video match",), network_used=True
+            )
+
+    lyrics = Lyrics()
+    service = FrontendSessionService(
+        _Selection(track),  # type: ignore[arg-type]
+        lyrics,  # type: ignore[arg-type]
+        _Representations(),  # type: ignore[arg-type]
+        _Settings(),  # type: ignore[arg-type]
+        _Timing(),  # type: ignore[arg-type]
+        _Corrections(),  # type: ignore[arg-type]
+        youtube_discovery=Discovery(),  # type: ignore[arg-type]
+    )
+
+    result = service.load_track(track).resolution
+
+    assert lyrics.offline_calls == [True, False]
+    assert result.status is LyricsResolutionStatus.NO_RESULT
+    assert result.network_used is True
+    assert "first_pass_mode=local-cache" in " ".join(result.diagnostics)
 
 
 def test_url_less_discovery_applies_saved_track_override_by_hint(

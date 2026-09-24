@@ -1268,7 +1268,7 @@ def test_rich_timing_uses_a_smooth_local_projection_cadence(
     coordinator._start_playback_session(rich_bundle)
     assert coordinator._sync_timer.interval() == 33
     coordinator._start_playback_session(line_bundle)
-    assert coordinator._sync_timer.interval() == 100
+    assert coordinator._sync_timer.interval() == 33
     coordinator.close()
     window.close()
 

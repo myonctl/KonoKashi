@@ -62,7 +62,6 @@ from konokashi.domain.library import LibraryReviewItem, LibraryScanSummary
 from konokashi.domain.lyrics import (
     LyricDocumentKind,
     LyricsResolutionStatus,
-    LyricTimingLevel,
 )
 from konokashi.domain.models import (
     PlayerEvent,
@@ -709,14 +708,11 @@ class DesktopCoordinator(QObject):
         )
         self._publisher = SynchronizationPublisher()
         self._snapshot_subscription = self._publisher.subscribe(self._accept_snapshot)
-        document = bundle.resolution.document
-        self._sync_timer.setInterval(
-            33
-            if document is not None
-            and document.timing_level
-            in {LyricTimingLevel.WORD, LyricTimingLevel.ELEMENT}
-            else 100
-        )
+        # Projection is local interpolation; authoritative MPRIS sampling is
+        # still bounded independently by AdaptiveResampler.  Use one smooth
+        # cadence for line timing too, otherwise every provider transition can
+        # be painted up to 100 ms late solely because of the UI polling phase.
+        self._sync_timer.setInterval(33)
         self._sync_timer.start()
         self._sync_tick()
 
