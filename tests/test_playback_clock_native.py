@@ -95,14 +95,14 @@ def test_native_and_python_policy_validation_and_custom_policy_parity() -> None:
     _assert_estimate_parity((python, native), now_ns=800_000_000)
 
 
-def test_frozen_playing_position_recovery_has_native_oracle_parity() -> None:
+def test_coarse_playing_position_hold_has_native_oracle_parity() -> None:
     monotonic = FakeMonotonic()
     python, native = _paired(monotonic)
     for at_ns, position_us in (
         (0, 1_000_000),
         (250_000_000, 1_000_000),
         (500_000_000, 1_000_000),
-        (750_000_000, 1_500_000),
+        (750_000_000, 1_750_000),
     ):
         monotonic.now_ns = at_ns
         sample = PositionObservation(

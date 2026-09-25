@@ -155,6 +155,7 @@ class ClockUpdateKind(Enum):
 
     INITIALIZED = "initialized"
     CORRECTED = "corrected"
+    HELD_COARSE_POSITION = "held coarse position"
     RESET = "reset"
     REJECTED_STALE = "rejected stale"
     REJECTED_OUTLIER = "rejected outlier"
@@ -166,6 +167,7 @@ class ClockCorrectionClass(Enum):
 
     INITIAL = "initial anchor"
     WITHIN_NOISE = "within measurement noise"
+    COARSE_SOURCE_HOLD = "coarse source sample held"
     PHASE_SLEW = "bounded phase slew"
     DISCONTINUITY = "discontinuity snap"
     REJECTED = "rejected sample"

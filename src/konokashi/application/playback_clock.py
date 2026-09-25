@@ -265,6 +265,30 @@ class PythonPlaybackClock:
         midpoint_ns = observation.midpoint_ns
         predicted = self._position_at(midpoint_ns)
         residual = observation.position_us - predicted
+        if (
+            observation.reason is ObservationReason.PERIODIC
+            and observation.source is PositionSampleSource.POSITION_PROPERTY
+            and observation.state is PlaybackState.PLAYING
+            and self._state is PlaybackState.PLAYING
+            and observation.position_us == self._last_observed_position_us
+        ):
+            # Browser bridges commonly expose Position as a staircase: the
+            # property holds for a fraction of a second (or one whole second)
+            # while playback is still advancing.  Treating each held value as
+            # a newly sampled position slows or rewinds the disciplined clock.
+            # Keep interpolating from the last changing sample. If the bridge
+            # remains frozen, ordinary sample-age health becomes stale without
+            # contradicting its explicit Playing + Rate contract.
+            self._latest_response_ns = observation.response_received_ns
+            self._last_rtt_us = observation.round_trip_us
+            self._last_residual_us = residual
+            self._last_correction_class = ClockCorrectionClass.COARSE_SOURCE_HOLD
+            return ClockUpdate(
+                ClockUpdateKind.HELD_COARSE_POSITION,
+                "unchanged playing Position retained as a coarse source sample",
+                residual,
+                correction_class=ClockCorrectionClass.COARSE_SOURCE_HOLD,
+            )
         if abs(residual) >= self._policy.discontinuity_us:
             if (
                 self._discontinuity_pending
@@ -807,6 +831,7 @@ _SOURCES = (
 _UPDATE_KINDS = (
     ClockUpdateKind.INITIALIZED,
     ClockUpdateKind.CORRECTED,
+    ClockUpdateKind.HELD_COARSE_POSITION,
     ClockUpdateKind.RESET,
     ClockUpdateKind.REJECTED_STALE,
     ClockUpdateKind.REJECTED_OUTLIER,
@@ -815,6 +840,7 @@ _UPDATE_KINDS = (
 _CORRECTION_CLASSES = (
     ClockCorrectionClass.INITIAL,
     ClockCorrectionClass.WITHIN_NOISE,
+    ClockCorrectionClass.COARSE_SOURCE_HOLD,
     ClockCorrectionClass.PHASE_SLEW,
     ClockCorrectionClass.DISCONTINUITY,
     ClockCorrectionClass.REJECTED,

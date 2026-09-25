@@ -137,32 +137,70 @@ def test_small_phase_error_is_bounded_and_large_jump_is_a_seek_reset() -> None:
     assert "discontinuity" in reset.reason
 
 
-def test_frozen_playing_position_degrades_after_one_resynchronization() -> None:
+def test_coarse_playing_positions_do_not_pull_the_clock_backwards() -> None:
     monotonic = FakeMonotonic()
     clock = PlaybackClock(monotonic)
     clock.observe(observation(1_000_000, 0))
 
     monotonic.now_ns = 250_000_000
-    reset = clock.observe(observation(1_000_000, 250_000_000))
-    resynchronizing = clock.estimate()
-    assert reset.kind is ClockUpdateKind.RESET
-    assert resynchronizing is not None
-    assert resynchronizing.diagnostics.health is ClockHealth.DISCONTINUITY
+    held = clock.observe(observation(1_000_000, 250_000_000))
+    interpolated = clock.estimate()
+    assert held.kind is ClockUpdateKind.HELD_COARSE_POSITION
+    assert interpolated is not None
+    assert interpolated.position_us == 1_250_000
+    assert interpolated.diagnostics.health is ClockHealth.CONVERGING
 
     monotonic.now_ns = 500_000_000
-    rejected = clock.observe(observation(1_000_000, 500_000_000))
-    degraded = clock.estimate()
-    assert rejected.kind is ClockUpdateKind.REJECTED_DUPLICATE
-    assert degraded is not None
-    assert degraded.position_us == 1_250_000
-    assert degraded.diagnostics.health is ClockHealth.DEGRADED
+    held_again = clock.observe(observation(1_000_000, 500_000_000))
+    still_interpolated = clock.estimate()
+    assert held_again.kind is ClockUpdateKind.HELD_COARSE_POSITION
+    assert still_interpolated is not None
+    assert still_interpolated.position_us == 1_500_000
+    assert still_interpolated.diagnostics.rejected_sample_count == 0
 
     monotonic.now_ns = 750_000_000
-    recovered = clock.observe(observation(1_500_000, 750_000_000))
+    recovered = clock.observe(observation(1_750_000, 750_000_000))
     stable = clock.estimate()
     assert recovered.kind is ClockUpdateKind.CORRECTED
     assert stable is not None
     assert stable.diagnostics.health is ClockHealth.CONVERGING
+
+
+def test_browser_staircase_position_tracks_continuous_media_time() -> None:
+    monotonic = FakeMonotonic()
+    clock = PlaybackClock(monotonic)
+    samples = (
+        (0, 0),
+        (100_000_000, 0),
+        (200_000_000, 0),
+        (300_000_000, 300_000),
+        (400_000_000, 300_000),
+        (500_000_000, 300_000),
+        (600_000_000, 600_000),
+    )
+
+    for at_ns, source_position_us in samples:
+        monotonic.now_ns = at_ns
+        clock.observe(observation(source_position_us, at_ns))
+        estimate = clock.estimate()
+        assert estimate is not None
+        assert estimate.position_us == at_ns // 1_000
+
+
+def test_frozen_playing_position_becomes_stale_without_rewinding() -> None:
+    monotonic = FakeMonotonic()
+    clock = PlaybackClock(monotonic)
+    clock.observe(observation(1_000_000, 0))
+
+    monotonic.now_ns = 20_000_000_000
+    held = clock.observe(observation(1_000_000, 20_000_000_000))
+    estimate = clock.estimate()
+
+    assert held.kind is ClockUpdateKind.HELD_COARSE_POSITION
+    assert estimate is not None
+    assert estimate.position_us == 21_000_000
+    assert estimate.diagnostics.health is ClockHealth.STALE
+    assert estimate.diagnostics.discontinuity_count == 0
 
 
 def test_negative_phase_correction_slews_without_rewinding_playback() -> None:

@@ -530,6 +530,7 @@ def test_sync_probe_reports_sampling_failure_as_degraded_without_traceback(
 
     assert exit_code == 0
     assert "samples accepted: 1" in captured.out
+    assert "samples held as coarse source repeats: 0" in captured.out
     assert "samples rejected: 1" in captured.out
     assert "sampling failures: 1" in captured.out
     assert "clock status: Degraded" in captured.out

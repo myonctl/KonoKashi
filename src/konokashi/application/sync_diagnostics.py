@@ -201,12 +201,19 @@ def render_probe_report(
         if diagnostics.drift_ppm is None
         else f"{diagnostics.drift_ppm:+.1f} ppm"
     )
+    held_coarse = max(
+        0,
+        attempts
+        - diagnostics.accepted_sample_count
+        - diagnostics.rejected_sample_count,
+    )
     lines = [
         f"player: {player}",
         f"source: {source}",
         f"playback status: {playback_status}",
         f"samples attempted: {attempts}",
         f"samples accepted: {diagnostics.accepted_sample_count}",
+        f"samples held as coarse source repeats: {held_coarse}",
         f"samples rejected: {diagnostics.rejected_sample_count}",
         f"sampling failures: {sampling_failures}",
         "MPRIS RTT min/median/p95/max: "

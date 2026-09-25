@@ -41,17 +41,19 @@ enum Reason : int {
 enum UpdateKind : int {
     Initialized = 0,
     Corrected = 1,
-    Reset = 2,
-    RejectedStale = 3,
-    RejectedOutlier = 4,
-    RejectedDuplicate = 5,
+    HeldCoarsePosition = 2,
+    Reset = 3,
+    RejectedStale = 4,
+    RejectedOutlier = 5,
+    RejectedDuplicate = 6,
 };
 enum CorrectionClass : int {
     CorrectionInitial = 0,
     WithinNoise = 1,
-    PhaseSlew = 2,
-    Discontinuity = 3,
-    Rejected = 4,
+    CoarseSourceHold = 2,
+    PhaseSlew = 3,
+    Discontinuity = 4,
+    Rejected = 5,
 };
 enum Quality : int {
     QualityUnavailable = 0,
@@ -298,6 +300,23 @@ class PlaybackClockCore {
         const auto midpoint_ns = observation.midpoint_ns();
         const auto predicted = position_at(midpoint_ns);
         const auto residual = observation.position_us - predicted;
+        if (observation.reason == Periodic && observation.source == 0 &&
+            observation.state == Playing && state_ == Playing &&
+            last_observed_position_us_.has_value() &&
+            observation.position_us == *last_observed_position_us_) {
+            // MPRIS browser bridges often expose a held staircase Position.
+            // Preserve local interpolation; sample-age health independently
+            // becomes stale if the bridge never supplies a changing value.
+            latest_response_ns_ = observation.response_received_ns;
+            last_rtt_us_ = observation.round_trip_us();
+            last_residual_us_ = residual;
+            last_correction_class_ = CoarseSourceHold;
+            return {HeldCoarsePosition,
+                    "unchanged playing Position retained as a coarse source sample",
+                    residual,
+                    0,
+                    CoarseSourceHold};
+        }
         if (std::abs(residual) >= policy_.discontinuity_us) {
             if (discontinuity_pending_ && observation.reason == Periodic) {
                 return reject(
