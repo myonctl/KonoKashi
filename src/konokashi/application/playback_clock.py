@@ -130,6 +130,7 @@ class PythonPlaybackClock:
         self._last_rtt_us = 0
         self._last_residual_us: int | None = None
         self._last_observed_position_us: int | None = None
+        self._last_coarse_position_us: int | None = None
         self._last_source: PositionSampleSource | None = None
         self._last_correction_class: ClockCorrectionClass | None = None
         self._phase_residual_us = 0
@@ -144,6 +145,7 @@ class PythonPlaybackClock:
         self._converging = True
         self._degraded_by_rejection = False
         self._discontinuity_pending = False
+        self._coarse_position_series = False
 
     @property
     def available(self) -> bool:
@@ -265,27 +267,51 @@ class PythonPlaybackClock:
         midpoint_ns = observation.midpoint_ns
         predicted = self._position_at(midpoint_ns)
         residual = observation.position_us - predicted
-        if (
+        last_observed_position_us = self._last_observed_position_us
+        coarse_position_context = (
             observation.reason is ObservationReason.PERIODIC
             and observation.source is PositionSampleSource.POSITION_PROPERTY
             and observation.state is PlaybackState.PLAYING
             and self._state is PlaybackState.PLAYING
-            and observation.position_us == self._last_observed_position_us
-        ):
+            and last_observed_position_us is not None
+        )
+        coarse_position_floor_us = (
+            self._last_coarse_position_us
+            if self._last_coarse_position_us is not None
+            else last_observed_position_us
+        )
+        repeated_position = coarse_position_context and (
+            observation.position_us == coarse_position_floor_us
+        )
+        lagging_coarse_position = (
+            coarse_position_context
+            and self._coarse_position_series
+            and coarse_position_floor_us is not None
+            and observation.position_us >= coarse_position_floor_us
+            and residual < 0
+        )
+        if repeated_position or lagging_coarse_position:
             # Browser bridges commonly expose Position as a staircase: the
             # property holds for a fraction of a second (or one whole second)
-            # while playback is still advancing.  Treating each held value as
-            # a newly sampled position slows or rewinds the disciplined clock.
-            # Keep interpolating from the last changing sample. If the bridge
-            # remains frozen, ordinary sample-age health becomes stale without
-            # contradicting its explicit Playing + Rate contract.
+            # while playback is still advancing. Once proven coarse, a later
+            # monotonic value behind local interpolation is only a lower bound:
+            # treating it as freshly sampled slows or rewinds the clock. Keep
+            # interpolating from the last usable sample. A reported regression
+            # still detects a backward seek, and stale health still exposes a
+            # bridge that never catches up.
+            self._coarse_position_series = True
+            self._last_coarse_position_us = observation.position_us
             self._latest_response_ns = observation.response_received_ns
             self._last_rtt_us = observation.round_trip_us
             self._last_residual_us = residual
             self._last_correction_class = ClockCorrectionClass.COARSE_SOURCE_HOLD
             return ClockUpdate(
                 ClockUpdateKind.HELD_COARSE_POSITION,
-                "unchanged playing Position retained as a coarse source sample",
+                (
+                    "unchanged playing Position retained as a coarse source sample"
+                    if repeated_position
+                    else "lagging monotonic Position retained as coarse-source evidence"
+                ),
                 residual,
                 correction_class=ClockCorrectionClass.COARSE_SOURCE_HOLD,
             )
@@ -613,6 +639,8 @@ class PythonPlaybackClock:
         self._last_rtt_us = observation.round_trip_us
         self._last_residual_us = residual_us
         self._last_observed_position_us = observation.position_us
+        if self._coarse_position_series:
+            self._last_coarse_position_us = observation.position_us
         self._last_source = observation.source
         self._residuals.append(residual_us)
         self._accepted_count += 1
@@ -648,6 +676,8 @@ class PythonPlaybackClock:
         self._samples.clear()
         self._residuals.clear()
         self._fit = None
+        self._coarse_position_series = False
+        self._last_coarse_position_us = None
 
     def _position_at(self, monotonic_ns: int) -> int:
         if self._state is not PlaybackState.PLAYING:

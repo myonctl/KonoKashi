@@ -300,19 +300,32 @@ class PlaybackClockCore {
         const auto midpoint_ns = observation.midpoint_ns();
         const auto predicted = position_at(midpoint_ns);
         const auto residual = observation.position_us - predicted;
-        if (observation.reason == Periodic && observation.source == 0 &&
+        const bool coarse_position_context =
+            observation.reason == Periodic && observation.source == 0 &&
             observation.state == Playing && state_ == Playing &&
-            last_observed_position_us_.has_value() &&
-            observation.position_us == *last_observed_position_us_) {
+            last_observed_position_us_.has_value();
+        const auto coarse_position_floor = last_coarse_position_us_.has_value()
+            ? last_coarse_position_us_
+            : last_observed_position_us_;
+        const bool repeated_position = coarse_position_context &&
+            observation.position_us == *coarse_position_floor;
+        const bool lagging_coarse_position =
+            coarse_position_context && coarse_position_series_ &&
+            observation.position_us >= *coarse_position_floor && residual < 0;
+        if (repeated_position || lagging_coarse_position) {
             // MPRIS browser bridges often expose a held staircase Position.
-            // Preserve local interpolation; sample-age health independently
-            // becomes stale if the bridge never supplies a changing value.
+            // Once proven coarse, a monotonic but lagging value is lower-bound
+            // evidence, not permission to slow or rewind local interpolation.
+            coarse_position_series_ = true;
+            last_coarse_position_us_ = observation.position_us;
             latest_response_ns_ = observation.response_received_ns;
             last_rtt_us_ = observation.round_trip_us();
             last_residual_us_ = residual;
             last_correction_class_ = CoarseSourceHold;
             return {HeldCoarsePosition,
-                    "unchanged playing Position retained as a coarse source sample",
+                    repeated_position
+                        ? "unchanged playing Position retained as a coarse source sample"
+                        : "lagging monotonic Position retained as coarse-source evidence",
                     residual,
                     0,
                     CoarseSourceHold};
@@ -592,6 +605,9 @@ class PlaybackClockCore {
         last_rtt_us_ = observation.round_trip_us();
         last_residual_us_ = residual_us;
         last_observed_position_us_ = observation.position_us;
+        if (coarse_position_series_) {
+            last_coarse_position_us_ = observation.position_us;
+        }
         last_source_ = observation.source;
         append_bounded(residuals_, residual_us);
         ++accepted_count_;
@@ -628,6 +644,8 @@ class PlaybackClockCore {
         samples_.clear();
         residuals_.clear();
         fit_.reset();
+        coarse_position_series_ = false;
+        last_coarse_position_us_.reset();
     }
 
     [[nodiscard]] std::int64_t position_at(std::int64_t monotonic_ns) const {
@@ -824,6 +842,7 @@ class PlaybackClockCore {
     std::int64_t last_rtt_us_ = 0;
     std::optional<std::int64_t> last_residual_us_;
     std::optional<std::int64_t> last_observed_position_us_;
+    std::optional<std::int64_t> last_coarse_position_us_;
     std::optional<int> last_source_;
     std::optional<int> last_correction_class_;
     std::int64_t phase_residual_us_ = 0;
@@ -838,6 +857,7 @@ class PlaybackClockCore {
     bool converging_ = true;
     bool degraded_by_rejection_ = false;
     bool discontinuity_pending_ = false;
+    bool coarse_position_series_ = false;
 };
 
 }  // namespace

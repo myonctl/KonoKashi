@@ -187,6 +187,38 @@ def test_browser_staircase_position_tracks_continuous_media_time() -> None:
         assert estimate.position_us == at_ns // 1_000
 
 
+def test_proven_coarse_source_cannot_slow_clock_with_lagging_changed_values() -> None:
+    monotonic = FakeMonotonic()
+    clock = PlaybackClock(monotonic)
+    samples = (
+        (0, 0),
+        (100_000_000, 0),
+        (300_000_000, 300_000),
+        (400_000_000, 300_000),
+        (600_000_000, 450_000),
+        (700_000_000, 450_000),
+        (800_000_000, 800_000),
+    )
+
+    updates = []
+    for at_ns, source_position_us in samples:
+        monotonic.now_ns = at_ns
+        updates.append(clock.observe(observation(source_position_us, at_ns)))
+
+    estimate = clock.estimate()
+    assert updates[4].kind is ClockUpdateKind.HELD_COARSE_POSITION
+    assert updates[4].residual_us == -150_000
+    assert updates[4].scheduled_correction_us == 0
+    assert estimate is not None
+    assert estimate.position_us == 800_000
+    assert estimate.diagnostics.discontinuity_count == 0
+
+    monotonic.now_ns = 900_000_000
+    backward_seek = clock.observe(observation(500_000, monotonic.now_ns))
+    assert backward_seek.kind is ClockUpdateKind.RESET
+    assert clock.estimate().position_us == 500_000  # type: ignore[union-attr]
+
+
 def test_frozen_playing_position_becomes_stale_without_rewinding() -> None:
     monotonic = FakeMonotonic()
     clock = PlaybackClock(monotonic)
